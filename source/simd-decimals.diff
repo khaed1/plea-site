@@ -1,0 +1,60 @@
+diff --git a/web/src/Trade.tsx b/web/src/Trade.tsx
+index 2750a42..73e9f64 100644
+--- a/web/src/Trade.tsx
++++ b/web/src/Trade.tsx
+@@ -274,7 +274,7 @@ export function Buy() {
+               </div>
+               <div>
+                 <dt>Cashback earned</dt>
+-                <dd>{fmt(wallet?.stacked, 5)} sIMD</dd>
++                <dd>{fmt(wallet?.stacked, 5)} tIMD, staked as sIMD</dd>
+               </div>
+             </dl>
+           ) : (
+diff --git a/web/src/domain.ts b/web/src/domain.ts
+index f8df819..a463bc5 100644
+--- a/web/src/domain.ts
++++ b/web/src/domain.ts
+@@ -36,12 +36,14 @@ export const shares = [25, 18, 14, 11, 9, 7, 6, 4, 3, 3]; // Seasons._shareBps:
+ export const short = (s: string) => `${s.slice(0, 6)}…${s.slice(-4)}`;
+ export const eq = (a?: string, b?: string) =>
+   !!a && !!b && a.toLowerCase() === b.toLowerCase();
+-export const fmt = (n: bigint | undefined, digits = 3) =>
++export const fmt = (n: bigint | undefined, digits = 3, decimals = 18) =>
+   n === undefined
+     ? "—"
+-    : Number(formatUnits(n, 18)).toLocaleString("en-US", {
++    : Number(formatUnits(n, decimals)).toLocaleString("en-US", {
+         maximumFractionDigits: digits,
+       });
++/** sIMD (the staking vault's share) has 24 decimals. */
++export const SIMD_DECIMALS = 24;
+ export const compact = (n: bigint | undefined) =>
+   n === undefined
+     ? "—"
+diff --git a/web/src/pages.tsx b/web/src/pages.tsx
+index 89b997d..0359662 100644
+--- a/web/src/pages.tsx
++++ b/web/src/pages.tsx
+@@ -18,6 +18,7 @@ import {
+   duration,
+   eq,
+   fmt,
++  SIMD_DECIMALS,
+   pleaState,
+   shares,
+   standings,
+@@ -569,11 +570,11 @@ export function Profile() {
+           <dl className="stats-list">
+             <div>
+               <dt>Stacked by PLEA</dt>
+-              <dd>{fmt(wallet?.stacked, 5)} sIMD</dd>
++              <dd>{fmt(wallet?.stacked, 5)} tIMD</dd>
+             </div>
+             <div>
+               <dt>sIMD wallet balance</dt>
+-              <dd>{fmt(wallet?.simd, 5)}</dd>
++              <dd>{fmt(wallet?.simd, 5, SIMD_DECIMALS)} sIMD</dd>
+             </div>
+           </dl>
+           <External href={accountUrl}>View sIMD in imd/acc</External>
