@@ -311,24 +311,39 @@ export function Profile({ target }: { target?: string }) {
         </button>
       )}
       {info.error ? (
-        <div className="error-box">
-          <p className="error-box__title">Can’t read this profile</p>
-          <p>{info.error}</p>
-          <button
-            className="btn btn--sm"
-            onClick={() => {
-              resetHealth();
-              void refresh();
-            }}
-          >
-            Try again
-          </button>
+        <div className="error-box" role="alert">
+          <p className="error-box__title">
+            <Icon name="plugs" />
+            Can’t read this profile
+          </p>
+          <p className="small">{info.error}</p>
+          <div className="btn-row">
+            <button
+              className="btn btn--sm"
+              type="button"
+              onClick={() => {
+                resetHealth();
+                void refresh();
+              }}
+            >
+              <Icon name="arrow-clockwise" />
+              Try again
+            </button>
+          </div>
         </div>
       ) : !data ? (
-        <p className="loading-label">
-          <Icon name="hourglass" />
-          Reading {label}’s balances, pleas and seasons from the chain…
-        </p>
+        <div className="panel stack" aria-busy="true">
+          <p className="loading-label">
+            <Icon name="hourglass" />
+            Reading {label}’s balances, pleas and seasons from the chain…
+          </p>
+          <div className="skeleton" aria-hidden="true">
+            <div className="skeleton__block" />
+            <div className="skeleton__line" />
+            <div className="skeleton__line skeleton__line--mid" />
+            <div className="skeleton__line skeleton__line--short" />
+          </div>
+        </div>
       ) : (
         <>
           <div className="stats stats--4">

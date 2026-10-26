@@ -864,6 +864,7 @@ export function PleaPage({ id }: { id: string }) {
                   label="Waiting for the Cabal"
                   block
                   wait
+                  total={Number(con(s, "CabalGate.PENDING_EXPIRY"))}
                 />
                 <p>
                   Usually 3 to 6 minutes. The request expires at{" "}
@@ -883,6 +884,7 @@ export function PleaPage({ id }: { id: string }) {
                   label="Sell within"
                   urgent={!!mine}
                   block={!!mine}
+                  total={Number(con(s, "CabalGate.EXECUTE_WINDOW"))}
                 />
                 <p className="small">
                   The window closes at {clock(sellUntil, true)}. Miss it and the

@@ -71,3 +71,17 @@ export async function rpcFetch(input: RequestInfo | URL, init?: RequestInit) {
     details: text,
   });
 }
+/** A failed read in plain words. The site's own errors pass through. A timeout, an HTTP error or a
+ * rate limit means the RPC did not answer; a read that reverted or came back as a JSON-RPC error
+ * means it did answer, so the text says so (r2X-9). */
+export function explainReadError(e: any) {
+  if (
+    e?.constructor === Error &&
+    !/fetch|network|HTTP|timeout|RPC/i.test(e.message)
+  )
+    return e.message;
+  // A plain Error that names the network (the transport's own "did not answer") is no answer either.
+  return classifyRpc(e) === "transport" || e?.constructor === Error
+    ? "The public RPC did not answer. The site tries the next one by itself; your funds are not affected."
+    : "The RPC answered, but with an error instead of the contract data. The site reads again by itself; your funds are not affected.";
+}

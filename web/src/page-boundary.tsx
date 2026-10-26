@@ -22,8 +22,10 @@ export class PageBoundary extends Component<
         <div className="btn-row">
           <button
             className="btn btn--sm"
+            type="button"
             onClick={() => this.setState({ failed: false })}
           >
+            <Icon name="arrow-clockwise" />
             Try again
           </button>
           <a className="btn btn--sm" href="#/">

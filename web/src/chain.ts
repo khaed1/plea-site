@@ -736,7 +736,7 @@ export function seasonState(s: Snapshot | undefined, now: number) {
 export const potOf = (s: Snapshot | undefined, k?: bigint) =>
   !s ? 0n : s.v.seasons?.[String(k ?? s.v.displayedSeason)]?.pot || 0n;
 const expiryWords = (s?: Snapshot) =>
-  span(Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200));
+  span(Number(con(s, "Tribunal.PENDING_EXPIRY")));
 /** A pending objection the Tribunal no longer treats as live (Tribunal._stale): past filedAt +
  * PENDING_EXPIRY, or its Intake request completed without a ruling, which standing() shows as not
  * held. standing() ignores it, object() voids it to free its slot, and anyone may expire() it (IMD5). */
@@ -744,7 +744,7 @@ export function objectionStale(o: any, p: Plea, s: Snapshot, now: number) {
   return (
     o.ruling === 1 &&
     (now >
-      Number(o.filedAt) + Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200) ||
+      Number(o.filedAt) + Number(con(s, "Tribunal.PENDING_EXPIRY")) ||
       (!!p.standing && !p.standing[0] && !p.standing[1] && !p.excluded))
   );
 }
@@ -1076,7 +1076,7 @@ export function recordFrom(p: Plea, s: Snapshot, now: number) {
   if (!p.standing?.[0] || p.standing[1] || p.excluded || p.recorded)
     return undefined;
   const cs = caseState(p, s, now),
-    expiry = Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200),
+    expiry = Number(con(s, "Tribunal.PENDING_EXPIRY")),
     window = cs.rulings < cs.max ? cs.end : 0,
     last = cs.pending.reduce(
       (a: any, o: any) => (!a || o.filedAt > a.filedAt ? o : a),

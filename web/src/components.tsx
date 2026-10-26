@@ -241,6 +241,7 @@ export function Countdown({
   wait = false,
   ariaLabel,
   format,
+  total,
 }: {
   until: number;
   label: string;
@@ -249,6 +250,8 @@ export function Countdown({
   wait?: boolean;
   ariaLabel?: string;
   format?: "deadman";
+  /** The whole span the block bar measures, in seconds: the chain's own window (r2D-N9). */
+  total?: number;
 }) {
   const { now } = useApp();
   return (
@@ -275,7 +278,7 @@ export function Countdown({
         <span className="countdown__bar" aria-hidden="true">
           <span
             style={{
-              width: `${Math.max(0, Math.min(100, ((until - now) / (urgent ? 420 : 1200)) * 100))}%`,
+              width: `${total ? Math.max(0, Math.min(100, ((until - now) / total) * 100)) : 100}%`,
             }}
           />
         </span>
@@ -775,7 +778,9 @@ export function Action({
             rel="noreferrer"
           >
             {hash && error && !busy
-              ? "View the failed transaction"
+              ? typeof error !== "string" && error.sent
+                ? "View transaction"
+                : "View the failed transaction"
               : (confirmed ?? done)
                 ? "Confirmed on Sepolia"
                 : "View pending transaction"}

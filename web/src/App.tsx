@@ -279,9 +279,13 @@ export default function App() {
                   ? "Can’t read this profile"
                   : page === ""
                     ? "Can’t read the latest verdicts"
-                    : "Can’t reach Sepolia"}
+                    : page === "wall"
+                      ? "Can’t read the Wall"
+                      : page === "seasons"
+                        ? "Can’t read the leaderboard"
+                        : "Can’t reach Sepolia"}
             </p>
-            <p className="small">{error}</p><div className="btn-row"><button className="btn btn--sm" onClick={()=>{resetHealth();void refresh();}}><Icon name="arrow-clockwise"/>Try again</button></div>
+            <p className="small">{error}</p><div className="btn-row"><button className="btn btn--sm" type="button" onClick={()=>{resetHealth();void refresh();}}><Icon name="arrow-clockwise"/>Try again</button></div>
           </div>
         )}
         {s?.historyError && (

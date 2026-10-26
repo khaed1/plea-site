@@ -1,4 +1,5 @@
 import {
+  Fragment,
   createContext,
   useContext,
   useEffect,
@@ -25,12 +26,9 @@ import {
   read,
   blockTime,
   short,
-  span,
   val,
   con,
-  soldFor,
   plural,
-  feeInPleaText,
   readSnapshot,
   scanLogs,
   tokenAmount,
@@ -38,13 +36,30 @@ import {
   recordHint,
   type Snapshot,
 } from "./chain";
+import { explainReadError } from "./rpc-health";
 import {
   explainError,
-  explainReadError,
+  decodeCustomError,
   DisplayError,
   type ErrorMessage,
   type ErrorMap,
 } from "./errors";
+import {
+  afterSend,
+  deliveredToast,
+  objectionVoidToast,
+  receiptWaitStep,
+  revertedText,
+  toastLinks,
+  unconfirmedText,
+  verdictToast,
+  windowClosedToast,
+  RECEIPT_GIVE_UP,
+  RECEIPT_WAIT,
+  type Toast,
+} from "./toast-text";
+import { LETTERBOX } from "./models";
+export type { Toast } from "./toast-text";
 type AppContext = {
   r: Runtime;
   s?: Snapshot;
@@ -59,16 +74,6 @@ type AppContext = {
   saveReceipt: (receipt: { key: string; hash: string; text: string }) => void;
 };
 const C = createContext<AppContext>(null!);
-export type Toast = {
-  text: string;
-  body?: string;
-  icon?: string;
-  kind?: "bad" | "ok" | "pending" | "sold" | "info";
-  hash?: string;
-  href?: string;
-  link?: string;
-  role?: "status" | "alert";
-};
 export function DataProvider({
   r,
   children,
@@ -139,14 +144,7 @@ export function DataProvider({
         !notifiedWindows.current.has(id)
       ) {
         notifiedWindows.current.add(id);
-        pushToast({
-          kind: "info",
-          icon: "clock",
-          text: `The window closed at ${clock(end, true)}.`,
-          body: `Plea #${id} lapsed: nothing was sold.${p.excluded || p.standing?.[1] ? "" : ` Your +${p.points} points still count.`} Next plea at ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.`,
-          href: `#/p/${id}`,
-          link: `Open plea #${id}`,
-        });
+        pushToast(windowClosedToast(p, s, now));
       }
     }
   }, [now, s, address, pushToast]);
@@ -181,64 +179,53 @@ export function DataProvider({
           if (event.eventName === "Verdict")
             liveVerdicts.current.add(String(event.args.id));
       }
-      if (previous.current && wallet.current)
-        for (const event of next.logs.slice(previous.current.logs.length)) {
-          const eventId = ["Verdict", "Delivered"].includes(event.eventName)
-            ? event.args.id
-            : undefined;
-          const p = eventId
-            ? next.pleas.find((p) => p.id === eventId) ||
-              (await getPlea(r, eventId, next.logs))
-            : undefined;
-          if (
-            event.eventName === "Verdict" &&
-            !next.logs
-              .slice(previous.current.logs.length)
-              .some(
+      if (previous.current && wallet.current) {
+        const fresh = next.logs.slice(previous.current.logs.length),
+          me = wallet.current.toLowerCase();
+        for (const event of fresh)
+          // A toast's own reads never fail the snapshot (r2D-N2).
+          try {
+            const eventId = ["Verdict", "Delivered"].includes(event.eventName)
+              ? event.args.id
+              : undefined;
+            const p = eventId
+              ? next.pleas.find((p) => p.id === eventId) ||
+                (await getPlea(r, eventId, next.logs))
+              : undefined;
+            if (
+              event.eventName === "Verdict" &&
+              !fresh.some(
                 (l) =>
                   l.eventName === "Delivered" && l.args.id === event.args.id,
               ) &&
-            p?.seller.toLowerCase() === wallet.current.toLowerCase()
-          )
-            pushToast({
-              kind: event.args.approved ? "ok" : "bad",
-              text: event.args.approved
-                ? `Approved, ${p.score} vs need ${p.need}.`
-                : `Denied, ${p.score} vs need ${p.need}: ${p.need - p.score} short.`,
-              icon: event.args.approved ? "check-circle" : "x-circle",
-              role: "status",
-              body: event.args.approved
-                ? `Sell within ${Number(constants.current["CabalGate.EXECUTE_WINDOW"]) / 60} minutes, by ${clock(Number(p.verdictAt) + Number(constants.current["CabalGate.EXECUTE_WINDOW"]))}.`
-                : !p.isAppeal &&
-                    !p.appealed &&
-                    val(next, "CabalGate.cabalAlive") &&
-                    next.timestamp <=
-                      Number(p.verdictAt) +
-                        Number(con(next, "CabalGate.COOLDOWN"))
-                  ? p.flags & 1
-                    ? `Send APPEAL <text> to the Letterbox: ${feeInPleaText(next, BigInt(con(next, "CabalGate.ORACLE_FEE")) + BigInt(con(next, "CabalGate.APPEAL_POOL_SHARE")) + 250000000000000000n)}. Call settle to return escrow and tip if you do not appeal.`
-                    : `One appeal until ${clock(Number(p.verdictAt) + Number(con(next, "CabalGate.COOLDOWN")))}.`
-                  : undefined,
-              href: `#/p/${p.id}`,
-              link: `Open plea #${p.id}`,
-            });
-          if (event.eventName === "Ruled") {
-            const o = next.pleas
-              .flatMap((p) => p.objections || [])
-              .find((o) => o.id === event.args.id);
-            if (o?.objector?.toLowerCase() === wallet.current.toLowerCase())
+              p?.seller.toLowerCase() === me
+            )
+              pushToast(verdictToast(p, next, !!event.args.approved));
+            if (event.eventName === "Ruled") {
+              const o = next.pleas
+                .flatMap((p) => p.objections || [])
+                .find((o) => o.id === event.args.id);
+              if (o?.objector?.toLowerCase() === me)
+                pushToast({
+                  kind: "info",
+                  icon: "gavel",
+                  text: `Objection #${o.id} ${o.ruling === 2 ? "sustained" : "overruled"}, ${o.newScore} vs need ${next.pleas.find((p) => p.id === o.pleaId)?.need}.`,
+                });
+            }
+            // Only the writer hears a runner's sale here; the runner has the receipt's toast.
+            if (event.eventName === "Delivered" && p?.seller.toLowerCase() === me)
               pushToast({
-                kind: "info",
-                icon: "gavel",
-                text: `Objection #${o.id} ${o.ruling === 2 ? "sustained" : "overruled"}, ${o.newScore} vs need ${next.pleas.find((p) => p.id === o.pleaId)?.need}.`,
+                ...deliveredToast(
+                  p,
+                  next,
+                  event.args,
+                  await blockTime(r, event.blockNumber).catch(() => undefined),
+                  wallet.current,
+                ),
+                hash: event.transactionHash,
               });
-          }
-          if (
-            event.eventName === "Delivered" &&
-            p?.seller.toLowerCase() === wallet.current.toLowerCase()
-          )
-            pushToast(await deliveredToast(r, next, p!, event));
-        }
+          } catch {}
+      }
       clockBase.current = { chain: next.timestamp, local: Date.now() };
       setNow(next.timestamp);
       lastSnapshot.current = Date.now();
@@ -348,7 +335,11 @@ export function DataProvider({
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`toast toast--${toast.kind || "ok"}`}
+            className={
+              toast.kind === "info"
+                ? "toast"
+                : `toast toast--${toast.kind || "ok"}`
+            }
             role={toast.role || (toast.kind === "bad" ? "alert" : "status")}
           >
             <svg className="icon" aria-hidden="true">
@@ -358,16 +349,23 @@ export function DataProvider({
             </svg>
             <div>
               <p className="toast__title">{toast.text}</p>
-              {toast.body && <p>{toast.body}</p>}
-              {toast.href && <a href={toast.href}>{toast.link}</a>}
-              {toast.hash && (
-                <a
-                  href={`${r.network.explorer}/tx/${toast.hash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {toast.link || "View transaction"}
-                </a>
+              {(toast.body || toastLinks(toast, r.network.explorer).length > 0) && (
+                <p>
+                  {toast.body}
+                  {toastLinks(toast, r.network.explorer).map((l, i) => (
+                    <Fragment key={l.href}>
+                      {toast.body || i > 0 ? " " : ""}
+                      <a
+                        className="nowrap"
+                        href={l.href}
+                        target={l.external ? "_blank" : undefined}
+                        rel={l.external ? "noreferrer" : undefined}
+                      >
+                        {l.text}
+                      </a>
+                    </Fragment>
+                  ))}
+                </p>
               )}
             </div>
             <button
@@ -515,30 +513,74 @@ export function useTx(resetKey?: string) {
       });
       sentHash = h;
       setHash(h);
-      const receipt = await r.client.waitForTransactionReceipt({
-        hash: h,
-        confirmations: 1,
-        timeout: 180000,
-      });
+      // From here the transaction is sent: no text may say nothing was sent (r2D-N2). A slow
+      // receipt is said once and waited for again, so the button stays busy instead of offering a
+      // second send.
+      let receipt: TransactionReceipt | undefined,
+        noted = false;
+      const sentAt = Date.now();
+      while (!receipt)
+        try {
+          receipt = await r.client.waitForTransactionReceipt({
+            hash: h,
+            confirmations: 1,
+            timeout: Math.max(
+              1000,
+              (noted ? RECEIPT_GIVE_UP : RECEIPT_WAIT) - (Date.now() - sentAt),
+            ),
+          });
+        } catch (e) {
+          const step = receiptWaitStep(Date.now() - sentAt, noted);
+          if (step === "give-up") throw new DisplayError(unconfirmedText(true));
+          if (step === "note") {
+            noted = true;
+            const note = unconfirmedText(false);
+            toast?.({
+              kind: "pending",
+              text: note.title,
+              body: note.body,
+              hash: h,
+            });
+          }
+          // An RPC error ends viem's wait at once: try again shortly.
+          if ((e as any)?.name !== "WaitForTransactionReceiptTimeoutError")
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
       if (receipt.status !== "success") {
-        await r.client.call({
-          ...req,
-          account: address,
-          blockNumber: receipt.blockNumber,
-        });
-        throw new DisplayError({
-          title: "Mined but reverted.",
-          body: "Nothing was traded; only the gas was spent. Try again.",
-        });
+        // The replay names the contract's reason when it can; otherwise the neutral text for
+        // this kind of write (r2D-N7).
+        let reason: ErrorMessage | undefined;
+        try {
+          await r.client.call({
+            ...req,
+            account: address,
+            blockNumber: receipt.blockNumber,
+          });
+        } catch (e) {
+          if (decodeCustomError(e, Object.values(r.abis)))
+            reason = afterSend(
+              explainError(e, Object.values(r.abis), options?.errors),
+            );
+        }
+        throw new DisplayError(reason || revertedText(fn));
       }
       await refresh();
       setDone(true);
       if (fn !== "approve") {
-        const message = {
-          ...(await receiptToast(r, snapshot?.() || s!, receipt, fn, address)),
-          ...options?.toast?.(receipt),
-          hash: h,
-        };
+        // The toast's own reads (the plea, a block time, Seasons) may fail: the transaction is
+        // still confirmed, so a plain confirmed toast stands in (r2D-N2).
+        const built = await receiptToast(
+          r,
+          snapshot?.() || s!,
+          receipt,
+          fn,
+          address,
+        ).catch((): Toast => ({ text: "Transaction confirmed." }));
+        let own: Toast | undefined;
+        try {
+          own = options?.toast?.(receipt);
+        } catch {}
+        const message = { ...built, ...own, hash: h };
         toast?.(message);
         saveReceipt({
           key: resetKey || name + ":" + fn,
@@ -548,7 +590,14 @@ export function useTx(resetKey?: string) {
       }
       return h;
     } catch (e) {
-      const text = explainError(e, Object.values(r.abis), options?.errors);
+      const text =
+        sentHash && !(e instanceof DisplayError)
+          ? {
+              title: "Sent, but the site lost track of it.",
+              body: "Check View transaction before you send it again.",
+              sent: true,
+            }
+          : explainError(e, Object.values(r.abis), options?.errors);
       setError(text);
       toast?.({
         text: text.title,
@@ -607,14 +656,23 @@ async function receiptToast(
   if (fn === "seed")
     return { kind: "ok", text: "Trading is open. Make your opening buy now." };
   const escrow = find("Escrowed");
-  if (p && escrow && Number(escrow.flags) & 1)
+  if (p && escrow && Number(escrow.flags) & 1) {
+    // The imdTEST the letter bought with its PLEA: Letterbox.feesFor (the tip, an appeal's wall
+    // share and, unless minted, the oracle fee); Escrowed.feePlea is the PLEA it spent (r2D-N9).
+    const appeal = !!p.originalId,
+      fee =
+        (appeal ? s.v.appealFees : s.v.fees)?.[0] ??
+        BigInt(con(s, "CabalGate.ORACLE_FEE")) +
+          (appeal ? BigInt(con(s, "CabalGate.APPEAL_POOL_SHARE")) : 0n) +
+          LETTERBOX.TIP;
     return {
       kind: "pending",
-      text: `Letter received as plea #${p.id}. The Cabal is reading your mail.`,
-      body: `${tokenAmount(con(s, "CabalGate.ORACLE_FEE") + 250000000000000000n, s, true)} in fees, about ${tokenAmount(escrow.feePlea, s, false, 0, "up")}, paid from your PLEA. Usually 3 to 6 minutes.`,
+      text: `Letter received as ${appeal ? `appeal #${p.id} of plea #${p.originalId}` : `plea #${p.id}`}. The Cabal is reading your mail.`,
+      body: `${tokenAmount(BigInt(fee), s, true)} in fees, about ${tokenAmount(escrow.feePlea, s, false, 0, "up")}, paid from your ${s.constants.symbol}. Usually 3 to 6 minutes.`,
       href: `#/p/${p.id}`,
       link: `Open plea #${p.id}`,
     };
+  }
   if (p)
     return {
       kind: "pending",
@@ -629,22 +687,51 @@ async function receiptToast(
     return {
       kind: "pending",
       text: `Objection #${object.id} filed. A new panel is reading plea #${object.pleaId}.`,
+      body: `Usually 3 to 6 minutes. Your ${tokenAmount(BigInt(con(s, "Tribunal.STAKE")), s, true)} stake waits in the Tribunal and moves when anyone calls settle after the ruling.`,
       href: `#/p/${object.pleaId}`,
       link: `Open plea #${object.pleaId}`,
     };
   if (delivered)
-    return deliveredToast(r, s, await getPlea(r, delivered.id, s.logs), {
-      args: delivered,
-      blockNumber: receipt.blockNumber,
-      transactionHash: receipt.transactionHash,
-    });
+    return deliveredToast(
+      await getPlea(r, delivered.id, s.logs),
+      s,
+      delivered,
+      await blockTime(r, receipt.blockNumber).catch(() => undefined),
+      wallet,
+    );
+  const voided = find("ObjectionVoid");
+  if (voided) {
+    const o =
+      s.pleas
+        .flatMap((p) => p.objections || [])
+        .find((o) => o.id === voided.id) ??
+      (await read(r, "Tribunal", "objection", [voided.id]));
+    return objectionVoidToast(
+      voided,
+      s,
+      o?.objector,
+      wallet,
+      o?.filedAt === undefined ? undefined : Number(o.filedAt),
+      await blockTime(r, receipt.blockNumber).catch(() => undefined),
+    );
+  }
   if (sale) {
-    const p = await getPlea(r, sale.id, s.logs),
-      time = await blockTime(r, receipt.blockNumber);
+    // The title is the receipt's own SellExecuted; the body needs reads, and a failing one leaves
+    // out only what it would have told (r2D-N2). The next plea is the sale's block time + COOLDOWN.
+    const time = await blockTime(r, receipt.blockNumber).catch(() => undefined),
+      p = await getPlea(r, sale.id, s.logs).catch(() => undefined),
+      body = [
+        p ? recordHint(p, s, time ?? s.timestamp, "your", false) : "",
+        time === undefined
+          ? ""
+          : `Next plea at ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`,
+      ]
+        .filter(Boolean)
+        .join(" ");
     return {
       kind: "sold",
       text: `Sold ${tokenAmount(sale.amountIn, s)} for ${tokenAmount(sale.imdOut, s, true)}.`,
-      body: `${recordHint(p, s, time, "your", false)} Next plea at ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`.trim(),
+      body: body || undefined,
     };
   }
   if (closed) {
@@ -660,25 +747,28 @@ async function receiptToast(
     };
   }
   if (recorded) {
-    const best = (
-        await read(r, "Seasons", "bestOf", [recorded.season, recorded.wallet])
-      )
-        .filter(Number)
-        .sort((a: number, b: number) => b - a),
-      top = await read(r, "Seasons", "topOf", [recorded.season]),
-      rank = top.findIndex(
-        (e: any) => e.wallet.toLowerCase() === recorded.wallet.toLowerCase(),
-      ),
-      points =
-        events.find(
-          (e) =>
-            e.eventName === "SeatMultiplier" &&
-            e.args.pleaId === recorded.pleaId,
-        )?.args.pleaPoints ?? recorded.score;
-    return {
-      text: `+${points} points recorded.`,
-      body: `Season ${Number(recorded.season) + 1}: ${best.reduce((a: number, b: number) => a + b, 0)} points (${best.join(" + ")})${rank >= 0 ? `, rank ${rank + 1}` : ""}.`,
-    };
+    const points =
+      events.find(
+        (e) =>
+          e.eventName === "SeatMultiplier" && e.args.pleaId === recorded.pleaId,
+      )?.args.pleaPoints ?? recorded.score;
+    // The season line needs Seasons reads; without them the toast keeps the receipt's points.
+    const season = await Promise.all([
+      read(r, "Seasons", "bestOf", [recorded.season, recorded.wallet]),
+      read(r, "Seasons", "topOf", [recorded.season]),
+    ])
+      .then(([bestOf, top]) => {
+        const best = bestOf
+            .filter(Number)
+            .sort((a: number, b: number) => b - a),
+          rank = top.findIndex(
+            (e: any) =>
+              e.wallet.toLowerCase() === recorded.wallet.toLowerCase(),
+          );
+        return `Season ${Number(recorded.season) + 1}: ${best.reduce((a: number, b: number) => a + b, 0)} points (${best.join(" + ")})${rank >= 0 ? `, rank ${rank + 1}` : ""}.`;
+      })
+      .catch(() => undefined);
+    return { text: `+${points} points recorded.`, body: season };
   }
   if (claim) {
     const vault = claim.account.toLowerCase() !== wallet?.toLowerCase();
@@ -687,7 +777,7 @@ async function receiptToast(
       body: vault
         ? "The PLEA is on the vault; this wallet paid only the gas."
         : `Claim #${claim.index} is done. Selling it will take a plea.`,
-      link: "View the receipt",
+      receiptLabel: "View the receipt",
     };
   }
   const nameSet = find("NameSet");
@@ -704,17 +794,3 @@ async function receiptToast(
   return { text: "Transaction confirmed." };
 }
 
-async function deliveredToast(
-  r: Runtime,
-  s: Snapshot,
-  p: import("./chain").Plea,
-  event: any,
-): Promise<Toast> {
-  const time = await blockTime(r, event.blockNumber);
-  return {
-    kind: "sold",
-    text: `Approved, ${p.score} vs need ${p.need}, and sold for you: ${tokenAmount(p.amount, s)} for ${tokenAmount(soldFor(p, s), s, true)}.`,
-    body: `A runner (${short(event.args.runner)}) sold it within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))} and earned the ${tokenAmount(event.args.tip, s, true)} tip.${recordHint(p, s, time, "your", false) ? ` ${recordHint(p, s, time, "your", false)}` : ""} Next plea after ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`,
-    hash: event.transactionHash,
-  };
-}

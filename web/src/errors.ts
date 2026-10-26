@@ -5,7 +5,9 @@ import {
   parseAbi,
   type Abi,
 } from "viem";
-export type ErrorMessage = { title: string; body?: string };
+/** `sent`: the transaction was sent but its outcome is not known (no receipt yet), so the text never
+ * says nothing was sent and the link is not called failed. */
+export type ErrorMessage = { title: string; body?: string; sent?: boolean };
 export type ErrorValue = string | ErrorMessage;
 export const messages: Record<string, ErrorValue> = {
   AlreadyBegun: "Trading has already begun. Refresh the market.",
@@ -231,14 +233,6 @@ export function decodeCustomError(
     if (decoded) return decoded;
     node = node.cause || node.error;
   }
-}
-export function explainReadError(e: any) {
-  if (
-    e?.constructor === Error &&
-    !/fetch|network|HTTP|timeout|RPC/i.test(e.message)
-  )
-    return e.message;
-  return "The public RPC did not answer. The site tries the next one by itself; your funds are not affected.";
 }
 export type ErrorMap = Record<string, ErrorValue | ((args: any) => ErrorValue)>;
 export class DisplayError extends Error {

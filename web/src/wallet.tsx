@@ -3,6 +3,7 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { short, read } from "./chain";
 import { useApp, useRead } from "./context";
 import { explainError } from "./errors";
+import { listedConnectors, isMobileWithoutWallet } from "./wallet-list";
 const OPEN = [
   {
     id: "metaMask",
@@ -50,9 +51,10 @@ export function Wallet() {
   const trigger = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState(false);
-  const mobile =
-    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) &&
-    !(window as any).ethereum;
+  const mobile = isMobileWithoutWallet(
+    navigator.userAgent,
+    (window as any).ethereum,
+  );
   useEffect(() => {
     if (address) {
       dialog.current?.close();
@@ -92,13 +94,7 @@ export function Wallet() {
       setSwitching(false);
     }
   }
-  const named = connectors.some(
-    (c) => c.type === "injected" && c.id !== "injected",
-  );
-  const listed = connectors.filter(
-    (c) =>
-      !(c.id === "injected" && named) && (!mobile || c.type !== "injected"),
-  );
+  const listed = listedConnectors(connectors, mobile);
   return (
     <>
       {address && chainId === r.chain.id ? (
@@ -177,22 +173,6 @@ export function Wallet() {
             </>
           ) : (
             <>
-              {mobile &&
-                OPEN.map((w) => (
-                  <a
-                    className="wallet-row"
-                    key={w.id}
-                    href={w.href(location.href)}
-                  >
-                    <img
-                      src={`./wallets/${w.id}.svg`}
-                      alt=""
-                      width="28"
-                      height="28"
-                    />
-                    Open in {w.name}
-                  </a>
-                ))}
               {listed.map((c) => (
                 <button
                   className="wallet-row"
@@ -219,6 +199,22 @@ export function Wallet() {
                     : ""}
                 </button>
               ))}
+              {mobile &&
+                OPEN.map((w) => (
+                  <a
+                    className="wallet-row"
+                    key={w.id}
+                    href={w.href(location.href)}
+                  >
+                    <img
+                      src={`./wallets/${w.id}.svg`}
+                      alt=""
+                      width="28"
+                      height="28"
+                    />
+                    Open in {w.name}
+                  </a>
+                ))}
             </>
           )}
           {error && (
