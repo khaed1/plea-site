@@ -119,7 +119,7 @@
     },
     {
       "path": "index.html",
-      "sha256": "221b957adc5bc2f63e88e60e17a23e08948845d980a2ec81fec613ec55f7f8c7"
+      "sha256": "7122ed48c128a9514cc2b6c7f3635b8c823f73908c2faf88ce4e07f8113cfd41"
     },
     {
       "path": "og.png",
@@ -190,5 +190,45 @@
     "blockExplorerUrls": [
       "https://sepolia.etherscan.io"
     ]
+  },
+  "site": {
+    "key": "sepolia-run9",
+    "name": "Sepolia test run 9",
+    "strip": "Sepolia test run 9 · test tokens, no value",
+    "siteUrl": "https://plea-run-9.sites.imd.fun/",
+    "eventStart": 11948819,
+    "oracleApi": "https://api.imd.fun",
+    "claimsPath": "claims.json",
+    "expected": {
+      "Letterbox": "0xbc335ae3dc12d4bf78f8e44a03f4fc62e3afd1d3",
+      "Tribunal": "0xcd6aac81882a6ae51041e8094bca0feabd3fc566",
+      "PleaHook": "0x07b4698506cf15b9a91805aa90010a47a04228cc"
+    },
+    "trade": {
+      "kind": "poolSwapTest",
+      "router": "0x9b6b46e2c869aa39918db7f52f5557fe577b6eee"
+    },
+    "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
+    "cashback": {
+      "stacker": "0x0457276d7b036818b3eddc1a4a3fceda61e9314d",
+      "simd": null,
+      "simdDecimals": 24
+    },
+    "seat": {
+      "address": "0xa0443799c320e16c80801c9c1911f3571260287f",
+      "name": "IMD seat NFT (test)"
+    },
+    "letterMessagePage": null,
+    "indexer": null,
+    "logRanges": {
+      "default": 10000
+    },
+    "meta": {
+      "title": "Selling needs a plea · PLEA",
+      "description": "Buying is open. Selling needs a plea. PLEA's Sepolia test run 9: test tokens, no value.",
+      "ogTitle": "PLEA · Make your case",
+      "ogDescription": "Buying is open. Selling needs a plea. Sepolia test tokens, no value.",
+      "ogImageAlt": "PLEA: buying is open, selling needs a plea. Sepolia test run 9."
+    }
   }
 }

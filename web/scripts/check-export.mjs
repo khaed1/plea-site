@@ -3,10 +3,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import assert from "node:assert/strict";
 import { keccak256, toHex } from "viem";
+import { loadNetwork } from "./network.mjs";
 const root = path.resolve("dist");
 const m = JSON.parse(fs.readFileSync(path.join(root, "imd-deployment.json"))),
-  handoff = JSON.parse(fs.readFileSync("web/deployment-input.json")),
-  net = JSON.parse(fs.readFileSync("web/network-input.json"));
+  { handoff, net, site } = loadNetwork();
 const canonical = (v) =>
   Array.isArray(v)
     ? v.map(canonical)
@@ -27,6 +27,7 @@ const allowed = [
   "assets",
   "network",
   "walletAddChain",
+  "site",
   ...(handoff.poolKey ? ["poolKey"] : []),
 ].sort();
 assert.deepEqual(Object.keys(m).sort(), allowed);
@@ -35,6 +36,7 @@ for (const k of ["launchId", "chainId", "sourceCommit", "attestationHash"])
 assert.equal(m.version, 1);
 assert.deepEqual(m.network, net.network);
 assert.deepEqual(m.walletAddChain, net.walletAddChain);
+assert.deepEqual(m.site, site);
 if (handoff.poolKey) assert.deepEqual(m.poolKey, handoff.poolKey);
 assert.equal(m.contracts.length, handoff.contracts.length);
 for (const [i, c] of m.contracts.entries()) {
