@@ -1,0 +1,57 @@
+{
+  "network": {
+    "chainId": 1,
+    "name": "Ethereum",
+    "testnet": false,
+    "rpcUrls": [
+      "https://ethereum-rpc.publicnode.com",
+      "https://rpc.mevblocker.io",
+      "https://mainnet.gateway.tenderly.co",
+      "https://rpc.flashbots.net"
+    ],
+    "explorer": "https://etherscan.io",
+    "nativeCurrency": {
+      "name": "Ether",
+      "symbol": "ETH",
+      "decimals": 18
+    },
+    "uniswapV4": {
+      "poolManager": "0x000000000004444c5dc75cb358380d2e3de08a90",
+      "universalRouter": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
+      "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+    }
+  },
+  "walletAddChain": null,
+  "site": {
+    "key": "ethereum",
+    "name": "Ethereum",
+    "strip": null,
+    "siteUrl": "https://plea.sites.imd.fun/",
+    "eventStart": null,
+    "oracleApi": "https://api.imd.fun",
+    "claimsPath": "claims.json",
+    "expected": null,
+    "trade": {
+      "kind": "universalRouter",
+      "router": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
+      "minHopPrice": true,
+      "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+    },
+    "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
+    "cashback": {
+      "stacker": "0x06909f672301f28a810f78cfe7a754851269f4f0",
+      "simd": "0x9efa934d9fad4ae28c998a40195646b965a97247",
+      "simdDecimals": 24
+    },
+    "seat": {
+      "address": "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d",
+      "name": "identity.md seat"
+    },
+    "letterMessagePage": "https://etherscan.io/idm",
+    "indexer": null,
+    "logRanges": {
+      "default": 50000,
+      "https://ethereum-rpc.publicnode.com": 5000
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "chainId": 1,
+  "contracts": [],
+  "note": "[after launch]: the mainnet addresses arrive with the launch job's deployment and the owner's deployLetterbox / deployTribunal / deployHook"
+}
