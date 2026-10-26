@@ -117,7 +117,10 @@ function WaitingSeason({ season }: { season: bigint }) {
     [open, setOpen] = useState(false);
   const info = useRead(
     async () => {
-      const fees = await chainRead(r, "Seasons", "seasonFees", [season]);
+      const [fees, excluded] = await Promise.all([
+        chainRead(r, "Seasons", "seasonFees", [season]),
+        address ? chainRead(r, "Seasons", "excluded", [address]) : false,
+      ]);
       const candidates = s!.logs
         .filter(
           (l) =>
@@ -150,7 +153,17 @@ function WaitingSeason({ season }: { season: bigint }) {
             BigInt(con(s, "Seasons.SEASON")),
           ) === season,
       );
-      return { fees, own };
+      // Only pleas Seasons.record accepts, as SeasonBody's own list: not an excluded
+      // seller's, not one with a sustained objection (Tribunal.standing) (S1).
+      const standing = excluded
+        ? []
+        : await Promise.all(
+            own.map((l) => chainRead(r, "Tribunal", "standing", [l.id])),
+          );
+      return {
+        fees,
+        own: excluded ? [] : own.filter((_, i) => !standing[i][1]),
+      };
     },
     [season, address],
     !!s,

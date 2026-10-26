@@ -162,6 +162,10 @@ export function feeDisplay(
   const payDigits = Math.min(18, Math.max(2, fraction.length));
   let cashDigits = 2,
     partDigits = 3;
+  // The launch fee is what the extra rate adds. With no extra, fee − R × 2% is only a
+  // rounding wei (often −1), never a fee: rounded up it would hide 0.01 (r2T-N1).
+  const residual = fee - (reaches * normal) / 10000n,
+    launchFee = extra > 0n && residual > 0n ? residual : 0n;
   const parts = () => ({
     cash: round(part("CASHBACK_BPS"), cashDigits),
     owner: round(part("OWNER_BPS"), cashDigits, true),
@@ -171,7 +175,7 @@ export function feeDisplay(
       partDigits,
       true,
     ),
-    launch: round(fee - (reaches * normal) / 10000n, cashDigits, true),
+    launch: round(launchFee, cashDigits, true),
   });
   let values = parts();
   // Sub-cent inputs need more precision to keep conservative rounding from exceeding the payment.

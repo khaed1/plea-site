@@ -275,7 +275,8 @@ export function DataProvider({
               ? undefined
               : await scanLogs(r, observedHead.current + 1n, block.number);
           if (scan?.error) throw scan.error;
-          observedHead.current = block.number;
+          // Blocks a lagging node has not reached yet are looked at again next time.
+          observedHead.current = scan?.lagged ? scan.covered : block.number;
           if (
             !previous.current ||
             failures.current ||

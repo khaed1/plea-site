@@ -70,16 +70,16 @@
       "sha256": "3c38192084ffda92b0dc0f54fcf55cc603566c2e93335afc8e524525559d6549"
     },
     {
-      "path": "assets/ccip-B_fgXspA.js",
-      "sha256": "28a06685c26bf6f9816ef0f59ba695863ab5c1116d2f81162fc99db3c2b7ee7d"
-    },
-    {
-      "path": "assets/index-B6Wwr-Bi.js",
-      "sha256": "95f55f2bfe460008c3e2c3ca3480d8e4448cdcdde195a5ebe2d95f6c44516d95"
+      "path": "assets/ccip-BKeC1VqR.js",
+      "sha256": "36e516f07c51efdb5a5271ef1b7db6f6a6dc6c4a82c948845a8a9a38213e394d"
     },
     {
       "path": "assets/index-BeoRn2gJ.js",
       "sha256": "0dcde27515a3318bea6438a92001f307ec83cc50407cc75360edc0c7021d8413"
+    },
+    {
+      "path": "assets/index-CoOoDG98.js",
+      "sha256": "b8fae77f7224cf909a08bf0850aa98fe4f119de4f88ccc135c0c76fae23885ac"
     },
     {
       "path": "assets/index-DIhHwwvQ.css",
@@ -119,7 +119,7 @@
     },
     {
       "path": "index.html",
-      "sha256": "221b957adc5bc2f63e88e60e17a23e08948845d980a2ec81fec613ec55f7f8c7"
+      "sha256": "c7014d4e9308e116b4ef18f5d0b900a4fbd92fe9ae8e8cfc46a34a54835126d5"
     },
     {
       "path": "og.png",

@@ -93,11 +93,22 @@ export async function readStatic(r: Runtime) {
 }
 // Keep successful prefixes so a temporary outage never restarts a whole history scan.
 let logChunk = 10000n;
+// A node may run a few blocks behind the head the site just read (sentio's log node is
+// often one block behind its own eth_getBlockByNumber). Blocks it has not reached are
+// not yet due: the scan stops at the last block it has, with no error, and the next read
+// resumes there (X1, r2X-1). A node further behind than this is a real gap in history.
+export const HEAD_LAG = 16n;
+/** The last block a node says it has, e.g. "block 11962410 is beyond the latest block 11962409 of this node, retry later". */
+export function nodeHead(text: string) {
+  const named = text.match(/(?:latest|head) block (?:number )?(?:is )?#?(\d+)/i);
+  return named ? BigInt(named[1]) : undefined;
+}
 export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
   const logs: any[] = [];
   let covered = from - 1n,
+    lagged = false,
     error: unknown;
-  async function chunk(a: bigint, b: bigint, retry = 0): Promise<void> {
+  async function chunk(a: bigint, b: bigint, step = 0): Promise<void> {
     try {
       const batch = await r.client.getLogs({
         address: Object.entries(r.addresses)
@@ -111,20 +122,23 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
     } catch (e) {
       const { text } = rpcDetail(e);
       if (headPattern.test(text)) {
-        if (retry >= 3) throw e;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        return chunk(a, b, retry + 1);
+        // Read up to the block the node names; when it names none, one block less, then 2, 4, 8…
+        const has = min(nodeHead(text) ?? b - (1n << BigInt(step)), b - 1n);
+        if (step >= 5 || to - has > HEAD_LAG) throw e;
+        lagged = true;
+        if (has >= a) await chunk(a, has, step + 1);
+        return;
       }
       const limit = text.match(/limited to ([\d,]+) blocks/i);
       if (limit) logChunk = BigInt(limit[1].replaceAll(",", "")) || 1n;
       if (a === b || !rangePattern.test(text)) throw e;
       const size = limit ? logChunk : (b - a + 1n) / 2n || 1n;
-      for (let k = a; k <= b; k += size)
+      for (let k = a; k <= b && !lagged; k += size)
         await chunk(k, k + size - 1n > b ? b : k + size - 1n);
     }
   }
   try {
-    for (let a = from; a <= to;) {
+    for (let a = from; a <= to && !lagged; ) {
       const end = a + logChunk - 1n > to ? to : a + logChunk - 1n;
       await chunk(a, end);
       a = end + 1n;
@@ -150,7 +164,7 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
       return { ...log, contract: name, eventName: "Unknown", args: {} };
     }
   });
-  return { logs: decoded, covered, error };
+  return { logs: decoded, covered, lagged, error };
 }
 export async function getPlea(
   r: Runtime,
@@ -378,7 +392,8 @@ export async function readSnapshot(
     pleas,
     court,
     block: scan.covered,
-    head: block.number,
+    // A lagging node's last blocks are not yet due: the poll looks there again.
+    head: scan.lagged && !scan.error ? scan.covered : block.number,
     timestamp: Number(block.timestamp),
     historyError,
   };
@@ -723,6 +738,51 @@ export function soldFor(p: Plea, s: Snapshot) {
     s.logs.find((l) => l.eventName === "SellExecuted" && l.args.id === p.id)
       ?.args.imdOut
   );
+}
+/** The plea page's lead. It agrees with the sale panel: a sustained objection
+ * (Tribunal.standing) or an excluded seller (Seasons.excluded) means no points,
+ * and only a sold plea's sale stands (C2, r2C-N1). */
+export function pleaLead(
+  p: Plea,
+  s: Snapshot,
+  o: { state: string; canSell: boolean; mine: boolean; missedSeason: boolean },
+) {
+  const sustained = !!p.standing?.[1],
+    noPoints = sustained
+      ? "An objection was sustained: no points for this plea."
+      : p.excluded
+        ? "This seller is excluded from season points."
+        : "",
+    window = Number(con(s, "CabalGate.EXECUTE_WINDOW"));
+  const lead =
+    o.state === "PENDING"
+      ? "Waiting for the Cabal: usually 3 to 6 minutes."
+      : o.state === "NO VERDICT"
+        ? "No verdict. No cooldown; the oracle fee is spent."
+        : o.canSell
+          ? `The Cabal approved ${o.mine ? "your" : "this"} plea. Sell within the ${span(window, "adj")} window, by ${clock(Number(p.verdictAt) + window)}. ${noPoints}`
+          : p.status === 4
+            ? sustained
+              ? "A second panel sustained an objection. No points; the sale stands."
+              : `Sold ${tokenAmount(p.amount, s)} for ${tokenAmount(soldFor(p, s), s, true)}. ${noPoints}`
+            : o.state === "UPHELD"
+              ? "The denial was upheld. No further appeal."
+              : o.state === "LAPSED"
+                ? noPoints
+                  ? `The approval lapsed unsold. ${noPoints}`
+                  : o.missedSeason
+                    ? "The approval lapsed unsold."
+                    : "The approval lapsed unsold; its points still count."
+                : "The Cabal denied this plea.";
+  return lead.trim();
+}
+/** plea.html's judge line: "Judged by 30 · 24 agreed · 4m 20s. A judge said: “…”" (C4). */
+export function judgeLine(
+  data: { panelSize?: number; agreed?: number; comment?: string },
+  panel: number | bigint,
+  seconds: number,
+) {
+  return `Judged by ${data.panelSize ?? panel}${data.agreed === undefined ? "" : ` · ${data.agreed} agreed`} · ${elapsed(seconds)}.${data.comment ? ` A judge said: “${data.comment}”` : ""}`;
 }
 
 const factCache = new Map<string, Promise<any>>();

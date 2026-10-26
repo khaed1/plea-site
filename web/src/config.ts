@@ -169,11 +169,15 @@ export async function discover(r: Runtime) {
   return r;
 }
 
-/** Shared endpoint health: failures cool down once; JSON-RPC reverts remain request errors. */
+/** Shared endpoint health: failures cool down once; JSON-RPC reverts remain request errors.
+ * A read the first endpoint has not answered within `hedge` ms is also sent to the next
+ * one: the first answer wins and the slower endpoint cools down, so a hung RPC costs
+ * 2 s once instead of the 6 s timeout (X1). eth_getLogs is never doubled. */
 export function resilientTransport(
   urls: string[],
   timeout = 6000,
   cooldown = 60000,
+  hedge = 2000,
 ) {
   const endpoints = urls.map((url) => ({
     transport: http(url, {
@@ -185,6 +189,8 @@ export function resilientTransport(
     logs: http(url, { timeout, retryCount: 0, fetchFn: rpcFetch })({}),
     down: 0,
   }));
+  type Endpoint = (typeof endpoints)[number];
+  type Outcome = { endpoint: Endpoint; ok: boolean; value: any };
   registerHealthReset(() =>
     endpoints.forEach((e) => {
       e.down = 0;
@@ -193,26 +199,62 @@ export function resilientTransport(
   return custom(
     {
       async request(args: any) {
-        let first: any;
+        let first: any, answer: any;
         const healthy = endpoints.filter((e) => e.down <= Date.now());
         const candidates = healthy.length
           ? healthy
           : [...endpoints].sort((a, b) => a.down - b.down);
-        for (const endpoint of candidates) {
-          try {
-            const result = await (
-              args.method === "eth_getLogs" ? endpoint.logs : endpoint.transport
-            ).request(args);
-            endpoint.down = 0;
-            return result;
-          } catch (e) {
-            const kind = classifyRpc(e);
-            if (kind === "request") throw e;
-            first ||= e;
-            if (kind === "transport") endpoint.down = Date.now() + cooldown;
+        const start = (endpoint: Endpoint): Promise<Outcome> =>
+          (args.method === "eth_getLogs" ? endpoint.logs : endpoint.transport)
+            .request(args)
+            .then(
+              (value: any) => ({ endpoint, ok: true, value }),
+              (value: any) => ({ endpoint, ok: false, value }),
+            );
+        const live = new Map<Endpoint, Promise<Outcome>>();
+        let next = 0;
+        while (next < candidates.length || live.size) {
+          if (!live.size) {
+            const endpoint = candidates[next++];
+            live.set(endpoint, start(endpoint));
           }
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const outcome = await Promise.race<Outcome | undefined>([
+            ...live.values(),
+            ...(args.method !== "eth_getLogs" &&
+            live.size === 1 &&
+            next < candidates.length
+              ? [
+                  new Promise<undefined>((resolve) => {
+                    timer = setTimeout(resolve, hedge);
+                  }),
+                ]
+              : []),
+          ]);
+          clearTimeout(timer);
+          if (!outcome) {
+            const endpoint = candidates[next++];
+            live.set(endpoint, start(endpoint));
+            continue;
+          }
+          live.delete(outcome.endpoint);
+          if (outcome.ok) {
+            outcome.endpoint.down = 0;
+            // An endpoint asked earlier is still silent: too slow for now.
+            for (const slow of live.keys()) slow.down = Date.now() + cooldown;
+            return outcome.value;
+          }
+          const kind = classifyRpc(outcome.value);
+          if (kind === "request") throw outcome.value;
+          first ||= outcome.value;
+          if (kind === "answer") answer ||= outcome.value;
+          if (kind === "transport")
+            outcome.endpoint.down = Date.now() + cooldown;
         }
+        // A node that answered (a head lag, 4444, -32603) says more than one that did not:
+        // with publicnode refused and sentio one block behind, the caller sees the lag.
         throw (
+          answer ||
           first ||
           Error(
             "The public RPC did not answer. The site tries the next one by itself; your funds are not affected.",

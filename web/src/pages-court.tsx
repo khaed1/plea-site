@@ -3,7 +3,7 @@ import { Share } from "./share";
 import { LETTERBOX, Q96 } from "./models";
 import { appealPreview } from "./appeal";
 import { PleaTimeline } from "./details";
-import { oracleRequest } from "./oracle";
+import { oracleRequest, type OracleData } from "./oracle";
 import { useEffect, useState, useRef } from "react";
 import { useAccount } from "wagmi";
 import { formatUnits, type Address } from "viem";
@@ -28,6 +28,8 @@ import {
   duration,
   elapsed,
   getPlea,
+  judgeLine,
+  pleaLead,
   pleaState,
   read,
   short,
@@ -714,23 +716,7 @@ export function PleaPage({ id }: { id: string }) {
         {mine && <span className="badge badge--you">YOU</span>}
       </div>
       <p className="lead">
-        {state === "PENDING"
-          ? "Waiting for the Cabal: usually 3 to 6 minutes."
-          : state === "NO VERDICT"
-            ? "No verdict. No cooldown; the oracle fee is spent."
-            : p.standing?.[1]
-              ? "A second panel sustained an objection. No points; the sale stands."
-              : canSell
-                ? `The Cabal approved ${mine ? "your" : "this"} plea. Sell within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")), "adj")} window, by ${clock(sellUntil)}.`
-                : p.status === 4
-                  ? `Sold ${tokenAmount(p.amount, s)} for ${tokenAmount(soldFor(p, s), s, true)}.`
-                  : state === "UPHELD"
-                    ? "The denial was upheld. No further appeal."
-                    : state === "LAPSED"
-                      ? missedSeason
-                        ? "The approval lapsed unsold."
-                        : "The approval lapsed unsold; its points still count."
-                      : "The Cabal denied this plea."}{" "}
+        {pleaLead(p, s, { state, canSell, mine: !!mine, missedSeason })}{" "}
         {held
           ? `The +${p.points} points are held while objections are open; record them after ${clock(objectionUntil)}.`
           : p.recorded
@@ -923,6 +909,7 @@ export function PleaPage({ id }: { id: string }) {
                 state={state}
                 appealId={appealId}
                 missedSeason={missedSeason}
+                judged={oracle.data}
               />
             )}
             {p.status === 1 && state === "NO VERDICT" && !auto && (
@@ -1701,11 +1688,13 @@ function SaleSummary({
   state,
   appealId,
   missedSeason,
+  judged,
 }: {
   p: Plea;
   state: string;
   appealId?: bigint;
   missedSeason: boolean;
+  judged?: OracleData;
 }) {
   const { r, s, now } = useApp(),
     delivered = s!.logs.find(
@@ -1919,11 +1908,23 @@ function SaleSummary({
     );
   if (state === "UPHELD")
     return (
-      <p>
-        {appealLine} No further appeal. The{" "}
-        {span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown ran from
-        this verdict, until {clock(end)}.
-      </p>
+      <>
+        {appealLine && <p className="small">{appealLine}</p>}
+        <p>
+          <b>No further appeal.</b> The{" "}
+          {span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown ran from
+          this verdict, until {clock(end)}.
+        </p>
+        {judged && (
+          <p className="small text-2">
+            {judgeLine(
+              judged,
+              con(s, "CabalGate.PANEL_SIZE"),
+              Number(p.verdictAt) - Number(p.submittedAt),
+            )}
+          </p>
+        )}
+      </>
     );
   if (appealId)
     return (
