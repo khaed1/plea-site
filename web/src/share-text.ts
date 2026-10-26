@@ -59,6 +59,8 @@ export function shareSentence(
       earns && extra.rank !== undefined && extra.rank >= 0
         ? `season ${String((extra.season ?? 0n) + 1n)} rank ${extra.rank + 1}`
         : "",
+    // A hand sale's amount is its SellExecuted log: left out while history is incomplete (r2S-N1).
+    soldKnown = sold && soldFor(p, s) !== undefined,
     forX = `${amount(soldFor(p, s), s.constants.pairDecimals ?? 18, 2)} ${pair}`;
   if (state === "PENDING")
     return `Pending until ${clock(Number(p.submittedAt) + Number(con(s, "CabalGate.PENDING_EXPIRY")))}. Need ${p.need}, ${amount(p.amount, s.constants.decimals ?? 18)} PLEA${p.balance ? `, ${sharePercent(p.amount, p.balance)} of the bag` : ""}.`;
@@ -81,8 +83,8 @@ export function shareSentence(
     return `Upheld on appeal, ${p.score} vs need ${p.need}: no points.${extra.originalScore !== undefined ? ` The first plea, #${p.originalId}, scored ${extra.originalScore}.` : ""} No further appeal.`;
   const head =
     state === "OVERTURNED"
-      ? `Overturned on appeal, ${p.score} vs need ${p.need}.${sold ? ` Sold for ${forX}.` : ""}`
-      : `${cap(state.toLowerCase())}, ${p.score} vs need ${p.need}${sold ? `, for ${forX}` : ""}.`;
+      ? `Overturned on appeal, ${p.score} vs need ${p.need}.${soldKnown ? ` Sold for ${forX}.` : ""}`
+      : `${cap(state.toLowerCase())}, ${p.score} vs need ${p.need}${soldKnown ? `, for ${forX}` : ""}.`;
   if (oc.state) {
     const each = oc.list
       .map((o) =>
@@ -128,7 +130,7 @@ export function shareStatus(
     return `${many(oc.pending.length, "OBJECTION", "OBJECTIONS")} ${idList(oc.pending)} to ${subject} (${state}, ${p.score} vs need ${p.need}): ${many(oc.pending.length, "a new panel re-scores", "new panels re-score")} it, and ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less means no points.`;
   if (oc.state === "OVERRULED")
     return `${many(oc.overruled.length, "Objection", "Objections")} ${idList(oc.overruled)} OVERRULED: ${subject} re-scored ${scores(oc.overruled)} vs need ${p.need}, counts ${p.points} points.`;
-  return `${state}: ${subject}, ${p.score} vs need ${p.need}.${sold ? ` Sold for ${tokenAmount(soldFor(p, s), s, true)}.` : state === "UPHELD" ? " No further appeal." : state === "DENIED" && appealOpen(p, s, now) ? ` Appeal until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`;
+  return `${state}: ${subject}, ${p.score} vs need ${p.need}.${sold ? (soldFor(p, s) !== undefined ? ` Sold for ${tokenAmount(soldFor(p, s), s, true)}.` : "") : state === "UPHELD" ? " No further appeal." : state === "DENIED" && appealOpen(p, s, now) ? ` Appeal until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`;
 }
 
 /** Who the post is about: "my plea" only for the seller's own post. */
@@ -136,3 +138,15 @@ export const shareSubject = (p: Plea, viewer?: string) =>
   viewer?.toLowerCase() === p.seller.toLowerCase()
     ? "my plea"
     : `plea #${p.id} by ${p.name || short(p.seller)}`;
+
+/** Facts a share card or post would leave out or get wrong while history is incomplete: a hand
+ * sale's amount (its SellExecuted log) and, when the snapshot did not read every objection from the
+ * Tribunal, the plea's objections (their Objected logs). Empty when nothing is missing (r2S-N1). */
+export function shareGaps(p: Plea, s: Snapshot) {
+  if (!s.historyError) return [];
+  const gaps: string[] = [];
+  if (p.status === 4 && soldFor(p, s) === undefined) gaps.push("the sale amount");
+  const all = Number(s.v["Tribunal.nextId"] ?? 1n) - 1;
+  if ((s.v.objections?.length ?? 0) < all) gaps.push("an objection");
+  return gaps;
+}

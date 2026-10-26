@@ -119,8 +119,8 @@ export const Notice = ({
   kind = "info",
   icon,
 }: {
-  title?: string;
-  children: ReactNode;
+  title?: ReactNode;
+  children?: ReactNode;
   kind?: string;
   icon?: string;
 }) => (
@@ -130,7 +130,7 @@ export const Notice = ({
     />
     <div>
       {title && <p className="notice__title">{title}</p>}
-      <div>{children}</div>
+      {children && <div>{children}</div>}
     </div>
   </div>
 );
@@ -1078,7 +1078,9 @@ export function PleaFoot({
         <span>
           {p.status === 4 ? (
             <>
-              Sold {n(p.amount)} for {n(soldFor(p, s!), true)}
+              Sold {n(p.amount)}
+              {/* A hand sale's amount is its SellExecuted log: left out while history is incomplete (r2S-N1). */}
+              {soldFor(p, s!) !== undefined && <> for {n(soldFor(p, s!), true)}</>}
             </>
           ) : state === "LAPSED" ? (
             <>
@@ -1114,7 +1116,7 @@ export function PleaFoot({
     <>
       <span>
         {p.status === 4
-          ? `Sold ${tokenAmount(p.amount, s)} for ${tokenAmount(soldFor(p, s!), s, true)}`
+          ? `Sold ${tokenAmount(p.amount, s)}${soldFor(p, s!) !== undefined ? ` for ${tokenAmount(soldFor(p, s!), s, true)}` : ""}`
           : state === "LAPSED"
             ? `${tokenAmount(p.amount, s)} · not sold in ${Number(con(s, "CabalGate.EXECUTE_WINDOW")) / 60} min`
             : `Sells ${tokenAmount(p.amount, s)}${hero && quote.data !== undefined ? ` ≈ ${tokenAmount(quote.data, s, true)}` : ""}`}

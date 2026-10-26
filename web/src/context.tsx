@@ -29,6 +29,7 @@ import {
   val,
   con,
   soldFor,
+  plural,
   feeInPleaText,
   readSnapshot,
   scanLogs,
@@ -652,7 +653,7 @@ async function receiptToast(
       burned = find("BonusBurned")?.amount || 0n;
     return {
       text: `Season ${Number(closed.season) + 1} closed.`,
-      body: `${prizes.length} wallets paid ${tokenAmount(closed.paid, s, true)} + ${tokenAmount(
+      body: `${plural(prizes.length, "wallet")} paid ${tokenAmount(closed.paid, s, true)} + ${tokenAmount(
         bonuses.reduce((n, e) => n + BigInt(e.args.amount), 0n),
         s,
       )}. ${tokenAmount(BigInt(closed.pot) - BigInt(closed.paid), s, true)} ${val(s, "CabalGate.diedAt") && BigInt(closed.season) === BigInt(s.v.displayedSeason) ? "is left for the buy wall" : `rolls over to season ${Number(closed.season) + 2}`}; ${tokenAmount(burned, s)} burned.`,

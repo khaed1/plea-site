@@ -23,11 +23,14 @@ import {
   seasonState,
   potOf,
   clock,
-  duration,
+  timeLeft,
   heldTime,
   short,
+  signedPercent,
+  multiplierText,
   type Plea,
 } from "./chain";
+import { seasonPrize, seasonsFoot } from "./season-text";
 import { pendingState, factParts } from "./models";
 import {
   Action,
@@ -103,34 +106,45 @@ export function Profile({ target }: { target?: string }) {
           fact = raw
             ? Number(await read(r, "CabalGate", "factScore", [wallet, raw]))
             : 0;
-        const submissions = s!.logs
-          .filter(
-            (l) =>
-              l.eventName === "PleaSubmitted" &&
-              l.args.seller.toLowerCase() === wallet!.toLowerCase(),
-          )
-          .slice(-2)
-          .reverse();
-        const pleas = await Promise.all(
-          submissions.map((l) => getPlea(r, l.args.id, s!.logs)),
-        );
-        const keys = [
-          ...new Set([
+        // The latest two pleas: the PleaSubmitted logs, joined by what the chain says without them
+        // (CabalGate.lastPleaOf and the newest pleas the snapshot read), so a gap in history never
+        // reads as "No pleas yet" (r2S-N1).
+        const last = BigInt(await read(r, "CabalGate", "lastPleaOf", [wallet]));
+        const ids = [
+          ...new Set<bigint>([
             ...s!.logs
               .filter(
                 (l) =>
-                  l.eventName === "Recorded" &&
-                  l.args.wallet.toLowerCase() === wallet!.toLowerCase(),
+                  l.eventName === "PleaSubmitted" &&
+                  l.args.seller.toLowerCase() === wallet!.toLowerCase(),
               )
-              .map((l) => String(l.args.season)),
-            ...(season ? [String(season.displayed)] : []),
+              .map((l) => l.args.id as bigint),
+            ...s!.pleas
+              .filter((p) => p.seller.toLowerCase() === wallet!.toLowerCase())
+              .map((p) => p.id),
+            ...(last ? [last] : []),
           ]),
-        ];
+        ]
+          .sort((a, b) => Number(b - a))
+          .slice(0, 2);
+        const pleas = await Promise.all(
+          ids.map((id) => getPlea(r, id, s!.logs, s!.v.objections)),
+        );
+        // A row per season with points, read from Seasons.bestOf for every season so far: the chain
+        // knows them without the Recorded logs (r2S-N1). A prize needs 60+ points, so points cover it.
+        const count = season ? Number(season.displayed) + 1 : 0,
+          bests = await Promise.all(
+            Array.from({ length: count }, (_, k) =>
+              read(r, "Seasons", "bestOf", [BigInt(k), wallet]),
+            ),
+          );
+        const keys = bests.flatMap((b: any, k) =>
+          b.some((x: any) => Number(x)) ? [BigInt(k)] : [],
+        );
         const seasons = await Promise.all(
-          keys.map(async (k) => {
-            const index = BigInt(k),
-              [best, top, closed, fees, bounds] = await Promise.all([
-                read(r, "Seasons", "bestOf", [index, wallet]),
+          keys.map(async (index) => {
+            const best = bests[Number(index)],
+              [top, closed, fees, bounds] = await Promise.all([
                 read(r, "Seasons", "topOf", [index]),
                 read(r, "Seasons", "closed", [index]),
                 read(r, "Seasons", "seasonFees", [index]),
@@ -163,6 +177,11 @@ export function Profile({ target }: { target?: string }) {
               points,
               closed,
               bounds,
+              excluded,
+              // A closed season's prize is its PrizePaid logs: unknown while history is incomplete.
+              known: !closed || !s!.historyError || paid.length > 0,
+              qualifies:
+                !excluded && points >= Number(con(s, "Seasons.MIN_POINTS")),
               imd: closed
                 ? paid
                     .filter((l) => l.eventName === "PrizePaid")
@@ -194,9 +213,8 @@ export function Profile({ target }: { target?: string }) {
           raw,
           fact,
           pleas,
-          seasons: seasons.filter(
-            (k) => k.points > 0 || k.imd > 0n || k.bonus > 0n,
-          ),
+          last,
+          seasons,
         };
       },
       [wallet],
@@ -328,11 +346,14 @@ export function Profile({ target }: { target?: string }) {
                     tokenAmount(data.pair, s, true),
                     `For buys and the ${tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true)} oracle fee`,
                   ],
-                  [
-                    "Cashback earned",
-                    smallAmount(cashback(s!.logs, wallet), s),
-                    "Paid in plain imdTEST in this test run",
-                  ],
+                  // Cashback is summed from logs: hidden while history is incomplete (r2S-N1).
+                  s!.historyError
+                    ? ["Cashback earned", "—", "Shows once the history is read"]
+                    : [
+                        "Cashback earned",
+                        smallAmount(cashback(s!.logs, wallet), s),
+                        "Paid in plain imdTEST in this test run",
+                      ],
                   [
                     "Next plea",
                     val(s, "CabalGate.diedAt") ? "Closed" : next,
@@ -406,6 +427,11 @@ export function Profile({ target }: { target?: string }) {
           )}
           <div className="split form-actions-top">
             <Panel level={2} title={mine ? "Your buy record" : "Buy record"}>
+              <p className="small text-2">
+                {mine
+                  ? "The hook records every buy you make. Your next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."
+                  : "The hook records every buy this wallet makes. Its next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."}
+              </p>
               <Costs
                 rows={[
                   [
@@ -424,10 +450,21 @@ export function Profile({ target }: { target?: string }) {
                       ? heldTime(now - Number(data.basis[2]))
                       : "No buy record",
                   ],
+                  // The hourly checkpoint the next plea is scored on, labelled as such: #/buy and the
+                  // header show the spot price (r2D-VN2). Signed, with U+2212, as on #/buy (r2X-7, r2D-N8).
                   [
-                    `Now, at ${tokenAmount((BigInt(val(s, "PleaHook.latestPrice") || 0n) * 10n ** 24n) / 2n ** 96n, s, true)} per 1M`,
+                    `At the hourly price, ${tokenAmount((BigInt(val(s, "PleaHook.latestPrice") || 0n) * 10n ** 24n) / 2n ** 96n, s, true)} per 1M`,
                     data.basis[0]
-                      ? `${((Number((data.basis[1] * BigInt(val(s, "PleaHook.latestPrice") || 0n)) / 2n ** 96n) * 100) / Number(data.basis[0]) - 100).toFixed(1)}%`
+                      ? signedPercent(
+                          (Number(
+                            (data.basis[1] *
+                              BigInt(val(s, "PleaHook.latestPrice") || 0n)) /
+                              2n ** 96n,
+                          ) *
+                            100) /
+                            Number(data.basis[0]) -
+                            100,
+                        )
                       : "No buy record",
                   ],
                   [
@@ -614,107 +651,162 @@ export function Profile({ target }: { target?: string }) {
             )}
           </section>
           <section className="section">
-            <div className="split">
-              <Panel
-                level={2}
-                title={mine ? "Your seasons" : "Seasons"}
-                flush
-                meta={
-                  season && (
-                    <a href="#/seasons">
-                      Season {String(season.displayed + 1n)} leaderboard
-                    </a>
-                  )
-                }
+            <div className="split split--stretch">
+              {/* profile.html:186-199: a flush panel whose table runs edge to edge, table--tight so
+                  the four columns fit at 320 px (r2S-N4), and the foot as panel__foot. */}
+              <section
+                className="panel panel--flush panel--fill"
+                aria-labelledby="profile-seasons-title"
               >
+                <div className="panel__head">
+                  <h2 id="profile-seasons-title">
+                    {mine ? "Your seasons" : "Seasons"}
+                  </h2>
+                  {season && (
+                    <a className="link-btn" href="#/seasons">
+                      Season {String(season.displayed + 1n)} leaderboard
+                      <Icon name="arrow-right" />
+                    </a>
+                  )}
+                </div>
                 {!data.seasons.length ? (
-                  <p className="small">
-                    No plea of this wallet is recorded in any season yet.
-                  </p>
+                  <div className="panel__body">
+                    <p className="small">
+                      No plea of this wallet is recorded in any season yet.
+                    </p>
+                  </div>
                 ) : (
                   <>
                     <div
                       className="table-wrap"
                       role="region"
-                      aria-label="Profile seasons"
+                      aria-label="Points, rank and prize by season"
                       tabIndex={0}
                     >
-                      <table className="table">
+                      <table className="table table--tight">
                         <caption className="sr-only">
-                          Points, rank and prizes by season
+                          {mine ? "Your" : "This wallet’s"} points, rank and
+                          prize in each season
                         </caption>
                         <thead>
                           <tr>
-                            {["Season", "Points", "Rank", "Prize"].map((t) => (
-                              <th scope="col" key={t}>
-                                {t}
-                              </th>
-                            ))}
+                            <th scope="col">Season</th>
+                            <th scope="col" className="r">
+                              Points
+                            </th>
+                            <th scope="col" className="r">
+                              Rank
+                            </th>
+                            <th scope="col" className="r">
+                              Prize
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {data.seasons.map((k) => (
-                            <tr key={String(k.index)}>
-                              <th scope="row">
-                                Season {String(k.index + 1n)}
-                                <span className="cell-note">
-                                  {k.closed
-                                    ? "closed, paid"
-                                    : now >= Number(k.bounds[2])
-                                      ? "awaiting close"
-                                      : `${duration(Number(k.bounds[2]) - now)} left`}
-                                </span>
-                              </th>
-                              <td className="r">{k.points}</td>
-                              <td className="r">
-                                {k.rank >= 0 ? k.rank + 1 : "none yet"}
-                                {!k.closed && (
-                                  <span className="cell-note">so far</span>
-                                )}
-                              </td>
-                              <td className="r">
-                                {tokenAmount(k.imd, s, true)}
-                                <span className="cell-note">
-                                  + {tokenAmount(k.bonus, s)}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
+                          {data.seasons.map((k) => {
+                            const prize = seasonPrize(
+                              k,
+                              Number(con(s, "Seasons.MIN_POINTS")),
+                              s,
+                            );
+                            return (
+                              <tr key={String(k.index)}>
+                                <td className="strong">
+                                  <span className="nowrap">
+                                    Season {String(k.index + 1n)}
+                                  </span>
+                                  <span className="cell-note">
+                                    {k.closed
+                                      ? "closed, paid"
+                                      : now >= Number(k.bounds[2])
+                                        ? "awaiting close"
+                                        : `${timeLeft(Number(k.bounds[2]) - now)} left`}
+                                  </span>
+                                </td>
+                                <td className="r">{k.points}</td>
+                                <td className="r">
+                                  {k.rank >= 0 ? k.rank + 1 : "—"}
+                                  {!k.closed && (
+                                    <span className="cell-note">so far</span>
+                                  )}
+                                </td>
+                                <td className="r">
+                                  {prize.value}
+                                  {prize.note && (
+                                    <span className="cell-note">
+                                      {prize.note}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
-                    <p className="small">
+                    <p className="meta panel__foot">
                       {season &&
                         (() => {
                           const k = data.seasons.find(
                             (k) => k.index === season.displayed,
                           );
-                          return `${k && k.rank >= 0 ? `Season ${season.displayed + 1n}’s prize is rank ${k.rank + 1}’s share if it ended now. ` : ""}Prizes are rounded down and paid at the close, from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}.`;
+                          return seasonsFoot({
+                            season: season.displayed,
+                            rank: k ? k.rank : -1,
+                            qualifies: !!k?.qualifies && !k.closed,
+                            closeFrom: clock(
+                              Number(season.current.bounds[2]) +
+                                Number(con(s, "Seasons.CLOSE_GRACE")),
+                            ),
+                          });
                         })()}
                     </p>
                   </>
                 )}
-              </Panel>
-              <Panel level={2} title="IMD seat">
-                <p>
-                  {data.seat
-                    ? "This wallet holds an IMD seat."
-                    : "No seat multiplier for this wallet now."}{" "}
-                  Hold an IMD seat NFT when your plea is recorded and its points
-                  are the judges’ score ×{" "}
-                  {Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000},
-                  rounded down.
-                </p>
-                <p className="label">Seat NFT · identity.md</p>
-                <AddressView
-                  address={val(s, "Seasons.seat")}
-                  label="identity.md seat NFT"
-                  shortDisplay
-                />
-                <a className="link-btn" href="#/seasons?seat=1">
-                  How the seat multiplier works <Icon name="arrow-right" />
-                </a>
-              </Panel>
+              </section>
+              <section className="panel" aria-labelledby="profile-seat-title">
+                <h2 className="card__title" id="profile-seat-title">
+                  IMD seat
+                </h2>
+                <div className="stack stack--lg">
+                  <p>
+                    {(() => {
+                      // profile.html:205, with this wallet's own example: its newest plea whose points
+                      // are still to be recorded (p.points is Seasons.pointsFor now), else a score of 36.
+                      const bps = Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")),
+                        mult = multiplierText(s),
+                        who = mine ? "You hold" : `${label} holds`,
+                        ex = data.pleas.find(
+                          (p) =>
+                            [2, 4, 5].includes(p.status) &&
+                            !p.excluded &&
+                            !p.standing?.[1] &&
+                            !p.recorded,
+                        ),
+                        score = ex
+                          ? Math.min(ex.score, Number(ex.standing?.[2] ?? 255))
+                          : 36,
+                        seated = Math.floor((score * bps) / 10000);
+                      return data.seat
+                        ? `${who} an identity.md seat, so every recorded plea earns × ${mult}. ${ex ? `Plea #${ex.id}’s ${score} becomes ${ex.points} points.` : `A score of ${score} becomes ${seated} points.`}`
+                        : `${who} no identity.md seat now, so a recorded plea earns its judges’ score. With a seat when ${ex ? `plea #${ex.id}` : "a plea"} is recorded, ${ex ? `its ${score}` : `a score of ${score}`} would earn ${seated} points (× ${mult}, rounded down).`;
+                    })()}
+                  </p>
+                  <div className="stack stack--sm">
+                    <p className="label">Seat NFT · identity.md</p>
+                    <AddressView
+                      address={val(s, "Seasons.seat")}
+                      label="identity.md seat NFT"
+                      shortDisplay
+                    />
+                  </div>
+                  <div>
+                    <a className="link-btn" href="#/seasons?seat=1">
+                      How the seat multiplier works <Icon name="arrow-right" />
+                    </a>
+                  </div>
+                </div>
+              </section>
             </div>
           </section>
         </>

@@ -20,7 +20,17 @@ import {
   type Plea,
   amount,
   verdictSeason,
+  plural,
+  multiplierText,
+  seatBracket,
+  judgesRow,
 } from "./chain";
+import {
+  closingCopy,
+  noPleaText,
+  projection as projectionText,
+  roundingNote,
+} from "./season-text";
 import {
   Action,
   AddressView,
@@ -388,32 +398,53 @@ function SeasonBody({
           : 0n),
       0n,
     );
-  const seatHeld = query.data?.seatHeld;
+  const seatHeld = query.data?.seatHeld,
+    // While the board cannot be read (loading or a read error), nothing below shows a number as
+    // fact: Your standing and "If the season ended now" show the reading or error state (r2S-N2).
+    board = !!query.data,
+    mult = multiplierText(s),
+    pair = s!.constants.pairSymbol;
   const sums = (values: number[]) =>
     values.join(" + ") + " = " + values.reduce((a, b) => a + Number(b), 0);
+  // The judges' scores behind the points, × 1.2 only where Seasons multiplied (r2S-VN1).
   const counted = (wallet: string, values: number[]) =>
     countedPleas(s!, season, wallet, values);
-  const judgeScores = (wallet: string, values: number[]) =>
-    counted(wallet, values)
-      ?.map((p) => p.score)
-      .join(" · ");
-  const hasMultiplier = (wallet: string, values: number[]) =>
-    counted(wallet, values)?.some((p) => p.multiplied);
-  const line = `${minPoints}-point line · below it no prize: the ${s!.constants.pairSymbol} share ${last ? "goes to the buy wall" : `rolls over to season ${season + 2n}`}${bonus ? " and the PLEA bonus share is burned" : ""}`;
-  function projection(p: Plea) {
-    const pnt = Number(p.points || 0),
-      filled = best.filter(Number),
-      next = [...best, pnt].sort((a, b) => b - a).slice(0, 3),
-      total = next.reduce((a, b) => a + Number(b), 0),
-      rank =
-        1 +
-        rows.filter(
-          (e: any) => !equal(e.wallet, address) && Number(e.points) >= total,
-        ).length;
-    const bps = BigInt(s!.v.shares[rank - 1] || 0),
-      eligible = total >= minPoints && rank <= Number(con(s, "Seasons.TOP"));
-    return `Recorded, they make ${total} points (${next.join(" + ")}${filled.length === 3 && pnt > Math.min(...filled) ? `; the ${Math.min(...filled)} drops out` : ""}) and rank ${rank}: ${eligible ? `${tokenAmount((pot * bps) / 10000n, s, true)} + ${tokenAmount((bonus * bps) / 10000n, s)}` : `no prize yet (${total} of ${minPoints})`} at today’s season prize pot.`;
-  }
+  const line = `${minPoints}-point line · below it no prize: the ${pair} share ${last ? "goes to the buy wall" : `rolls over to season ${season + 2n}`}${bonus ? " and the PLEA bonus share is burned" : ""}`;
+  const projection = (p: Plea) =>
+    projectionText({
+      best,
+      points: Number(p.points || 0),
+      others: rows
+        .filter((e: any) => !equal(e.wallet, address))
+        .map((e: any) => Number(e.points)),
+      shares: s!.v.shares,
+      pot,
+      bonus,
+      minPoints,
+      top: Number(con(s, "Seasons.TOP")),
+      s,
+    });
+  const nextToClose = BigInt(val(s, "Seasons.nextToClose")),
+    ready = now >= closeAt && season === nextToClose,
+    readError = (where: "above" | "below") => (
+      <p className="small" role="status">
+        Can’t read the leaderboard, so this is not shown. Use Try again{" "}
+        {where === "above" ? "above" : "in the leaderboard below"}; your points
+        are on the chain and not affected.
+      </p>
+    ),
+    reading = (
+      <div aria-busy="true">
+        <p className="loading-label">
+          <Icon name="hourglass" />
+          Reading the leaderboard from Seasons…
+        </p>
+        <div className="skeleton" aria-hidden="true">
+          <div className="skeleton__line skeleton__line--mid" />
+          <div className="skeleton__line skeleton__line--short" />
+        </div>
+      </div>
+    );
   return (
     <>
       <div className="grid season-summary form-actions-top">
@@ -446,18 +477,27 @@ function SeasonBody({
           </p>
           <Costs
             rows={[
-              [
-                `Trade fees (${Number(con(s, "PleaHook.PRIZE_BPS")) / 100}% of every trade)`,
-                tokenAmount(BigInt(data.fees) - autoFees - stakeFees, s, true),
-              ],
-              [
-                `Site auto-sell sales (${deliveries.length} × 0.35; letters pay none)`,
-                tokenAmount(autoFees, s, true),
-              ],
-              [
-                `Overruled stakes (${stakes.length} × 0.35)`,
-                tokenAmount(stakeFees, s, true),
-              ],
+              // The parts come from logs: with incomplete history only the chain's total shows (r2S-N1).
+              ...(s!.historyError
+                ? []
+                : ([
+                    [
+                      `Trade fees (${Number(con(s, "PleaHook.PRIZE_BPS")) / 100}% of every trade)`,
+                      tokenAmount(
+                        BigInt(data.fees) - autoFees - stakeFees,
+                        s,
+                        true,
+                      ),
+                    ],
+                    [
+                      `Site auto-sell sales (${deliveries.length} × 0.35; letters pay none)`,
+                      tokenAmount(autoFees, s, true),
+                    ],
+                    [
+                      `Overruled stakes (${stakes.length} × 0.35)`,
+                      tokenAmount(stakeFees, s, true),
+                    ],
+                  ] as [string, string][])),
               ...(rolled
                 ? [
                     [
@@ -466,9 +506,14 @@ function SeasonBody({
                     ] as [string, string],
                   ]
                 : []),
-              ["Total", tokenAmount(pot, s, true)],
+              ["Total", tokenAmount(pot, s, true), "total"],
             ]}
           />
+          {s!.historyError && (
+            <p className="small">
+              The parts of the pot show once the history is read.
+            </p>
+          )}
           {season > BigInt(val(s, "Seasons.nextToClose")) && (
             <p className="small">
               Plus what season {String(season)} rolls over at its close.
@@ -515,6 +560,10 @@ function SeasonBody({
                 without a wallet.
               </p>
             </Notice>
+          ) : query.error ? (
+            readError("below")
+          ) : !board ? (
+            reading
           ) : (
             <>
               <div className="cluster standing">
@@ -551,29 +600,27 @@ function SeasonBody({
                   </div>
                 )}
               </div>
-              <Costs
-                rows={[
-                  ["Best three", sums(best)],
-                  ...(hasMultiplier(address, best) && points > 0
-                    ? [
-                        [
-                          "Judges’ scores, before × 1.2",
-                          judgeScores(address, best),
-                        ] as [string, string],
-                      ]
-                    : []),
-                  ...(rank >= 0
-                    ? ([
-                        [
-                          "Share at rank " + (rank + 1),
-                          qualifies
-                            ? pct(share)
-                            : `no prize (${points} of ${minPoints})`,
-                        ],
-                      ] as [string, string][])
-                    : []),
-                ]}
-              />
+              {/* The band "no recorded plea" has no costs: only the sentence below (r2S-N7). */}
+              {(points > 0 || rank >= 0) && (
+                <Costs
+                  rows={[
+                    ["Best three", sums(best)],
+                    ...(points > 0 && judgesRow(counted(address, best), mult)
+                      ? [judgesRow(counted(address, best), mult)!]
+                      : []),
+                    ...(rank >= 0
+                      ? ([
+                          [
+                            "Share at rank " + (rank + 1),
+                            qualifies
+                              ? pct(share)
+                              : `no prize (${points} of ${minPoints})`,
+                          ],
+                        ] as [string, string][])
+                      : []),
+                  ]}
+                />
+              )}
               {query.data?.own.map((p: Plea) => {
                 const until = Math.max(
                   Number(p.verdictAt) +
@@ -634,16 +681,27 @@ function SeasonBody({
                 );
               })}
               {!points && !query.data?.own.length && (
-                <p>
-                  No approved plea of yours is recorded in season{" "}
-                  {String(season + 1n)}. Your best three count, and two pleas
-                  that score {minPoints / 2} already reach the {minPoints}-point
-                  bar; an IMD seat makes each one ×{" "}
-                  {Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000}.{" "}
-                  {!val(s, "CabalGate.diedAt") && (
-                    <a href="#/plead">Write a plea</a>
+                <>
+                  <p className="small">
+                    {noPleaText({
+                      season,
+                      ended: ended || !!bounds[3],
+                      last,
+                      dead: !!val(s, "CabalGate.diedAt"),
+                      current: BigInt(s!.v.displayedSeason),
+                      minPoints,
+                      mult,
+                    })}
+                  </p>
+                  {/* Only a running season invites a plea (r2S-N7). */}
+                  {!ended && !bounds[3] && !last && (
+                    <div>
+                      <a className="btn btn--sm" href="#/plead">
+                        Write a plea
+                      </a>
+                    </div>
                   )}
-                </p>
+                </>
               )}
             </>
           )}
@@ -652,9 +710,8 @@ function SeasonBody({
           <Panel level={2} title="The seat multiplier" id="seat">
             <p>
               Hold an IMD seat NFT when your plea is recorded and its points are
-              the judges’ score ×{" "}
-              {Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000}, rounded
-              down.
+              the judges’ score <span className="nowrap">× {mult}</span>,
+              rounded down.
             </p>
             <Costs
               rows={[
@@ -680,28 +737,33 @@ function SeasonBody({
               ]}
             />
             <p className="small">
-              One seat or ten, the same multiplier. The need and verdict do not
-              change.
+              One seat or ten, the same. Points only: the judges’ score, your
+              need and the {minPoints}-point bar don’t change. The leaderboard
+              shows a seat holder’s judges’ scores in brackets.
             </p>
-            <p className="label">Seat NFT · identity.md</p>
-            <AddressView
-              address={val(s, "Seasons.seat")}
-              label="identity.md seat NFT"
-              shortDisplay
-            />
+            <div className="stack stack--sm">
+              <p className="label">Seat NFT · identity.md</p>
+              <AddressView
+                address={val(s, "Seasons.seat")}
+                label="identity.md seat NFT"
+                shortDisplay
+              />
+            </div>
             {seatHeld && (
               <Notice
                 kind="ok"
-                title="Seat held: every recorded plea earns × 1.2."
-              >
-                <p>Rounded down for each plea.</p>
-              </Notice>
+                icon="check-circle"
+                title={`Seat held: every recorded plea earns × ${mult}.`}
+              />
             )}
           </Panel>
         )}
       </div>
       <section className="section">
-        <div className="panel panel--flush">
+        <div
+          className="panel panel--flush"
+          aria-busy={!query.error && query.loading ? true : undefined}
+        >
           <div className="panel__head">
             {ended ? (
               <h3>Season {String(season + 1n)} leaderboard</h3>
@@ -715,31 +777,46 @@ function SeasonBody({
             </p>
           </div>
           {query.error ? (
-            <div className="error-box" role="alert">
-              <p className="error-box__title">Can’t read the leaderboard</p>
-              <p className="small">{query.error}</p>
-              <div className="btn-row">
-                <button
-                  className="btn btn--sm"
-                  onClick={() => {
-                    resetHealth();
-                    void refresh();
-                  }}
-                >
-                  <Icon name="arrow-clockwise" />
-                  Try again
-                </button>
+            <div className="panel__body">
+              <div className="error-box" role="alert">
+                <p className="error-box__title">
+                  <Icon name="plugs" />
+                  Can’t read the leaderboard
+                </p>
+                <p className="small">
+                  The public RPC did not answer. The site tries the next one by
+                  itself; your points are on the chain and not affected.
+                </p>
+                <div className="btn-row">
+                  <button
+                    className="btn btn--sm"
+                    onClick={() => {
+                      resetHealth();
+                      void refresh();
+                    }}
+                  >
+                    <Icon name="arrow-clockwise" />
+                    Try again
+                  </button>
+                </div>
               </div>
             </div>
           ) : query.loading ? (
-            <div className="panel__body stack" aria-busy="true">
+            <div className="panel__body stack">
               <p className="loading-label">
                 <Icon name="hourglass" />
                 Reading the leaderboard from Seasons…
               </p>
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="skeleton__line" />
-              ))}
+              <div className="skeleton" aria-hidden="true">
+                {["", "--mid", "", "--mid", "", "--short"].map((v, i) => (
+                  <div
+                    key={i}
+                    className={
+                      v ? `skeleton__line skeleton__line${v}` : "skeleton__line"
+                    }
+                  />
+                ))}
+              </div>
             </div>
           ) : !top.length ? (
             <Empty
@@ -788,9 +865,7 @@ function SeasonBody({
                         </a>
                         {e.seat && (
                           <span className="badge badge--seat">
-                            SEAT ×
-                            {Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) /
-                              10000}
+                            SEAT ×{mult}
                           </span>
                         )}
                         {equal(e.wallet, address) && (
@@ -800,11 +875,18 @@ function SeasonBody({
                       <span className="lb__best">
                         <span className="lb__label">Best three </span>
                         {e.best.filter(Number).join(" · ")}
-                        {hasMultiplier(e.wallet, e.best) && (
-                          <span className="seatx nowrap">
-                            ({judgeScores(e.wallet, e.best)} × 1.2)
-                          </span>
-                        )}
+                        {(() => {
+                          const bracket = seatBracket(
+                            counted(e.wallet, e.best),
+                            mult,
+                          );
+                          return bracket ? (
+                            <>
+                              {" "}
+                              <span className="seatx nowrap">({bracket})</span>
+                            </>
+                          ) : null;
+                        })()}
                       </span>
                       <span className="lb__pts">
                         <span className="lb__label">Points </span>
@@ -823,7 +905,12 @@ function SeasonBody({
                             </span>
                           </>
                         ) : (
-                          `no prize (${e.points} of ${minPoints})`
+                          <>
+                            no prize{" "}
+                            <span className="nowrap">
+                              ({String(e.points)} of {minPoints})
+                            </span>
+                          </>
                         )}
                       </span>
                     </li>
@@ -842,42 +929,54 @@ function SeasonBody({
           </p>
         </div>
         <div className="split split--even split--stretch form-actions-top">
-          <Panel title="If the season ended now" className="panel--sunken">
-            <Costs
-              rows={[
-                [
-                  `Paid to ${qualifiesRows.length} wallets`,
-                  `${pct(shares)} · ${tokenAmount(paid, s, true)}`,
-                ],
-                [
-                  last
-                    ? "Left for the buy wall"
-                    : `Rolls over to season ${season + 2n}`,
-                  `${pct(10000n - shares)} · ${tokenAmount(pot - paid, s, true)}`,
-                ],
-                ["PLEA bonus paid", tokenAmount(bonusPaid, s)],
-                ["PLEA bonus burned", tokenAmount(bonus - bonusPaid, s)],
-              ]}
-            />
-            <p className="small">
-              Each imdTEST amount is rounded down on its own;{" "}
-              {last
-                ? "the leftover goes to the buy wall."
-                : "the leftover rolls over."}
-            </p>
+          <Panel
+            level={ended ? 4 : 3}
+            title="If the season ended now"
+            className="panel--sunken"
+          >
+            {query.error ? (
+              readError("above")
+            ) : !board ? (
+              reading
+            ) : (
+              <>
+                <Costs
+                  rows={[
+                    [
+                      `Paid to ${plural(qualifiesRows.length, "wallet")}`,
+                      `${pct(shares)} · ${tokenAmount(paid, s, true)}`,
+                    ],
+                    [
+                      last
+                        ? "Left for the buy wall"
+                        : `Rolls over to season ${season + 2n}`,
+                      `${pct(10000n - shares)} · ${tokenAmount(pot - paid, s, true)}`,
+                    ],
+                    ["PLEA bonus paid", tokenAmount(bonusPaid, s)],
+                    ["PLEA bonus burned", tokenAmount(bonus - bonusPaid, s)],
+                  ]}
+                />
+                <p className="small text-2">
+                  {roundingNote(pair, qualifiesRows.length)}
+                </p>
+              </>
+            )}
           </Panel>
-          <Panel title="Closing the season">
+          <Panel level={ended ? 4 : 3} title="Closing the season">
             {data.closed ? (
               <p>Season {String(season + 1n)} is closed.</p>
             ) : (
               <>
-                <p>
-                  {last
-                    ? `The close records any approved plea nobody recorded and pays the top ${con(s, "Seasons.TOP")} wallets with ${minPoints}+ points in ${s!.constants.pairSymbol} and PLEA.`
-                    : now >= closeAt &&
-                        season === BigInt(val(s, "Seasons.nextToClose"))
-                      ? `The grace is over: anyone can close season ${season + 1n} now. The close records any approved plea nobody recorded, pays the top ${con(s, "Seasons.TOP")} with ${minPoints}+ points and rolls the rest over.`
-                      : `Anyone can close it from ${clock(closeAt)} (${span(grace, "adj")} grace). Closing records eligible pleas, pays the qualifying wallets and carries the unpaid prize shares forward.`}
+                <p className="small">
+                  {closingCopy({
+                    season,
+                    ready,
+                    last,
+                    bonus: bonus > 0n,
+                    top: con(s, "Seasons.TOP"),
+                    minPoints,
+                    pair,
+                  })}
                 </p>
                 <TxButton
                   connectText="Connect in the top bar to close the season."
@@ -889,15 +988,19 @@ function SeasonBody({
                   disabled={
                     now < closeAt ||
                     !bounds[0] ||
-                    season !== BigInt(val(s, "Seasons.nextToClose")) ||
+                    season !== nextToClose ||
                     !query.data
                   }
                   reason={
                     now < closeAt
                       ? `Anyone can close it from ${clock(closeAt)} (${span(grace, "adj")} grace).`
-                      : season !== BigInt(val(s, "Seasons.nextToClose"))
+                      : season !== nextToClose
                         ? "Close the oldest season first."
-                        : undefined
+                        : query.error
+                          ? "Can’t read the leaderboard, so the pleas the close records are not known. Use Try again above."
+                          : !query.data
+                            ? "Reading the leaderboard from Seasons…"
+                            : undefined
                   }
                 />
               </>
@@ -911,30 +1014,30 @@ function SeasonBody({
 function PastSeasons() {
   const { r, s } = useApp(),
     { address } = useAccount(),
-    logs =
-      s?.logs
-        .filter((l) => l.eventName === "SeasonClosedOut")
-        .slice()
-        .reverse() || [];
+    // The closed seasons come from the chain (seasons 0 to nextToClose − 1 are closed, oldest first),
+    // so a gap in history never reads as "no season has closed". Each one's pot, prizes and closing
+    // transaction come from its SeasonClosedOut log, when history has it (r2S-N1).
+    closedCount = Number(val(s, "Seasons.nextToClose") || 0n),
+    seasons = Array.from({ length: closedCount }, (_, i) =>
+      BigInt(closedCount - 1 - i),
+    ),
+    logOf = (k: bigint) =>
+      s?.logs.find(
+        (l) => l.eventName === "SeasonClosedOut" && BigInt(l.args.season) === k,
+      ),
+    logged = seasons.filter((k) => logOf(k)).length;
   const details = useRead(
     () =>
       Promise.all(
-        logs.map(async (l) => {
+        seasons.map(async (k) => {
+          const l = logOf(k);
           const [block, tx, bounds, top] = await Promise.all([
-            r.client.getBlock({ blockNumber: l.blockNumber }),
-            r.client.getTransaction({ hash: l.transactionHash }),
-            r.client.readContract({
-              address: r.addresses.Seasons,
-              abi: r.abis.Seasons,
-              functionName: "seasonBounds",
-              args: [l.args.season],
-            }),
-            r.client.readContract({
-              address: r.addresses.Seasons,
-              abi: r.abis.Seasons,
-              functionName: "topOf",
-              args: [l.args.season],
-            }),
+            l ? r.client.getBlock({ blockNumber: l.blockNumber }) : undefined,
+            l
+              ? r.client.getTransaction({ hash: l.transactionHash })
+              : undefined,
+            chainRead(r, "Seasons", "seasonBounds", [k]),
+            chainRead(r, "Seasons", "topOf", [k]),
           ]);
           const names = Object.fromEntries(
             await Promise.all(
@@ -946,73 +1049,98 @@ function PastSeasons() {
                 ]),
             ),
           );
-          return { l, block, tx, bounds, top, names };
+          return { k, l, block, tx, bounds, top, names };
         }),
       ),
-    [logs.length],
-    !!s && logs.length > 0,
+    [closedCount, logged],
+    !!s && closedCount > 0,
   );
+  const minPoints = Number(con(s, "Seasons.MIN_POINTS"));
   return (
     <section className="section">
       <div className="section__head">
         <h2>Past seasons</h2>
       </div>
-      {!logs.length ? (
+      {!closedCount ? (
         <p>No seasons have closed in this test run.</p>
+      ) : details.error && !details.data ? (
+        <p className="small" role="status">
+          Can’t read the past seasons right now. The site tries again with the
+          next refresh.
+        </p>
+      ) : !details.data ? (
+        <p className="loading-label">
+          <Icon name="hourglass" />
+          Reading past seasons…
+        </p>
       ) : (
-        (details.data || []).map(
-          ({ l, block, tx, bounds, top, names }: any) => {
-            const prizes = s!.logs.filter(
+        details.data.map(({ k, l, block, tx, bounds, top, names }: any) => {
+          const prizes = s!.logs.filter(
+              (e) => e.eventName === "PrizePaid" && BigInt(e.args.season) === k,
+            ),
+            bonuses = s!.logs.filter(
+              (e) => e.eventName === "BonusPaid" && BigInt(e.args.season) === k,
+            ),
+            burn =
+              s!.logs.find(
                 (e) =>
-                  e.eventName === "PrizePaid" &&
-                  e.args.season === l.args.season,
-              ),
-              bonuses = s!.logs.filter(
-                (e) =>
-                  e.eventName === "BonusPaid" &&
-                  e.args.season === l.args.season,
-              ),
-              burn =
-                s!.logs.find(
-                  (e) =>
-                    e.eventName === "BonusBurned" &&
-                    e.args.season === l.args.season,
-                )?.args.amount || 0n;
-            const selected = top
-              .map((e: any, i: number) => ({ ...e, rank: i + 1 }))
-              .filter(
-                (e: any) =>
-                  !/^0x0{40}$/i.test(e.wallet) &&
-                  (e.rank <= 3 || equal(e.wallet, address)),
-              );
-            return (
-              <article className="panel stack" key={String(l.args.season)}>
-                <div className="cluster cluster--between">
-                  <h3>Season {Number(l.args.season) + 1}</h3>
-                  <span className="pill">Closed</span>
-                </div>
-                <p className="meta">
-                  {clock(bounds[1])} to {clock(bounds[2])}. Closed{" "}
-                  <a href={`${r.network.explorer}/tx/${l.transactionHash}`}>
-                    {clock(block.timestamp)}
-                  </a>{" "}
-                  by <span className="mono">{short(getAddress(tx.from))}</span>.
+                  e.eventName === "BonusBurned" && BigInt(e.args.season) === k,
+              )?.args.amount || 0n;
+          const selected = top
+            .map((e: any, i: number) => ({ ...e, rank: i + 1 }))
+            .filter(
+              (e: any) =>
+                !/^0x0{40}$/i.test(e.wallet) &&
+                (e.rank <= 3 || equal(e.wallet, address)),
+            );
+          return (
+            <article className="panel stack" key={String(k)}>
+              <div className="cluster cluster--between">
+                <h3>Season {Number(k) + 1}</h3>
+                <span className="pill">Closed</span>
+              </div>
+              <p className="meta">
+                <span className="nowrap">{clock(bounds[1])}</span> to{" "}
+                <span className="nowrap">{clock(bounds[2])}.</span>
+                {l && block && tx && (
+                  <>
+                    {" "}
+                    Closed{" "}
+                    <a href={`${r.network.explorer}/tx/${l.transactionHash}`}>
+                      {clock(block.timestamp)}
+                    </a>{" "}
+                    by{" "}
+                    <span className="mono nowrap">
+                      {short(getAddress(tx.from))}
+                    </span>
+                    .
+                  </>
+                )}
+              </p>
+              {!l ? (
+                // History is incomplete: the season is closed (chain), but its pot and prizes are
+                // in logs this page could not read. Leave them out rather than guess.
+                <p className="small">
+                  Its season prize pot, prizes and closing transaction are in
+                  history this page could not read yet. They show once the
+                  history is read.
                 </p>
+              ) : (
                 <div className="split split--even">
-                  <div>
+                  <div className="stack stack--sm">
                     <p className="label">Season prize pot and bonus</p>
                     <Costs
                       rows={[
                         ["Season prize pot", tokenAmount(l.args.pot, s, true)],
                         [
-                          `Paid to ${prizes.length} wallets`,
+                          `Paid to ${plural(prizes.length, "wallet")}`,
                           tokenAmount(l.args.paid, s, true),
                         ],
                         [
                           val(s, "CabalGate.diedAt") &&
-                          BigInt(l.args.season) === BigInt(s!.v.displayedSeason)
+                          k === BigInt(s!.v.displayedSeason)
                             ? "Left for the buy wall"
-                            : `Rolled over to season ${Number(l.args.season) + 2}`,
+                            : `Rolled over to season ${Number(k) + 2}`,
                           tokenAmount(
                             BigInt(l.args.pot) - BigInt(l.args.paid),
                             s,
@@ -1032,46 +1160,74 @@ function PastSeasons() {
                         ["PLEA bonus burned", tokenAmount(burn, s)],
                       ]}
                     />
-                    <p className="small">
-                      Each imdTEST amount is rounded down on its own.
+                    <p className="small text-2">
+                      Each {s!.constants.pairSymbol} amount is rounded down on
+                      its own, as the chain pays and prints it, so parts and
+                      totals can differ by a cent.
                     </p>
                   </div>
-                  <div>
+                  <div className="stack stack--sm">
                     {selected.length ? (
                       <>
                         <p className="label">Top three, and you</p>
                         <Costs
                           rows={selected.map((e: any) => [
                             <span>
-                              {e.rank} ·{" "}
-                              <a
-                                className={names[e.wallet] ? "" : "mono"}
-                                href={`#/profile/${e.wallet}`}
-                              >
-                                {names[e.wallet] || short(e.wallet)}
-                              </a>
-                              {equal(e.wallet, address) ? " (you)" : ""},{" "}
-                              {e.points} points
+                              <span className="nowrap">
+                                {e.rank} ·{" "}
+                                <a
+                                  className={names[e.wallet] ? "" : "mono"}
+                                  href={`#/profile/${e.wallet}`}
+                                >
+                                  {names[e.wallet] || short(e.wallet)}
+                                </a>
+                                {equal(e.wallet, address) ? " (you)" : ""},
+                              </span>{" "}
+                              <span className="nowrap">
+                                {String(e.points)} points
+                              </span>
                             </span>,
-                            Number(e.points) >=
-                            Number(con(s, "Seasons.MIN_POINTS"))
-                              ? `${tokenAmount(prizes.find((p) => equal(p.args.wallet, e.wallet))?.args.amount || 0n, s, true)} + ${tokenAmount(bonuses.find((b) => equal(b.args.wallet, e.wallet))?.args.amount || 0n, s)}`
-                              : `no prize (${e.points} of ${con(s, "Seasons.MIN_POINTS")})`,
+                            Number(e.points) >= minPoints ? (
+                              <>
+                                <span className="nowrap">
+                                  {tokenAmount(
+                                    prizes.find((p) =>
+                                      equal(p.args.wallet, e.wallet),
+                                    )?.args.amount || 0n,
+                                    s,
+                                    true,
+                                  )}
+                                </span>{" "}
+                                <span className="nowrap">
+                                  +{" "}
+                                  {tokenAmount(
+                                    bonuses.find((b) =>
+                                      equal(b.args.wallet, e.wallet),
+                                    )?.args.amount || 0n,
+                                    s,
+                                  )}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                no prize{" "}
+                                <span className="nowrap">
+                                  ({String(e.points)} of {minPoints})
+                                </span>
+                              </>
+                            ),
                           ])}
                         />
                       </>
                     ) : (
-                      <p>
-                        No plea was recorded in season{" "}
-                        {Number(l.args.season) + 1}.
-                      </p>
+                      <p>No plea was recorded in season {Number(k) + 1}.</p>
                     )}
                   </div>
                 </div>
-              </article>
-            );
-          },
-        )
+              )}
+            </article>
+          );
+        })
       )}
     </section>
   );

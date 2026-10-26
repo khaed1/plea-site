@@ -11,7 +11,7 @@ import {
   zeroAddress,
   type Address,
 } from "viem";
-import { APP, claimsAbi, registryAbi } from "./config";
+import { APP, claimsAbi, registryAbi, resetHealth } from "./config";
 import { useApp, useRead, useTx } from "./context";
 import {
   amount,
@@ -28,6 +28,7 @@ import {
   con,
   courtCounts,
   duration,
+  timeLeft,
   normalizeClaims,
   read,
   short,
@@ -142,7 +143,7 @@ export function Home() {
               "Season prize pot",
               tokenAmount(potOf(s), s, true),
               season
-                ? `${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? `+ ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}; ` : ""}${dead ? (season.current.closed ? `Season ${season.displayed + 1n} was the last.` : `close season ${season.displayed + 1n} from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`) : `season ${season.displayed + 1n} ends in ${duration(Number(season.current.bounds[2]) - now)}`}${season.awaiting !== undefined && season.awaiting < season.displayed ? `; plus what season ${season.displayed} rolls over at its close` : ""}`
+                ? `${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? `+ ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}; ` : ""}${dead ? (season.current.closed ? `Season ${season.displayed + 1n} was the last.` : `close season ${season.displayed + 1n} from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`) : `season ${season.displayed + 1n} ends in ${timeLeft(Number(season.current.bounds[2]) - now)}`}${season.awaiting !== undefined && season.awaiting < season.displayed ? `; plus what season ${season.displayed} rolls over at its close` : ""}`
                 : "The first season begins when trading opens",
             ],
             [
@@ -511,12 +512,21 @@ function VaultClaim({
         ]}
       />
       {entry && status.data ? (
-        <>
-          <Notice title={`Already claimed for the vault ${short(vault)}.`}>
-            <p>The allocation was paid to the vault.</p>
-          </Notice>
-          <ClaimReceipt index={entry.index} />
-        </>
+        <Notice
+          icon="seal-check"
+          title={
+            <>
+              Already claimed for the vault{" "}
+              <span className="mono nowrap">{short(vault)}</span>.
+            </>
+          }
+        >
+          <p>
+            Its {tokenAmount(BigInt(entry.amount), s)} went to the vault.
+            Nothing is left to claim for it.{" "}
+            <ClaimReceipt index={entry.index} />
+          </p>
+        </Notice>
       ) : entry ? (
         <Action
           connectText="Connect in the top bar to send a claim. Any wallet will do: it only pays the gas."
@@ -524,6 +534,7 @@ function VaultClaim({
           label={`Claim ${tokenAmount(BigInt(entry.amount), s)} to the vault`}
           sub="gas only"
           primary={false}
+          describedBy={`vault-note-${vault}`}
           onRun={() =>
             tx.send("PleaDistributor", "claim", [
               BigInt(entry.index),
@@ -533,11 +544,6 @@ function VaultClaim({
             ])
           }
           disabled={!tx.ready || !open || status.data !== false}
-          reason={
-            status.data
-              ? "This vault already claimed."
-              : "The PLEA lands on the vault."
-          }
         />
       ) : (
         <p className="small">
@@ -552,20 +558,23 @@ function VaultClaim({
                   : "Reading the claim list…"}
         </p>
       )}
-      <p className="small">
-        Sent from this hot wallet; the PLEA lands on the vault, which never
-        connects.
-      </p>
+      {!(entry && status.data) && (
+        <p className="small text-2" id={`vault-note-${vault}`}>
+          Sent from this hot wallet; the PLEA lands on the vault, which never
+          connects.
+        </p>
+      )}
     </div>
   );
 }
 export function Claim() {
-  const { r, s, toast } = useApp();
+  const { r, s, toast, refresh } = useApp();
   const { address } = useAccount();
   const [input, setInput] = useState(address || "");
   const [target, setTarget] = useState<string>();
   const [claims, setClaims] = useState<any[]>();
   const [loadError, setLoadError] = useState("");
+  const [fileError, setFileError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reload, setReload] = useState(0);
   const root = val(s, "PleaDistributor.merkleRoot");
@@ -701,16 +710,27 @@ export function Claim() {
                 {loading && (
                   <p className="loading-label">Reading the claim list…</p>
                 )}
-                {loadError && (
+                {(loadError || status.error) && (
                   <div className="error-box" role="alert">
-                    <p className="error-box__title">Can’t check the list</p>
-                    <p className="small">{loadError}</p>
+                    <p className="error-box__title">
+                      <Icon name="plugs" />
+                      Can’t check the list
+                    </p>
+                    <p className="small">
+                      The claim list (claims.json) did not load, or the public
+                      RPC did not answer, so the site can’t tell what this
+                      address may claim. Nothing was sent. The site tries the
+                      next RPC by itself.
+                    </p>
                     <div className="btn-row">
                       <button
                         className="btn btn--sm"
                         onClick={() => {
                           setLoadError("");
+                          setFileError("");
+                          resetHealth();
                           setReload((n) => n + 1);
+                          void refresh();
                         }}
                       >
                         <Icon name="arrow-clockwise" />
@@ -720,35 +740,60 @@ export function Claim() {
                   </div>
                 )}
                 {loadError && (
-                  <label className="field__label">
-                    Load published claims.json
-                    <input
-                      type="file"
-                      accept="application/json,.json"
-                      onChange={async (e) => {
-                        try {
-                          const f = e.target.files?.[0];
-                          if (!f) return;
-                          const list = normalizeClaims(
-                            JSON.parse(await f.text()),
-                          ).filter((c) => verifyClaim(c, root));
-                          if (!list.length) throw Error();
-                          setClaims(list);
-                          setLoadError("");
-                          toast?.({
-                            text: "Claim list loaded. Every claim is checked against the root before signing.",
-                          });
-                        } catch {
-                          setLoadError(
-                            "This file is not a valid claim list. Choose the published claims.json.",
-                          );
-                        }
-                      }}
-                    />
-                  </label>
+                  <div className="field">
+                    <label className="field__label">
+                      Load published claims.json
+                      <input
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={async (e) => {
+                          try {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            const list = normalizeClaims(
+                              JSON.parse(await f.text()),
+                            ).filter((c) => verifyClaim(c, root));
+                            if (!list.length) throw Error();
+                            setClaims(list);
+                            setLoadError("");
+                            setFileError("");
+                            toast?.({
+                              text: "Claim list loaded. Every claim is checked against the root before signing.",
+                            });
+                          } catch {
+                            setFileError(
+                              "This file is not a valid claim list. Choose the published claims.json.",
+                            );
+                          }
+                        }}
+                      />
+                    </label>
+                    {fileError && (
+                      <p className="field__hint bad-text" role="alert">
+                        {fileError}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {target &&
-                  (entry ? (
+                  (entry && status.data ? (
+                    <Notice
+                      icon="seal-check"
+                      title={
+                        <>
+                          Already claimed for{" "}
+                          <span className="mono nowrap">{short(target)}</span>.
+                        </>
+                      }
+                    >
+                      <p>
+                        <ClaimReceipt
+                          index={entry.index}
+                          amount={tokenAmount(BigInt(entry.amount), s)}
+                        />
+                      </p>
+                    </Notice>
+                  ) : entry ? (
                     <>
                       <Notice
                         title={
@@ -791,30 +836,43 @@ export function Claim() {
                       />
                     </>
                   ) : (
-                    <Empty title="Not on the list">
-                      This address has no allocation in the published list.
-                    </Empty>
+                    <div className="notice">
+                      <Icon name="x-circle" />
+                      <div>
+                        <p className="notice__title">
+                          <span className="mono nowrap">{short(target)}</span>{" "}
+                          is not on the list.
+                        </p>
+                        <p>
+                          The list is final, so nothing can be added. Try
+                          another address of yours.
+                        </p>
+                      </div>
+                    </div>
                   ))}
               </>
             )}
           </Panel>
           <Panel level={2} title="Delegated vaults" flush meta="delegate.xyz">
-            <p className="small">
-              Read from delegate.xyz v2. Claim from this wallet; the PLEA lands
-              on the vault, which never connects.
-            </p>
             {!address ? (
-              <p>Connect in the top bar to list your delegated vaults.</p>
+              <p className="small">
+                Connect in the top bar to list the vaults delegated to your
+                wallet on delegate.xyz.
+              </p>
             ) : delegated.loading ? (
               <div className="stack" aria-busy="true">
                 <p className="loading-label">
                   <Icon name="hourglass" />
-                  Reading the delegate.xyz registry for {short(address)}…
+                  <span>
+                    Reading the delegate.xyz registry for{" "}
+                    <span className="mono nowrap">{short(address)}</span>…
+                  </span>
                 </p>
-                <div
-                  className="skeleton__line skeleton__line--mid"
-                  aria-hidden="true"
-                />
+                <div className="skeleton" aria-hidden="true">
+                  <div className="skeleton__line" />
+                  <div className="skeleton__line skeleton__line--mid" />
+                  <div className="skeleton__line skeleton__line--short" />
+                </div>
               </div>
             ) : delegated.error ? (
               <Notice kind="warn" title="Cannot read delegations">
@@ -825,6 +883,17 @@ export function Claim() {
               </Notice>
             ) : delegated.data?.length ? (
               <div className="stack">
+                <p className="small">
+                  {new Set(delegated.data.map((d) => d.from)).size > 1
+                    ? "Vaults delegated to your wallet, "
+                    : "A vault delegated to your wallet, "}
+                  <span className="mono nowrap">{short(address)}</span>, on
+                  delegate.xyz. You can claim{" "}
+                  {new Set(delegated.data.map((d) => d.from)).size > 1
+                    ? "their"
+                    : "its"}{" "}
+                  PLEA from here.
+                </p>
                 {Array.from(new Set(delegated.data.map((d) => d.from))).map(
                   (vault) => (
                     <div className="stack stack--sm" key={vault}>
@@ -848,14 +917,19 @@ export function Claim() {
                   label: "Open delegate.xyz",
                 }}
               >
-                No vault has delegated to this wallet on Sepolia.
+                No vault has delegated to{" "}
+                <span className="mono nowrap">{short(address)}</span> on
+                delegate.xyz. You can still claim for any address above. Nobody
+                has trusted you with their vault yet.
               </Empty>
             )}
-            <p className="label">Read from the delegate.xyz registry</p>
-            <AddressView
-              address={APP.delegateRegistry}
-              label="delegate.xyz registry"
-            />
+            <div className="stack stack--sm">
+              <p className="label">Read from the delegate.xyz registry</p>
+              <AddressView
+                address={APP.delegateRegistry}
+                label="the delegate.xyz registry"
+              />
+            </div>
           </Panel>
         </div>
         <Panel
@@ -864,11 +938,7 @@ export function Claim() {
           flush
           meta={isOpen ? "Final" : "Not set"}
         >
-          <RootDate />
-          <p>
-            The root can be set once. Once set, no allocation can be added,
-            changed or removed.
-          </p>
+          <RootDate open={!!isOpen} />
           <Costs
             rows={[
               ["Root", isOpen ? short(root) : s ? "Not set" : "Reading…"],
@@ -876,24 +946,30 @@ export function Claim() {
                 "Claims on the list",
                 claims ? String(claims.length) : "Not published yet",
               ],
+              // Counted from Claimed logs: not shown while history is incomplete (r2S-N1).
               [
                 "Claimed so far",
-                String(
-                  s?.logs.filter((l) => l.eventName === "Claimed").length || 0,
-                ),
+                s?.historyError
+                  ? "Shows once the history is read"
+                  : String(
+                      s?.logs.filter((l) => l.eventName === "Claimed").length ||
+                        0,
+                    ),
               ],
               [
                 "Still open",
-                claims
-                  ? String(
-                      Math.max(
-                        0,
-                        claims.length -
-                          (s?.logs.filter((l) => l.eventName === "Claimed")
-                            .length || 0),
-                      ),
-                    )
-                  : "List not published yet",
+                s?.historyError
+                  ? "Shows once the history is read"
+                  : claims
+                    ? String(
+                        Math.max(
+                          0,
+                          claims.length -
+                            (s?.logs.filter((l) => l.eventName === "Claimed")
+                              .length || 0),
+                        ),
+                      )
+                    : "List not published yet",
               ],
               [
                 "IMD swarm (10%)",
@@ -915,34 +991,53 @@ export function Claim() {
                   (BigInt(con(s, "PLEA.TOTAL_SUPPLY") || 0n) * 12n) / 100n,
                   s,
                 ),
+                "total",
               ],
             ]}
           />
-          <h3>The receipt</h3>
-          <p className="small">
-            Each claim emits a receipt on Sepolia. Its Sepolia Etherscan
-            transaction is your receipt. Claimed PLEA has no buy record; the
-            contract scores it from the trading start.
-          </p>
-          <h3>Pleading with claimed PLEA</h3>
-          <p className="small">
-            No buy record: it counts as held since trading opened
-            {val(s, "CabalGate.startedAt")
-              ? ` (${clock(val(s, "CabalGate.startedAt"))})`
-              : ""}
-            , profit 10. The regular share limits and need still apply.
-          </p>
-          <AddressView
-            address={r.addresses.PleaDistributor}
-            label="PleaDistributor"
-          />
+          <div className="stack stack--sm">
+            <p className="label">The receipt</p>
+            <p className="small">
+              Each claim emits <code>Claimed(index, account, amount)</code>.
+              That event, on Sepolia Etherscan, is your receipt.
+            </p>
+          </div>
+          <div className="stack stack--sm">
+            <p className="label">Pleading with claimed PLEA</p>
+            <p className="small">
+              Claimed PLEA has no buy record, so in a plea it counts as held
+              since trading opened
+              {val(s, "CabalGate.startedAt") ? (
+                <>
+                  {" "}
+                  (
+                  <span className="nowrap">
+                    {clock(val(s, "CabalGate.startedAt"))}
+                  </span>
+                  )
+                </>
+              ) : (
+                ""
+              )}{" "}
+              and scores 10 for profit or loss.
+            </p>
+          </div>
+          <div className="stack stack--sm">
+            <p className="label">PleaDistributor</p>
+            <AddressView
+              address={r.addresses.PleaDistributor}
+              label="PleaDistributor"
+            />
+          </div>
         </Panel>
       </div>
     </>
   );
 }
 
-function ClaimReceipt({ index }: { index: string }) {
+/** The receipt of claim `index` from its Claimed log. With `amount`, the whole sentence of the band
+ * "Already claimed" (claim.html:214); without, only the link. */
+function ClaimReceipt({ index, amount }: { index: string; amount?: string }) {
   const { r, s } = useApp(),
     log = s?.logs.find(
       (l) =>
@@ -953,16 +1048,32 @@ function ClaimReceipt({ index }: { index: string }) {
       [log?.transactionHash],
       !!log,
     );
-  return log ? (
-    <p className="small">
-      Claimed {date.data ? clock(date.data.timestamp) : "on Sepolia"}.{" "}
-      <a href={`${r.network.explorer}/tx/${log.transactionHash}`}>
-        View the receipt
-      </a>
-    </p>
-  ) : null;
+  const link = log && (
+    <a
+      className="nowrap"
+      href={`${r.network.explorer}/tx/${log.transactionHash}`}
+    >
+      View the receipt<span className="sr-only">: the Claimed event</span>
+    </a>
+  );
+  return amount ? (
+    <>
+      {amount} went to this address
+      {date.data ? (
+        <>
+          {" "}
+          on <span className="nowrap">{clock(date.data.timestamp)}</span>
+        </>
+      ) : (
+        ""
+      )}
+      . Nothing is left to claim. {link}
+    </>
+  ) : (
+    link || null
+  );
 }
-function RootDate() {
+function RootDate({ open }: { open: boolean }) {
   const { r, s } = useApp(),
     log = s?.logs.find((l) => l.eventName === "RootSet"),
     date = useRead(
@@ -970,9 +1081,24 @@ function RootDate() {
       [log?.transactionHash],
       !!log,
     );
-  return date.data ? (
+  return (
     <p className="small">
-      The final list was set at {clock(date.data.timestamp)}.
+      {!open ? (
+        "The root is not set yet. Once it is set, the list is final: no claim can be added, changed or removed."
+      ) : (
+        <>
+          The root was set once
+          {date.data ? (
+            <>
+              , on{" "}
+              <span className="nowrap">{clock(date.data.timestamp, true)}</span>
+            </>
+          ) : (
+            ""
+          )}
+          , and the list is final: no claim can be added, changed or removed.
+        </>
+      )}
     </p>
-  ) : null;
+  );
 }

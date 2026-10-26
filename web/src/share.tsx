@@ -23,8 +23,9 @@ import {
   shareState,
   shareStatus,
   shareSubject,
+  shareGaps,
 } from "./share-text";
-import { Empty, Icon, Panel, Stamp, Title } from "./components";
+import { Empty, Icon, Notice, Panel, Stamp, Title } from "./components";
 export function ShareCard({ p }: { p?: Plea }) {
   const { s, r, now } = useApp();
   const extra = useRead(
@@ -244,7 +245,7 @@ export function ShareCard({ p }: { p?: Plea }) {
                         <span>season {String(extra.data.season + 1n)}</span>
                       </div>
                     )}
-                    {sold && (
+                    {sold && soldFor(p, s!) !== undefined && (
                       <div>
                         <b>{amount(soldFor(p, s!), 18, 2)}</b>
                         <span>{s?.constants.pairSymbol} to the writer</span>
@@ -317,7 +318,7 @@ export function Share({
   const { address } = useAccount();
   const found = s?.pleas.find((p) => String(p.id) === id);
   const query = useRead(
-    () => getPlea(r, BigInt(id!), s?.logs),
+    () => getPlea(r, BigInt(id!), s?.logs, s?.v.objections),
     [id],
     !!s &&
       !!id &&
@@ -489,6 +490,15 @@ export function Share({
             <p className="bad-text" role="alert">
               {error}
             </p>
+          )}
+          {p && s && shareGaps(p, s).length > 0 && (
+            <Notice kind="warn" title="History is incomplete">
+              <p>
+                This card and its post leave out {shareGaps(p, s).join(" and ")}
+                , which the site could not read yet. Use Try history again at
+                the top before you post it.
+              </p>
+            </Notice>
           )}
           <Panel title="Post text (Share on X fills it in)">
             <p className="chain-text">{text}</p>

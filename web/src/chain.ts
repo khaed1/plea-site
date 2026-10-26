@@ -166,10 +166,13 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
   });
   return { logs: decoded, covered, lagged, error };
 }
+/** `known`: objections already read from the Tribunal (the snapshot's newest ones). They join the
+ * plea's Objected logs, so a plea read while history is incomplete still shows them (r2S-N1). */
 export async function getPlea(
   r: Runtime,
   id: bigint,
   logs: any[] = [],
+  known: any[] = [],
 ): Promise<Plea> {
   const p = { ...(await readPlea(r, id)), id } as Plea;
   if (p.seller === zeroAddress)
@@ -184,12 +187,18 @@ export async function getPlea(
       read(r, "Seasons", "excluded", [p.seller]),
       read(r, "CabalGate", "pleaBalance", [id]),
     ]);
-  const objectionIds = logs
-    .filter((l) => l.eventName === "Objected" && l.args.pleaId === id)
-    .map((l) => l.args.id);
+  const objectionIds = [
+    ...new Set<bigint>([
+      ...logs
+        .filter((l) => l.eventName === "Objected" && l.args.pleaId === id)
+        .map((l) => l.args.id as bigint),
+      ...known.filter((o) => o.pleaId === id).map((o) => o.id as bigint),
+    ]),
+  ].sort((a, b) => Number(a - b));
   const objections = await Promise.all(
     objectionIds.map(async (id: bigint) => ({
-      ...(await read(r, "Tribunal", "objection", [id])),
+      ...(known.find((o) => o.id === id) ||
+        (await read(r, "Tribunal", "objection", [id]))),
       id,
       reason: logs
         .find((l) => l.eventName === "ObjectionVoid" && l.args.id === id)
@@ -924,6 +933,55 @@ export async function readPlea(r: Runtime, id: bigint, intake?: Address) {
 
 export const pct = (bps: number | bigint) =>
   (Number(bps) / 100).toFixed(2) + "%";
+/** "1 wallet", "21 wallets" (r2S-VN3). */
+export const plural = (n: number | bigint, one: string, many = one + "s") =>
+  `${n} ${Number(n) === 1 ? one : many}`;
+/** Time left in words, for "… left" and "ends in …" lines: "9d 4h", "4h 12m", and in the last
+ * hour "7 min" or "less than a minute", never a clock-like "07:42" (r2S-N5). Countdowns
+ * (role=timer) keep their clock. */
+export function timeLeft(seconds: number) {
+  seconds = Math.max(0, Math.floor(seconds));
+  if (seconds < 60) return "less than a minute";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  return duration(seconds);
+}
+/** The seat multiplier as printed: 12,000 bps → "1.2". */
+export const multiplierText = (s: Snapshot | undefined) =>
+  String(Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS") ?? 12000) / 10000);
+/** The leaderboard's bracket behind a wallet's best three: the judges' scores, × the seat multiplier
+ * only on the pleas Seasons multiplied (their SeatMultiplier logs). "38·37·36 × 1.2" when every counted
+ * plea was, "40 × 1.2 · 38" when some were; undefined when none was or the pleas are not known
+ * (seasons.html:174; r2S-VN1). */
+export function seatBracket(
+  counted: { score: number; multiplied: boolean }[] | undefined,
+  mult: string,
+) {
+  if (!counted?.some((p) => p.multiplied)) return undefined;
+  return counted.every((p) => p.multiplied)
+    ? `${counted.map((p) => p.score).join("·")} × ${mult}`
+    : counted
+        .map((p) => (p.multiplied ? `${p.score} × ${mult}` : String(p.score)))
+        .join(" · ");
+}
+/** Your standing's judges' row: "Judges' scores, before × 1.2 · 34 · 33 · 31" when every counted
+ * plea was multiplied, "Judges' scores · 40 × 1.2 · 38" when only some were (r2S-VN1). */
+export function judgesRow(
+  counted: { score: number; multiplied: boolean }[] | undefined,
+  mult: string,
+): [string, string] | undefined {
+  if (!counted?.some((p) => p.multiplied)) return undefined;
+  return counted.every((p) => p.multiplied)
+    ? [
+        `Judges’ scores, before × ${mult}`,
+        counted.map((p) => p.score).join(" · "),
+      ]
+    : [
+        "Judges’ scores",
+        counted
+          .map((p) => (p.multiplied ? `${p.score} × ${mult}` : String(p.score)))
+          .join(" · "),
+      ];
+}
 export const signedPercent = (percent: number, digits = 1) =>
   `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent).toFixed(digits)}%`;
 export function openPleaNotice(p: any, s: Snapshot, now: number) {

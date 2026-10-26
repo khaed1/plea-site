@@ -8,6 +8,7 @@ import { useApp } from "./context";
 import {
   con,
   duration,
+  timeLeft,
   tokenAmount,
   utc,
   val,
@@ -233,7 +234,7 @@ export default function App() {
                         ? season.current.closed
                           ? "closed"
                           : `ended with the Cabal · close it from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`
-                        : `${duration(Number(season.current.bounds[2]) - now)} left · pot ${tokenAmount(potOf(s), s, true)}${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? ` + ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}` : ""}`}
+                        : `${timeLeft(Number(season.current.bounds[2]) - now)} left · pot ${tokenAmount(potOf(s), s, true)}${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? ` + ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}` : ""}`}
                     </>
                   )}
                 </span>
