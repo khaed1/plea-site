@@ -984,11 +984,53 @@ export function judgesRow(
 }
 export const signedPercent = (percent: number, digits = 1) =>
   `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent).toFixed(digits)}%`;
-export function openPleaNotice(p: any, s: Snapshot, now: number) {
+/** The open-plea times in one place (T5, C1): sell by = verdictAt + EXECUTE_WINDOW; next plea
+ * COOLDOWN after the sale (now + COOLDOWN if sold now), or verdictAt + COOLDOWN if it lapses
+ * (CabalGate._clearStale sets lastLapsedAt to verdictAt). `head` is buy.html's bold sentence. */
+export function openPleaParts(p: any, s: Snapshot, now: number) {
   if (p.status === 1)
-    return `Plea #${p.id ?? ""} is open: waiting for the verdict, usually 3 to 6 minutes.`;
+    return {
+      head: `Plea #${p.id ?? ""} is open: waiting for the verdict, usually 3 to 6 minutes.`,
+      sellBy: "",
+      rest: "",
+    };
   const cooldown = Number(con(s, "CabalGate.COOLDOWN"));
-  return `Sell by ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW")))}. Next plea ${span(cooldown)} after the sale (${clock(now + cooldown)} if sold now), or ${clock(Number(p.verdictAt) + cooldown)} if it lapses.`;
+  const sellBy = `sell by ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW")))}`;
+  return {
+    head: `Plea #${p.id ?? ""} is open: ${sellBy}.`,
+    sellBy,
+    rest: `Next plea ${span(cooldown)} after the sale (${clock(now + cooldown)} if sold now), or ${clock(Number(p.verdictAt) + cooldown)} if it lapses.`,
+  };
+}
+/** Plead's notice body (plead.html): "Sell by 08:06 UTC. Next plea …", or the pending line. */
+export function openPleaNotice(p: any, s: Snapshot, now: number) {
+  const parts = openPleaParts(p, s, now);
+  if (!parts.sellBy) return parts.head;
+  return `S${parts.sellBy.slice(1)}. ${parts.rest}`;
+}
+/** A price per 1M PLEA (pair-token wei) for display: 2 decimals as usual, and below 0.01 two
+ * significant digits, so a pool sold down to dust after the death never reads "0.00" (E3c).
+ * A zero price (the spot price rounds to 0: the pool's imdTEST side is empty) gives "": the
+ * caller says the pool holds only dust (NO_PRICE). */
+export const NO_PRICE = "no price, the pool holds only dust";
+export function perMillion(value: bigint, s: Snapshot | undefined) {
+  if (value <= 0n) return "";
+  if (value >= 10n ** 16n) return tokenAmount(value, s, true);
+  let digits = 3;
+  while (digits < 18 && value < 10n ** BigInt(18 - digits)) digits++;
+  return tokenAmount(value, s, true, Math.min(18, digits + 1));
+}
+/** An amount with every decimal it has (at least 2), grouped: what an exact approval spends
+ * ("exactly 33.333 imdTEST", r2T-N6). */
+export function exactAmount(v: bigint, decimals = 18, minDigits = 2) {
+  const E = 10n ** BigInt(decimals),
+    whole = (v / E).toLocaleString("en-US"),
+    fraction = (v % E)
+      .toString()
+      .padStart(decimals, "0")
+      .replace(/0+$/, "")
+      .padEnd(minDigits, "0");
+  return fraction ? `${whole}.${fraction}` : whole;
 }
 export function caseState(p: Plea, s: Snapshot, now: number) {
   const objections = p.objections || [],

@@ -259,10 +259,15 @@ export function Countdown({
         ariaLabel || `${label} ${words(until - now)}, by ${clock(until)}`
       }
     >
-      <span className="cluster cluster--sm">
-        <Icon name={wait ? "hourglass" : "timer"} />
-        {label}
-      </span>
+      {format === "deadman" ? (
+        // index.html's dead-man line: plain words, then the time (X8).
+        <>{label} </>
+      ) : (
+        <span className="cluster cluster--sm">
+          <Icon name={wait ? "hourglass" : "timer"} />
+          {label}
+        </span>
+      )}
       <span className="countdown__time">
         {format === "deadman" ? deadman(until - now) : duration(until - now)}
       </span>
@@ -848,6 +853,8 @@ export function ApprovedAction({
   errors,
   connectText,
   lockedReason,
+  spendFor,
+  textReason,
 }: {
   name: string;
   fn: string;
@@ -856,6 +863,11 @@ export function ApprovedAction({
   token: Address;
   spender: Address;
   spend: bigint;
+  /** What the spend pays for, in the shortfall reason: "for the oracle fee" (r2D-VN1). */
+  spendFor?: string;
+  /** A reason that ranks after the balance shortfall (the text checks): a wallet that cannot pay
+   * learns it before it writes. It disables the button like `reason`. */
+  textReason?: ReactNode;
   disabled?: boolean;
   reason?: ReactNode;
   primary?: boolean;
@@ -887,6 +899,23 @@ export function ApprovedAction({
     !!address && !!s,
   );
   const needs = allowance.data !== undefined && allowance.data < spend;
+  // A fixed spend the wallet cannot cover is refused before the approval (r2D-VN1).
+  const held = useRead(
+    () =>
+      r.client.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address!],
+      }),
+    [address, token, revision],
+    !!address && !!s,
+  );
+  const pair = token.toLowerCase() !== r.addresses.PLEA.toLowerCase(),
+    shortfall =
+      !tx.done && !tx.busy && held.data !== undefined && held.data < spend
+        ? `You need ${tokenAmount(spend, s, pair)}${spendFor ? ` ${spendFor}` : ""}; you hold ${tokenAmount(held.data, s, pair)}.`
+        : "";
   return (
     <Action
       {...tx}
@@ -905,12 +934,16 @@ export function ApprovedAction({
       block
       disabled={
         disabled ||
+        !!shortfall ||
+        !!textReason ||
         !tx.ready ||
         allowance.loading ||
         allowance.data === undefined
       }
       reason={
         reason ||
+        shortfall ||
+        textReason ||
         allowance.error ||
         (needs
           ? "Approval only. Confirm this step, then submit the action."
@@ -1387,31 +1420,51 @@ export function FactCells({ parts, total }: { parts?: any; total: number }) {
     parts.shareBps == null
       ? "no data"
       : pct(parts.shareBps).replace(".00%", "%");
+  const trend = ["24h trend", parts.trendLabel || "flat", parts.trend];
+  // CabalGate._factScoreAt (E2): PLEA no buy record covers counts as held since trading opened
+  // at profit 10; a plea larger than its record takes the PLEA-weighted mean of the two.
   const rows =
-    parts.total === total && !parts.uncovered
+    parts.total !== total
       ? [
           ["Share sold", share, parts.share],
-          [
-            "Held",
-            parts.heldFor == null ? "no data" : heldTime(parts.heldFor),
-            parts.held,
-          ],
-          [
-            "Profit or loss",
-            parts.pnlBps == null
-              ? "no data"
-              : signedPercent(
-                  Number(parts.pnlBps) / 100,
-                  Number(parts.pnlBps) % 100 ? 2 : 0,
-                ),
-            parts.profit,
-          ],
-          ["24h trend", parts.trendLabel || "flat", parts.trend],
-        ]
-      : [
-          ["Share sold", share, parts.share],
           ["Held, profit and trend", "no data", total - parts.share],
-        ];
+        ]
+      : parts.mode === "received"
+        ? [
+            ["Share sold", share, parts.share],
+            [
+              "Held since the open",
+              parts.heldFor == null ? "no data" : heldTime(parts.heldFor),
+              parts.held,
+            ],
+            ["Profit or loss", "no buy record", parts.profit],
+            trend,
+          ]
+        : parts.mode === "mixed"
+          ? [
+              ["Share sold", share, parts.share],
+              ["Held and profit", "PLEA-weighted", parts.weighted],
+              trend,
+            ]
+          : [
+              ["Share sold", share, parts.share],
+              [
+                "Held",
+                parts.heldFor == null ? "no data" : heldTime(parts.heldFor),
+                parts.held,
+              ],
+              [
+                "Profit or loss",
+                parts.pnlBps == null
+                  ? "no data"
+                  : signedPercent(
+                      Number(parts.pnlBps) / 100,
+                      Number(parts.pnlBps) % 100 ? 2 : 0,
+                    ),
+                parts.profit,
+              ],
+              trend,
+            ];
   return (
     <>
       <span id={id} className="sr-only">
@@ -1426,13 +1479,16 @@ export function FactCells({ parts, total }: { parts?: any; total: number }) {
           </div>
         ))}
       </div>
-      {parts.uncovered > 0n && (
-        <p className="small">
-          {amount(parts.uncovered)} PLEA have no buy record: they count as held
-          since trading opened, profit 10. Holding and profit use the
-          PLEA-weighted mean.
-        </p>
+      {parts.total === total && parts.uncovered > 0n && (
+        <p className="small">{factNote(parts)}</p>
       )}
     </>
   );
+}
+/** The sentence under the fact cells when a buy record does not cover the whole plea (E2). */
+export function factNote(parts: any) {
+  const open = (parts.openHeld ?? 0) + 10;
+  if (parts.mode === "received")
+    return `This plea’s ${amount(parts.uncovered)} PLEA have no buy record (received, not bought): they count as held since trading opened, at profit 10.`;
+  return `The buy record covers ${amount(parts.covered)} PLEA: held +${parts.held} and profit +${parts.profit}, ${parts.record} in all. The other ${amount(parts.uncovered)} PLEA have no buy record: held since the open +${parts.openHeld ?? 0} and profit +10, ${open} in all. The contract takes the PLEA-weighted mean, rounded: ${parts.weighted}.`;
 }

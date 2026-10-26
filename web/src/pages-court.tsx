@@ -1,6 +1,6 @@
 import { useSaleQuote } from "./sale";
 import { Share } from "./share";
-import { LETTERBOX, Q96, deliverOut } from "./models";
+import { LETTERBOX, Q96, deliverOut, factTerms } from "./models";
 import { appealPreview } from "./appeal";
 import { PleaTimeline } from "./details";
 import { oracleRequest, type OracleData } from "./oracle";
@@ -372,17 +372,27 @@ export function Appeal({ p }: { p: Plea }) {
   const { address } = useAccount();
   const balances = WalletBalances();
   const [text, setText] = useState("");
-  const [auto, setAuto] = useState(true);
+  // undefined: the default, ticked unless this wallet cannot pass the auto-sell rules (TRAP2).
+  const [choice, setAuto] = useState<boolean>();
   const [input, setInput] = useState(
     formatUnits(p.amount, s?.constants.decimals || 18),
   );
   const raw = parseAmount(input, s?.constants.decimals || 18);
-  const tx = useTx(`${p.id}:${auto}:${input}:${text}`);
-  const preview = useRead(
-    () => appealPreview(r, s!, p, address!, auto, raw),
-    [address, auto, raw.toString(), p.id.toString()],
+  // The auto-sell appeal's amount is fixed by the contract, so it does not depend on the input.
+  const autoPreview = useRead(
+    () => appealPreview(r, s!, p, address!, true, p.amount),
+    [address, p.id.toString()],
     !!address && !!s,
   );
+  const autoBlock = autoPreview.data?.autoBlock || "",
+    auto = choice ?? !autoBlock;
+  const tx = useTx(`${p.id}:${auto}:${input}:${text}`);
+  const manualPreview = useRead(
+    () => appealPreview(r, s!, p, address!, false, raw),
+    [address, raw.toString(), p.id.toString()],
+    !!address && !!s && !auto,
+  );
+  const preview = auto ? autoPreview : manualPreview;
   const need = preview.data?.need;
   const openReason = balances.data?.open
     ? `Plea #${balances.data.pending} is open: one plea at a time.`
@@ -390,6 +400,20 @@ export function Appeal({ p }: { p: Plea }) {
   const fee =
     (con(s, "CabalGate.ORACLE_FEE") || 0n) +
     (con(s, "CabalGate.APPEAL_POOL_SHARE") || 0n);
+  // Why the auto-sell box cannot work here, and what the manual appeal needs instead (TRAP2,
+  // r2D-VN1): never point a wallet without imdTEST at paying from its imdTEST.
+  const auto0 = autoPreview.data,
+    pairHeld = balances.data?.pair,
+    manualInstead =
+      pairHeld !== undefined && BigInt(pairHeld) < BigInt(fee)
+        ? `The manual appeal needs ${tokenAmount(fee, s, true)} for the oracle fee and the buy-wall share; you hold ${tokenAmount(pairHeld, s, true)}.`
+        : `Untick auto-sell to pay the ${tokenAmount(fee, s, true)} from your ${s?.constants.pairSymbol}.`,
+    autoWhy =
+      autoBlock === "value"
+        ? `an appeal must be worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price; this one, ${tokenAmount(auto0?.amount, s)}, is worth ${tokenAmount(auto0?.value, s, true)}.`
+        : autoBlock === "fee"
+          ? `its fees (at most ${tokenAmount(auto0?.fee, s, false, 0, "up")}) may take at most 10% of your PLEA, and the appeal and its fees must fit your ${tokenAmount(auto0?.balance, s)}.`
+          : "";
   const end = Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN"));
   const closed =
     now > Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")) ||
@@ -434,7 +458,11 @@ export function Appeal({ p }: { p: Plea }) {
           checked={auto}
           onChange={(e) => setAuto(e.target.checked)}
           aria-labelledby="appeal-auto-title"
-          aria-describedby="appeal-auto-desc"
+          aria-describedby={
+            autoWhy && !auto
+              ? "appeal-auto-desc appeal-auto-why"
+              : "appeal-auto-desc"
+          }
         />
         <span className="toggle-card__title" id="appeal-auto-title">
           Sell automatically if approved
@@ -446,6 +474,11 @@ export function Appeal({ p }: { p: Plea }) {
           {tokenAmount(LETTERBOX.AUTO_SELL_FEE, s, true)} to the prize pot.
         </span>
       </label>
+      {autoWhy && !auto && (
+        <p className="small" id="appeal-auto-why">
+          Auto-sell is off for this wallet: {autoWhy}
+        </p>
+      )}
       <Costs
         rows={
           auto
@@ -518,6 +551,11 @@ export function Appeal({ p }: { p: Plea }) {
             need > Number(con(s, "CabalGate.MAX_PLEA_SCORE"))
           }
           reason={
+            openReason ||
+            preview.error ||
+            (autoBlock && preview.data?.autoBlock
+              ? `Auto-sell: ${autoWhy} ${manualInstead}`
+              : preview.data?.reason) ||
             (!text
               ? `Appeal stays off until your text passes the checks; nothing is paid before that. Send it before ${clock(end)}.`
               : !textCheck("plea", text).ok
@@ -525,9 +563,6 @@ export function Appeal({ p }: { p: Plea }) {
                 : need === undefined
                   ? "Reading your fact score and need…"
                   : "") ||
-            openReason ||
-            preview.error ||
-            preview.data?.reason ||
             (closed
               ? "This appeal window is closed."
               : need && need > Number(con(s, "CabalGate.MAX_PLEA_SCORE"))
@@ -551,6 +586,7 @@ export function Appeal({ p }: { p: Plea }) {
           token={r.addresses.PairToken}
           spender={r.addresses.CabalGate}
           spend={fee}
+          spendFor="for the oracle fee and the buy-wall share"
           disabled={
             closed ||
             !!openReason ||
@@ -564,19 +600,21 @@ export function Appeal({ p }: { p: Plea }) {
             need > Number(con(s, "CabalGate.MAX_PLEA_SCORE"))
           }
           reason={
-            (!text
-              ? `Appeal stays off until your text passes the checks; nothing is paid before that. Send it before ${clock(end)}.`
-              : !textCheck("plea", text).ok
-                ? "Fix the text above to appeal. Nothing is paid until it passes."
-                : need === undefined
-                  ? "Reading your fact score and need…"
-                  : "") ||
             openReason ||
             (closed
               ? "This appeal window is closed."
               : raw > p.amount
                 ? "An appeal cannot increase the original amount."
                 : undefined)
+          }
+          textReason={
+            !text
+              ? `Appeal stays off until your text passes the checks; nothing is paid before that. Send it before ${clock(end)}.`
+              : !textCheck("plea", text).ok
+                ? "Fix the text above to appeal. Nothing is paid until it passes."
+                : need === undefined
+                  ? "Reading your fact score and need…"
+                  : undefined
           }
         />
       )}
@@ -1206,7 +1244,7 @@ export function PleaPage({ id }: { id: string }) {
                 <dd>
                   {p.factScore}
                   {p.facts?.total === p.factScore
-                    ? ` (${p.facts.share} + ${p.facts.held} + ${p.facts.profit} + ${p.facts.trend})`
+                    ? ` (${factTerms(p.facts).join(" + ")})`
                     : ""}
                 </dd>
               </div>
@@ -1315,11 +1353,12 @@ export function ObjectionForm({ p }: { p: Plea }) {
             ? "You already objected to this plea."
             : info.data?.excluded || info.data?.sellerExcluded
               ? "This wallet or seller is excluded from seasons."
-              : !textCheck("objection", text).ok
-                ? text
-                  ? "The Tribunal refuses it: BadObjectionText. Fix the text above to object; nothing is paid until it passes."
-                  : "Write your objection to send it; nothing is paid until it passes."
-                : undefined;
+              : undefined,
+    textReason = !textCheck("objection", text).ok
+      ? text
+        ? "The Tribunal refuses it: BadObjectionText. Fix the text above to object; nothing is paid until it passes."
+        : "Write your objection to send it; nothing is paid until it passes."
+      : undefined;
   return (
     <article className="card plea stack">
       <div className="plea__head">
@@ -1460,8 +1499,10 @@ export function ObjectionForm({ p }: { p: Plea }) {
             token={r.addresses.PairToken}
             spender={r.addresses.Tribunal}
             spend={cost}
+            spendFor="for the oracle fee and the stake"
             disabled={!!reason || info.loading || !info.data}
             reason={reason}
+            textReason={textReason}
           />
           <p className="small">
             {tokenAmount(con(s, "Tribunal.ORACLE_FEE"), s, true)} oracle fee +{" "}

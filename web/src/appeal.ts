@@ -73,15 +73,22 @@ export async function appealPreview(
         ),
       ) - sharePoints(ceil(result.amount * 10000n, held));
   const fee = BigInt(s.v.appealFees?.[1] || 0n);
+  // Letterbox._appeal with the site's box (no BY_LETTER): the appeal must be worth MIN_SALE_VALUE
+  // (TooSmallForTheFee), and its fees must fit 10% of the balance or the original's 10% margin, and
+  // the balance (FeeTooHigh).
+  const autoBlock: "" | "value" | "fee" = !automatic
+    ? ""
+    : price && (result.amount * price) / Q96 < LETTERBOX.MIN_SALE_VALUE
+      ? "value"
+      : (fee * 10n > balance && fee * 10000n > p.amount * 11000n) ||
+          result.amount + fee > balance
+        ? "fee"
+        : "";
   const reason =
     escrow.blocked ||
-    (automatic &&
-    price &&
-    (result.amount * price) / Q96 < LETTERBOX.MIN_SALE_VALUE
+    (autoBlock === "value"
       ? "Auto-sell needs a sale worth at least 0.70 imdTEST. Untick auto-sell to appeal manually."
-      : automatic &&
-          ((fee * 10n > balance && fee * 10000n > p.amount * 11000n) ||
-            result.amount + fee > balance)
+      : autoBlock === "fee"
         ? "The auto-sell fee exceeds this appeal’s balance or fee cap. Untick auto-sell to pay from your imdTEST."
         : "");
   return {
@@ -90,6 +97,9 @@ export async function appealPreview(
     need: Number(con(s, "CabalGate.PASS_MARK")) - fact,
     balance,
     returned: escrow.returned,
+    value: price ? (result.amount * price) / Q96 : 0n,
+    fee,
+    autoBlock,
     reason,
   };
 }

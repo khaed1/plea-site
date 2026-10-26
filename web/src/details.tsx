@@ -1,5 +1,5 @@
-import { APP } from "./config";
-import { LETTERBOX, Q96, feeDisplay } from "./models";
+import { APP, resetHealth } from "./config";
+import { LETTERBOX, Q96, feeDisplay, letterMinimum } from "./models";
 import { useAccount } from "wagmi";
 import { useState } from "react";
 import { useApp, useRead } from "./context";
@@ -48,6 +48,7 @@ export function HomeDetails() {
         l.eventName === "Transfer" &&
         /^0x0{40}$/i.test(l.args.from),
     ) || [];
+  const [mintTry, setMintTry] = useState(0);
   const mintQuery = useRead(
     async () => {
       const logs = await r.client.getContractEvents({
@@ -59,9 +60,11 @@ export function HomeDetails() {
       });
       return logs.filter((l: any) => /^0x0{40}$/i.test(l.args.from));
     },
-    [],
+    [mintTry],
     !!s && !scanned.length,
   );
+  // A failed mint read says so, with Try again, instead of loading forever (r2T-N3).
+  const mintError = !scanned.length && !mintQuery.data ? mintQuery.error : "";
   const minted = (name: string) => {
     const logs = scanned.length ? scanned : mintQuery.data || [];
     const entry = logs.filter(
@@ -74,7 +77,9 @@ export function HomeDetails() {
   const allocation = (name: string) => {
     const n = minted(name);
     return n === undefined
-      ? "Reading mint events…"
+      ? mintError
+        ? "Can’t read the mint events"
+        : "Reading mint events…"
       : `${tokenAmount(n, s)} (${total ? (n * 100n) / total : 0n}%)`;
   };
   return (
@@ -152,9 +157,13 @@ export function HomeDetails() {
               ["Total PLEA at launch", tokenAmount(total, s), "total"],
               [
                 "Burned so far",
+                // Rounded away from zero, so Total − Burned = Supply now, rounded down (r2T-N5).
                 tokenAmount(
                   -(total - BigInt(val(s, "PLEA.totalSupply") || 0n)),
                   s,
+                  false,
+                  0,
+                  "up",
                 ),
               ],
               [
@@ -164,6 +173,27 @@ export function HomeDetails() {
               ],
             ]}
           />
+          {mintError && (
+            <div className="error-box" role="alert">
+              <p className="error-box__title">
+                <Icon name="plugs" />
+                Can’t read the mint events
+              </p>
+              <p className="small">{mintError}</p>
+              <div className="btn-row">
+                <button
+                  className="btn btn--sm"
+                  onClick={() => {
+                    resetHealth();
+                    setMintTry((n) => n + 1);
+                  }}
+                >
+                  <Icon name="arrow-clockwise" />
+                  Try again
+                </button>
+              </div>
+            </div>
+          )}
           <a className="btn btn--sm" href="#/claim">
             Check the claim list <Icon name="arrow-right" />
           </a>
@@ -174,6 +204,32 @@ export function HomeDetails() {
 }
 export function BuyWallPanel() {
   return null;
+}
+/** The least PLEA a plain letter accepts at today's hourly price, from the chain (E1, r2D-N4). */
+export function letterLimit(s: any) {
+  return s?.v.fees && val(s, "PleaHook.latestPrice")
+    ? letterMinimum(
+        BigInt(s.v.fees[1]),
+        BigInt(val(s, "PleaHook.latestPrice")),
+        BigInt(con(s, "CabalGate.MAX_SELL") || 2_500_000n * 10n ** 18n),
+      )
+    : undefined;
+}
+/** "a balance of at least about 1,441,383 PLEA at today's price: the fees (at most 144,139 PLEA)
+ * may take at most 10% of your PLEA" (letters.html Limits), naming the rule that binds. */
+export function letterBalanceText(s: any) {
+  const limit = letterLimit(s);
+  if (!limit)
+    return "a balance of at least 10 times the fees in PLEA, which show once trading opens: the fees may take at most 10% of your PLEA";
+  if (!limit.possible)
+    return `a plea worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}: at today’s price even ${tokenAmount(con(s, "CabalGate.MAX_SELL"), s)}, the most a letter pleads, is worth less, so no letter passes now`;
+  const why =
+    limit.reason === "fee"
+      ? `the fees (at most ${tokenAmount(BigInt(s.v.fees[1]), s, false, 0, "up")}) may take at most 10% of your PLEA`
+      : limit.reason === "value"
+        ? `${Number(LETTERBOX.LETTER_SHARE_BPS) / 100}% of it must be worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price`
+        : `${Number(LETTERBOX.LETTER_SHARE_BPS) / 100}% of it must be at least ${tokenAmount(LETTERBOX.MIN_LETTER, s)}`;
+  return `a balance of at least about ${tokenAmount(limit.minimum, s, false, 0, "up")} at today’s price: ${why}`;
 }
 export function LetterDetails() {
   const { r, s } = useApp(),
@@ -224,31 +280,45 @@ export function LetterDetails() {
             />
           </Panel>
           <Panel title="Limits">
-            <ul>
-              <li>
-                1 to {String(con(s, "CabalGate.MAX_PLEA_BYTES") || 280)} bytes:
-                about 280 Latin, 140 Cyrillic or 93 CJK characters.
+            <p className="small text-2">A letter needs:</p>
+            <ul className="checks">
+              <li className="check">
+                <Icon name="envelope-simple" />
+                <span>
+                  at most {String(con(s, "CabalGate.MAX_PLEA_BYTES") || 280)}{" "}
+                  bytes (≈ 280 Latin, 140 Cyrillic or Arabic, 93 CJK
+                  characters)
+                </span>
               </li>
-              <li>One line, no hidden characters.</li>
-              <li>
-                A balance of at least{" "}
-                {s?.v.fees
-                  ? tokenAmount(BigInt(s.v.fees[1]) * 10n, s)
-                  : "10 × the PLEA fee cap, after trading opens"}
-                .
+              <li className="check">
+                <Icon name="magnifying-glass" />
+                <span>one line, no hidden characters</span>
               </li>
-              <li>
-                A plea worth at least{" "}
-                {tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}.
+              <li className="check">
+                <Icon name="wallet" />
+                <span>{letterBalanceText(s)}</span>
               </li>
-              <li>
-                20% of the balance must be at least{" "}
-                {tokenAmount(LETTERBOX.MIN_LETTER, s)}.
+              <li className="check">
+                <Icon name="coins" />
+                <span>
+                  a plea worth at least{" "}
+                  {tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} (
+                  {Number(LETTERBOX.LETTER_SHARE_BPS) / 100}% of your PLEA)
+                </span>
+              </li>
+              <li className="check">
+                <Icon name="scales" />
+                <span>
+                  the contract floor: {Number(LETTERBOX.LETTER_SHARE_BPS) / 100}
+                  % must be at least {tokenAmount(LETTERBOX.MIN_LETTER, s)}
+                </span>
               </li>
             </ul>
-            <p>
-              The same need and cooldown apply. Fees are paid in PLEA; the
-              oracle fee is spent even if no verdict comes.
+            <p className="small text-2">
+              A letter that breaks one is refused, and only the gas is spent. As
+              on the site: one plea at a time, and a{" "}
+              {span(Number(con(s, "CabalGate.COOLDOWN") || 14400), "adj")}{" "}
+              cooldown after a sale, a denial or a lapse.
             </p>
           </Panel>
         </div>

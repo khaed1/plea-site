@@ -10,6 +10,8 @@ import {
   duration,
   timeLeft,
   tokenAmount,
+  perMillion,
+  NO_PRICE,
   utc,
   val,
   seasonState,
@@ -239,14 +241,15 @@ export default function App() {
                   )}
                 </span>
                 <span className="status-item">
-                  1M {s.constants.symbol} ={" "}
-                  {tokenAmount(
-                    val(s, "PleaHook.priceX96")
-                      ? (val(s, "PleaHook.priceX96") * 10n ** 24n) / 2n ** 96n
-                      : undefined,
-                    s,
-                    true,
-                  )}
+                  {val(s, "PleaHook.priceX96") === undefined
+                    ? `1M ${s.constants.symbol} = ${tokenAmount(undefined, s, true)}`
+                    : perMillion(
+                          (BigInt(val(s, "PleaHook.priceX96")) * 10n ** 24n) /
+                            2n ** 96n,
+                          s,
+                        )
+                      ? `1M ${s.constants.symbol} = ${perMillion((BigInt(val(s, "PleaHook.priceX96")) * 10n ** 24n) / 2n ** 96n, s)}`
+                      : `1M ${s.constants.symbol}: ${NO_PRICE}`}
                 </span>
               </>
             )}

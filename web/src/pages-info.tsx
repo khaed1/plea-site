@@ -1,6 +1,11 @@
 import { LETTERBOX, Q96 } from "./models";
 import { HowItWorks, ContractsPanel } from "./home-info";
-import { HomeDetails, LetterDetails, BuyWallPanel } from "./details";
+import {
+  HomeDetails,
+  LetterDetails,
+  BuyWallPanel,
+  letterLimit,
+} from "./details";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import {
@@ -33,6 +38,7 @@ import {
   read,
   short,
   tokenAmount,
+  perMillion,
   utc,
   val,
 } from "./chain";
@@ -114,10 +120,12 @@ export function Home() {
             [
               "Price · 1M PLEA",
               seeded
-                ? tokenAmount((price * 10n ** 24n) / 2n ** 96n, s, true)
+                ? perMillion((price * 10n ** 24n) / 2n ** 96n, s) || "No price"
                 : "Not open yet",
               seeded
-                ? trend
+                ? !perMillion((price * 10n ** 24n) / 2n ** 96n, s)
+                  ? "The pool holds only dust"
+                  : trend
                 : `Opens from ${clock(Number(con(s, "PleaLaunch.START")))}`,
             ],
             [
@@ -237,6 +245,43 @@ export function Letters() {
   const tx = useTx(text);
   const result = textCheck("letter", text);
   const [copied, setCopied] = useState(false);
+  // A plain letter pleads 20% of the balance: below the least balance the Letterbox accepts,
+  // Send letter is off with the reason (E1, r2D-N4). APPEAL, SELL and NAME have other rules.
+  const held = useRead(
+    () => read(r, "PLEA", "balanceOf", [address]),
+    [address],
+    !!s && !!address,
+  );
+  const limit = letterLimit(s),
+    feeCap = BigInt(s?.v.fees?.[1] || 0n),
+    needText = limit && !limit.possible
+      ? `At today’s price no letter passes: even ${tokenAmount(con(s, "CabalGate.MAX_SELL"), s)}, the most a letter pleads, is worth less than ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}.`
+      : limit
+      ? `A letter needs at least about ${tokenAmount(limit.minimum, s, false, 0, "up")} at today’s price: ${
+          limit.reason === "fee"
+            ? `its fees (at most ${tokenAmount(feeCap, s, false, 0, "up")}) may take at most 10% of your PLEA`
+            : limit.reason === "value"
+              ? `20% of it must be worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price`
+              : `20% of it must be at least ${tokenAmount(LETTERBOX.MIN_LETTER, s)}`
+        }.`
+      : "",
+    shortOf =
+      result.kind === "plea" &&
+      limit &&
+      held.data !== undefined &&
+      (!limit.possible || BigInt(held.data) < limit.minimum)
+        ? `${needText} You hold ${tokenAmount(BigInt(held.data), s)}.`
+        : "";
+  const letterErrors = {
+    FeeTooHigh: (args: any) =>
+      result.kind === "appeal"
+        ? `An APPEAL letter’s fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA (${tokenAmount(BigInt(args[1]), s)}), or fit the denied plea’s amount with 10% to spare.`
+        : `A letter needs at least about ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}: its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, and you hold ${tokenAmount(BigInt(args[1]), s)}.`,
+    TooSmallForTheFee: (args: any) =>
+      `${result.kind === "appeal" ? "This appeal" : "20% of your PLEA"} is worth ${tokenAmount(BigInt(args[0]), s, true)} at the hourly price; a letter must be worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}${limit && result.kind !== "appeal" ? `, so it needs a balance of about ${tokenAmount(limit.byValue, s, false, 0, "up")}` : ""}.`,
+    LetterTooSmall: (args: any) =>
+      `20% of your PLEA is ${tokenAmount(BigInt(args[0]), s)}; a letter must plead at least ${tokenAmount(LETTERBOX.MIN_LETTER, s)}, so it needs a balance of at least ${tokenAmount(LETTERBOX.MIN_LETTER * 5n, s)}.`,
+  };
   useEffect(() => {
     setCopied(false);
   }, [text]);
@@ -281,8 +326,13 @@ export function Letters() {
             <span className="pill">Send 0 ETH</span>
           </div>
           <p className="small">
-            Send from the wallet holding your PLEA. Nothing to approve: fees
-            come out of your PLEA:{" "}
+            Send from the wallet holding your PLEA.{" "}
+            {needText && (
+              <>
+                <b>{needText}</b>{" "}
+              </>
+            )}
+            Nothing to approve: fees come out of your PLEA:{" "}
             {tokenAmount(
               BigInt(con(s, "CabalGate.ORACLE_FEE") || 0n) + LETTERBOX.TIP,
               s,
@@ -436,10 +486,15 @@ export function Letters() {
               connectText="Connect in the top bar to send a letter."
               {...tx}
               label="Send letter"
-              onRun={() => tx.send("Letterbox", "letter", [text])}
+              onRun={() =>
+                tx.send("Letterbox", "letter", [text], undefined, {
+                  errors: letterErrors,
+                })
+              }
               disabled={
                 !tx.ready ||
                 !result.ok ||
+                !!shortOf ||
                 !val(s, "PleaHook.seeded") ||
                 !val(s, "CabalGate.cabalAlive")
               }
@@ -448,9 +503,8 @@ export function Letters() {
                   ? "Trading is not open yet."
                   : !val(s, "CabalGate.cabalAlive")
                     ? "The Cabal is dead. New pleas and appeals are closed."
-                    : !result.ok
-                      ? "Fix the text checks."
-                      : undefined
+                    : shortOf ||
+                      (!result.ok ? "Fix the text checks." : undefined)
               }
             />
           </Panel>

@@ -9,6 +9,8 @@ import {
   max as maxBig,
   sharePoints,
   factParts,
+  factTerms,
+  autoSellBlock,
 } from "./models";
 import { returnedEscrow } from "./appeal";
 import {
@@ -36,6 +38,10 @@ import {
   pct,
   signedPercent,
   openPleaNotice,
+  openPleaParts,
+  perMillion,
+  NO_PRICE,
+  exactAmount,
   feeInPlea,
   feeInPleaText,
   clock,
@@ -223,6 +229,7 @@ export function Buy() {
     [maxRaw, setMaxRaw] = useState<bigint>();
   const tx = useTx(`${input}:${selling}:${slip}:${maxRaw}`),
     dead = !!val(s, "CabalGate.diedAt"),
+    seeded = !!val(s, "PleaHook.seeded"),
     pair = s?.constants.pairSymbol || "imdTEST",
     unit = selling ? "PLEA" : pair,
     raw = maxRaw ?? parseAmount(input);
@@ -347,6 +354,14 @@ export function Buy() {
   const display = s
     ? feeDisplay(raw, s.constants, extra, dead, input || undefined)
     : undefined;
+  // What the field shows for this amount: Max fills the field rounded down; a typed amount is
+  // shown as typed (feeDisplay's "you pay").
+  const shownPay =
+    maxRaw !== undefined
+      ? amount(maxRaw, 18, selling ? 0 : 2)
+      : display && !selling
+        ? display.pay
+        : exactAmount(raw, 18, selling ? 0 : 2);
   async function buy() {
     if (needsApproval) {
       setApproved(true);
@@ -461,9 +476,14 @@ export function Buy() {
                   r.network.uniswapV4.poolManager.toLowerCase()),
           )
           .reduce((n, l) => n + l.args.value, 0n);
+        // A full fill names the amount the field, Balance and sum line showed (r2T-N6).
+        const paid =
+          spent === raw
+            ? `${shownPay} ${unit}`
+            : tokenAmount(spent, s, !selling, selling ? 0 : 2, "up");
         const text = selling
-          ? `Sold ${tokenAmount(spent, s, false, 0, "up")} for ${tokenAmount(received, s, true)}.`
-          : `Bought ${tokenAmount(received, s)} for ${tokenAmount(spent, s, true, 2, "up")}.`;
+          ? `Sold ${paid} for ${tokenAmount(received, s, true)}.`
+          : `Bought ${tokenAmount(received, s)} for ${paid}.`;
         const cash = events
           .filter((e) =>
             [
@@ -555,11 +575,6 @@ export function Buy() {
           <AmountInput
             id="quote"
             loading={quote.loading && !quote.data}
-            hint={
-              quote.loading && !quote.data
-                ? "Waiting for the quote from the pool."
-                : undefined
-            }
             label="You get (quote)"
             value={
               quote.data
@@ -603,7 +618,7 @@ export function Buy() {
               ))}
             </div>
           </div>
-          {raw > 0n && s && !tradeDone && display && (
+          {raw > 0n && s && seeded && !tradeDone && display && (
             <>
               <Costs
                 rows={[
@@ -611,7 +626,14 @@ export function Buy() {
                     ? ([
                         [
                           "Price",
-                          `1M PLEA = ${tokenAmount((BigInt(val(s, "PleaHook.priceX96") || 0) * 10n ** 24n) / Q96, s, true)}`,
+                          perMillion(
+                            (BigInt(val(s, "PleaHook.priceX96") || 0) *
+                              10n ** 24n) /
+                              Q96,
+                            s,
+                          )
+                            ? `1M PLEA = ${perMillion((BigInt(val(s, "PleaHook.priceX96") || 0) * 10n ** 24n) / Q96, s)}`
+                            : NO_PRICE,
                         ],
                       ] as [string, string][])
                     : []),
@@ -747,11 +769,12 @@ export function Buy() {
           />
           {address &&
             raw > 0n &&
+            seeded &&
             !tradeDone &&
             (needsApproval || (!selling && payout.data !== "pool")) && (
               <p className="small">
                 {needsApproval
-                  ? `Step 1 of 2: lets the ${selling ? "sale" : "buy"} spend exactly ${tokenAmount(raw, s, !selling)}. Nothing is ${selling ? "sold" : "bought"} yet.`
+                  ? `Step 1 of 2: lets the ${selling ? "sale" : "buy"} spend exactly ${exactAmount(raw, Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}. Nothing is ${selling ? "sold" : "bought"} yet.`
                   : `${smallAmount(cashbackNow, s)} cashback is paid to you in the same transaction.`}
               </p>
             )}
@@ -820,106 +843,109 @@ export function Buy() {
                     {tokenAmount(balance.data?.plea, s)}
                   </span>
                 </p>
-                <p className="label">Your buy record</p>
-                <Costs
-                  rows={
-                    balance.data
-                      ? [
-                          [
-                            "Cost basis",
-                            balance.data.basis[1]
-                              ? tokenAmount(
-                                  (balance.data.basis[0] * 10n ** 24n) /
-                                    balance.data.basis[1],
-                                  s,
-                                  true,
-                                ) + " per 1M"
-                              : "No buy record",
-                          ],
-                          [
-                            "Held, buy-weighted",
-                            balance.data.basis[2]
-                              ? heldTime(now - Number(balance.data.basis[2]))
-                              : "No buy record",
-                          ],
-                          ...(val(s, "PleaHook.seeded")
-                            ? ([
-                                [
-                                  `Now, at ${tokenAmount(val(s, "PleaHook.priceX96") ? (val(s, "PleaHook.priceX96") * 10n ** 24n) / 2n ** 96n : 0n, s, true)} per 1M`,
-                                  balance.data.basis[0]
-                                    ? signedPercent(
-                                        (Number(
-                                          (balance.data.basis[1] *
-                                            BigInt(
-                                              val(s, "PleaHook.priceX96") || 0n,
-                                            )) /
-                                            2n ** 96n,
-                                        ) *
-                                          100) /
-                                          Number(balance.data.basis[0]) -
-                                          100,
-                                      )
-                                    : "No buy record",
-                                ],
-                              ] as [string, string][])
-                            : []),
-                        ]
-                      : []
-                  }
-                />
-                <p className="label">What selling takes</p>
-                <p>
-                  {dead
-                    ? "Nothing more than a swap. No plea and no need: the Cabal is dead, so PLEA sells like any token on Uniswap v4."
-                    : `A plea. The Cabal scores why you sell. Your hold time and profit or loss above are two of the four facts that set your need (${con(s, "CabalGate.PASS_MARK")} − fact score); a new buy updates both.`}
-                </p>
-                {!dead &&
-                  !!val(s, "PleaHook.seeded") &&
-                  (balance.data?.open ? (
-                    <>
-                      <p className="small">
-                        {balance.data.pendingPlea.status === 2 ? (
-                          <>
-                            <b>
-                              Plea #{String(balance.data.pending)} is open:{" "}
-                              {
-                                openPleaNotice(
-                                  balance.data.pendingPlea,
-                                  s!,
-                                  now,
-                                ).split(". ")[0]
-                              }
-                              .
-                            </b>{" "}
-                            {openPleaNotice(balance.data.pendingPlea, s!, now)
-                              .split(". ")
-                              .slice(1)
-                              .join(". ")}
-                          </>
-                        ) : (
+                <div className="stack stack--sm">
+                  <p className="label">Your buy record</p>
+                  <Costs
+                    rows={
+                      balance.data
+                        ? [
+                            [
+                              "Cost basis",
+                              balance.data.basis[1]
+                                ? tokenAmount(
+                                    (balance.data.basis[0] * 10n ** 24n) /
+                                      balance.data.basis[1],
+                                    s,
+                                    true,
+                                  ) + " per 1M"
+                                : "No buy record",
+                            ],
+                            [
+                              "Held, buy-weighted",
+                              balance.data.basis[2]
+                                ? heldTime(now - Number(balance.data.basis[2]))
+                                : "No buy record",
+                            ],
+                            ...(seeded
+                              ? ([
+                                  [
+                                    perMillion(
+                                      (BigInt(val(s, "PleaHook.priceX96") || 0n) *
+                                        10n ** 24n) /
+                                        Q96,
+                                      s,
+                                    )
+                                      ? `Now, at ${perMillion((BigInt(val(s, "PleaHook.priceX96") || 0n) * 10n ** 24n) / Q96, s)} per 1M`
+                                      : `Now: ${NO_PRICE}`,
+                                    balance.data.basis[0]
+                                      ? signedPercent(
+                                          (Number(
+                                            (balance.data.basis[1] *
+                                              BigInt(
+                                                val(s, "PleaHook.priceX96") ||
+                                                  0n,
+                                              )) /
+                                              Q96,
+                                          ) *
+                                            100) /
+                                            Number(balance.data.basis[0]) -
+                                            100,
+                                        )
+                                      : "No buy record",
+                                  ],
+                                ] as [string, string][])
+                              : []),
+                          ]
+                        : []
+                    }
+                  />
+                </div>
+                <div className="stack stack--sm">
+                  <p className="label">What selling takes</p>
+                  <p className="small">
+                    {dead
+                      ? "Nothing more than a swap. No plea and no need: the Cabal is dead, so PLEA sells like any token on Uniswap v4."
+                      : `A plea. The Cabal scores why you sell. Your hold time and profit or loss above are two of the four facts that set your need (${con(s, "CabalGate.PASS_MARK")} − fact score); a new buy updates both.`}
+                  </p>
+                  {!dead &&
+                    seeded &&
+                    (balance.data?.open ? (
+                      <>
+                        <p className="small">
                           <b>
-                            {openPleaNotice(balance.data.pendingPlea, s!, now)}
+                            {
+                              openPleaParts(balance.data.pendingPlea, s!, now)
+                                .head
+                            }
                           </b>
+                          {balance.data.pendingPlea.status === 2 &&
+                            ` ${openPleaParts(balance.data.pendingPlea, s!, now).rest}`}
+                        </p>
+                        <div>
+                          <a
+                            className="btn btn--sm"
+                            href={`#/p/${balance.data.pending}`}
+                          >
+                            Open plea #{String(balance.data.pending)}{" "}
+                            <Icon name="arrow-right" />
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <a className="btn btn--sm" href="#/plead">
+                            Plead to sell <Icon name="arrow-right" />
+                          </a>
+                        </div>
+                        {balance.data && balance.data.cooldown > now && (
+                          <p className="small">
+                            Next plea from {clock(balance.data.cooldown)}.
+                          </p>
                         )}
-                      </p>
-                      <a
-                        className="btn btn--sm"
-                        href={`#/p/${balance.data.pending}`}
-                      >
-                        Open plea #{String(balance.data.pending)}{" "}
-                        <Icon name="arrow-right" />
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      <a className="btn btn--sm" href="#/plead">
-                        Plead to sell <Icon name="arrow-right" />
-                      </a>
-                      {balance.data && balance.data.cooldown > now && (
-                        <p>Next plea from {clock(balance.data.cooldown)}.</p>
-                      )}
-                    </>
-                  ))}
+                      </>
+                    ))}
+                </div>
               </>
             ) : (
               <p>Connect in the top bar to see your balance and buy record.</p>
@@ -936,9 +962,8 @@ export function Buy() {
                 </p>
                 <p className="small">
                   Paid in the same transaction:{" "}
-                  {Number(con(s, "PleaHook.CASHBACK_BPS") || 0) / 100}% of every
-                  trade
-                  {raw && !selling
+                  {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
+                  {raw && seeded && !selling
                     ? ` (${smallAmount(cashbackNow, s)} on this buy)`
                     : ""}
                   .{" "}
@@ -979,14 +1004,25 @@ export function Plead() {
     balance = WalletBalances();
   const [input, setInput] = useState(""),
     [text, setText] = useState(""),
-    [auto, setAuto] = useState(true),
-    raw = parseAmount(input),
-    tx = useTx(`${input}:${auto}:${text}`);
+    // undefined: the default, ticked unless this wallet cannot pass the auto-sell rules (TRAP2).
+    [choice, setAuto] = useState<boolean>(),
+    raw = parseAmount(input);
   const returned = useRead(
     () => returnedEscrow(r, s!, address!, s!.timestamp),
     [address],
     !!s && !!address,
   );
+  const autoBlock =
+      balance.data && s?.v.fees
+        ? autoSellBlock(
+            BigInt(balance.data.plea) + (returned.data?.returned || 0n),
+            BigInt(s.v.fees[1]),
+            BigInt(val(s, "PleaHook.latestPrice") || 0n),
+            BigInt(con(s, "CabalGate.MAX_SELL") || 0n),
+          )
+        : "",
+    auto = choice ?? !autoBlock,
+    tx = useTx(`${input}:${auto}:${text}`);
   const bal =
       BigInt(balance.data?.plea || 0n) +
       (auto ? returned.data?.returned || 0n : 0n),
@@ -1019,7 +1055,22 @@ export function Plead() {
     fees = s?.v.fees,
     oracle = BigInt(con(s, "CabalGate.ORACLE_FEE") || 0n),
     feeCap = BigInt(fees?.[1] || 0n),
-    pair = s?.constants.pairSymbol || "imdTEST";
+    pair = s?.constants.pairSymbol || "imdTEST",
+    // The manual plea pays the fixed oracle fee from the wallet's imdTEST (r2D-VN1).
+    pairShort =
+      balance.data && BigInt(balance.data.pair) < oracle
+        ? `You need ${tokenAmount(oracle, s, true)} for the oracle fee; you hold ${tokenAmount(balance.data.pair, s, true)}.`
+        : "",
+    manualInstead = pairShort
+      ? `The manual plea needs ${tokenAmount(oracle, s, true)} for the oracle fee; you hold ${tokenAmount(balance.data?.pair, s, true)}.`
+      : `Untick 'Sell automatically if approved' to pay the ${tokenAmount(oracle, s, true)} oracle fee from your ${pair}.`,
+    autoBal = BigInt(balance.data?.plea || 0n) + (returned.data?.returned || 0n),
+    autoWhy =
+      autoBlock === "fee"
+        ? `its fees (at most ${tokenAmount(feeCap, s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(feeCap * 10n, s, false, 0, "up")}; you hold ${tokenAmount(autoBal, s)}.`
+        : autoBlock === "value"
+          ? `a plea must be worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price (${tokenAmount(floor, s, false, 0, "up")}), more than the ${tokenAmount(minBig(autoBal / 2n, cap), s)} you can plead.`
+          : "";
   const quote = useRead(
     () => poolQuote(r, s!, raw, true),
     [raw.toString()],
@@ -1063,8 +1114,10 @@ export function Plead() {
         ? `Cooldown until ${clock(balance.data.cooldown)}. You can write your plea now and send it then.`
         : auto && returned.data?.blocked
           ? returned.data.blocked
-          : auto && feeCap * 10n > bal
-            ? `Auto-sell’s fees (at most ${tokenAmount(feeCap, s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(feeCap * 10n, s)}. Untick 'Sell automatically if approved' to pay the ${tokenAmount(oracle, s, true)} oracle fee from your ${pair}.`
+          : auto && autoWhy
+            ? `Auto-sell: ${autoWhy} ${manualInstead}`
+            : !auto && pairShort
+              ? pairShort
             : invalid
               ? raw < min
                 ? `At least ${tokenAmount(min, s)}${auto ? ` (worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price)` : ""}. Raise the amount.`
@@ -1185,8 +1238,8 @@ export function Plead() {
                 <h3 className="label">Your fact score</h3>
                 <span className="field__aside">
                   From the chain:{" "}
-                  {parts && parts.total === fact.data && !parts.uncovered
-                    ? `${parts.share} + ${parts.held} + ${parts.profit} + ${parts.trend} = ${fact.data}`
+                  {parts && parts.total === fact.data
+                    ? `${factTerms(parts).join(" + ")} = ${fact.data}`
                     : fact.data}
                 </span>
               </div>
@@ -1226,7 +1279,7 @@ export function Plead() {
               checked={auto}
               onChange={(e) => setAuto(e.target.checked)}
               aria-labelledby="auto-title"
-              aria-describedby="auto-desc"
+              aria-describedby={autoWhy && !auto ? "auto-desc auto-why" : "auto-desc"}
             />
             <span className="stack stack--sm">
               <span id="auto-title" className="toggle-card__title">
@@ -1242,6 +1295,11 @@ export function Plead() {
               </span>
             </span>
           </label>
+          {autoWhy && !auto && (
+            <p className="small" id="auto-why">
+              Auto-sell is off for this wallet: {autoWhy}
+            </p>
+          )}
           <Costs
             rows={
               auto
@@ -1362,9 +1420,9 @@ export function Plead() {
                     TooSmallForTheFee: (args) =>
                       `Worth ${tokenAmount(BigInt(args[0]), s, true)} at the hourly price; auto-sell needs at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} (about ${tokenAmount(floor, s)}). Raise the amount or untick auto-sell.`,
                     FeeTooHigh: (args) =>
-                      BigInt(args[1]) === bal
-                        ? `Auto-sell’s fees (at most ${tokenAmount(feeCap, s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(feeCap * 10n, s)}. Untick 'Sell automatically if approved' to pay the ${tokenAmount(oracle, s, true)} oracle fee from your ${pair}.`
-                        : "The price fell since the hourly snapshot, so the fee needs more PLEA than its 10% margin. Nothing was paid; try again after the next snapshot or untick auto-sell.",
+                      BigInt(args[0]) * 10n > BigInt(args[1])
+                        ? `Auto-sell’s fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}; you hold ${tokenAmount(BigInt(args[1]), s)}. ${manualInstead}`
+                        : `The plea and its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) must fit your ${tokenAmount(BigInt(args[1]), s)}. Lower the amount. Nothing was sent.`,
                   },
                 })
               }
@@ -1382,6 +1440,7 @@ export function Plead() {
               token={r.addresses.PairToken}
               spender={r.addresses.CabalGate}
               spend={oracle}
+              spendFor="for the oracle fee"
               disabled={!!reason}
               reason={reason}
             />

@@ -1,5 +1,6 @@
-/** Immutable internal Letterbox constants, pinned src/Letterbox.sol:111–136. */
+/** Immutable internal Letterbox constants, pinned src/Letterbox.sol:111–136 (testnet9). */
 export const LETTERBOX = {
+  LETTER_SHARE_BPS: 2000n,
   MIN_LETTER: 1000n * 10n ** 18n,
   TIP: 250000000000000000n,
   AUTO_SELL_FEE: 350000000000000000n,
@@ -114,27 +115,109 @@ export function factParts(
       : latest * 100n >= previous * 98n
         ? 5
         : 0;
-  const covered = Number(
-    basis[1] < amount && amount
-      ? (basis[1] * BigInt(held + profit) +
-          (amount - basis[1]) * BigInt(heldPoints(started) + 10) +
-          amount / 2n) /
-          amount
-      : BigInt(held + profit),
-  );
+  // CabalGate._factScoreAt: PLEA no buy record covers (claims, prizes, exempt transfers) counts as
+  // held since trading opened, at profit 10; a plea larger than the record takes the PLEA-weighted
+  // mean of the two, rounded to the nearest point (E2).
+  const openHeld = heldPoints(started),
+    covered = Number(
+      basis[1] < amount && amount
+        ? (basis[1] * BigInt(held + profit) +
+            (amount - basis[1]) * BigInt(openHeld + 10) +
+            amount / 2n) /
+            amount
+        : BigInt(held + profit),
+    );
+  const mode: "record" | "received" | "mixed" =
+    !amount || basis[1] >= amount
+      ? "record"
+      : basis[1] === 0n
+        ? "received"
+        : "mixed";
+  const received = mode === "received";
   return {
     shareBps: balance ? ceil(amount * 10000n, balance) : null,
-    heldFor: basis[1] && basis[2] ? Math.max(0, now - Number(basis[2])) : null,
-    pnlBps: spent ? ((value - spent) * 10000n) / spent : null,
+    heldFor: received
+      ? started
+        ? Math.max(0, now - started)
+        : null
+      : basis[1] && basis[2]
+        ? Math.max(0, now - Number(basis[2]))
+        : null,
+    pnlBps: !received && spent ? ((value - spent) * 10000n) / spent : null,
     trendLabel: trend === 9 ? "up" : trend === 0 ? "down" : "flat",
     share,
-    held,
-    profit,
+    held: received ? openHeld : held,
+    profit: received ? 10 : profit,
     trend,
     total: balance ? share + covered + trend : 0,
     uncovered: basis[1] < amount ? amount - basis[1] : 0n,
     weighted: covered,
+    mode,
+    covered: basis[1] < amount ? basis[1] : amount,
+    record: held + profit,
+    openHeld,
+    openFor: started ? Math.max(0, now - started) : null,
   };
+}
+/** The terms that add up to the fact score, as the contract adds them (E2): share + held + profit
+ * + trend, or for a plea larger than its buy record share + the PLEA-weighted held and profit +
+ * trend. */
+export function factTerms(parts: {
+  mode?: string;
+  share: number;
+  held: number;
+  profit: number;
+  weighted: number;
+  trend: number;
+}) {
+  return parts.mode === "mixed"
+    ? [parts.share, parts.weighted, parts.trend]
+    : [parts.share, parts.held, parts.profit, parts.trend];
+}
+/** The least PLEA a plain letter (Letterbox._plead with amount 0) accepts, from the fee cap
+ * (Letterbox.feesFor(false)[1]) and the hourly price (PleaHook.latestPrice), E1 / r2D-N4:
+ * - FeeTooHigh: maxFeePlea × 10,000 > balance × MAX_FEE_SHARE_BPS, so balance ≥ 10 × maxFeePlea;
+ * - TooSmallForTheFee: 20% of the balance (rounded down) must be worth MIN_SALE_VALUE at the
+ *   hourly price, so balance ≥ 5 × ceil(MIN_SALE_VALUE × Q96 / price);
+ * - LetterTooSmall: 20% of the balance must be at least MIN_LETTER, so balance ≥ 5 × MIN_LETTER. */
+export function letterMinimum(
+  maxFeePlea: bigint,
+  price: bigint,
+  maxSell = 2_500_000n * 10n ** 18n,
+) {
+  const per = 10000n / LETTERBOX.LETTER_SHARE_BPS,
+    byFee = ceil(maxFeePlea * 10000n, LETTERBOX.MAX_FEE_SHARE_BPS),
+    floorAmount = price ? ceil(LETTERBOX.MIN_SALE_VALUE * Q96, price) : 0n,
+    byValue = floorAmount * per,
+    byLetter = LETTERBOX.MIN_LETTER * per;
+  const minimum = max(byFee, max(byValue, byLetter));
+  return {
+    minimum,
+    byFee,
+    byValue,
+    byLetter,
+    floorAmount,
+    // A letter pleads at most MAX_SELL: if that is worth less than the floor, no balance passes.
+    possible: floorAmount <= maxSell,
+    reason:
+      minimum === byFee ? "fee" : minimum === byValue ? "value" : "letter",
+  } as const;
+}
+/** Why the site's auto-sell box (Letterbox.plead) cannot work for this balance at any amount, or
+ * "" (TRAP2): its fees may take at most 10% of the balance (FeeTooHigh), and the plea must be worth
+ * MIN_SALE_VALUE at the hourly price (TooSmallForTheFee) within the gate's max (50%, MAX_SELL). */
+export function autoSellBlock(
+  balance: bigint,
+  maxFeePlea: bigint,
+  price: bigint,
+  maxSell: bigint,
+): "" | "fee" | "value" {
+  if (!maxFeePlea || !price) return "";
+  if (maxFeePlea * 10000n > balance * LETTERBOX.MAX_FEE_SHARE_BPS) return "fee";
+  const floorAmount = ceil(LETTERBOX.MIN_SALE_VALUE * Q96, price),
+    most = min(balance / 2n, maxSell);
+  if (floorAmount > most || floorAmount + maxFeePlea > balance) return "value";
+  return "";
 }
 
 /** Round each displayed fee part once; sums use those same bigint values. */
