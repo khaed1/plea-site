@@ -1,10 +1,10 @@
 import { useSaleQuote } from "./sale";
 import { Share } from "./share";
-import { LETTERBOX, Q96 } from "./models";
+import { LETTERBOX, Q96, deliverOut } from "./models";
 import { appealPreview } from "./appeal";
 import { PleaTimeline } from "./details";
 import { oracleRequest, type OracleData } from "./oracle";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useAccount } from "wagmi";
 import { formatUnits, type Address } from "viem";
 import { useApp, useRead, useTx } from "./context";
@@ -29,9 +29,17 @@ import {
   elapsed,
   getPlea,
   judgeLine,
+  nameOf,
+  objectionCase,
+  objectionStale,
   pleaLead,
   pleaState,
   read,
+  recordFrom,
+  recordHint,
+  rulingWait,
+  idList,
+  sharePercent,
   short,
   tokenAmount,
   utc,
@@ -184,6 +192,19 @@ export function Wall() {
     )
       void loadMore();
   }, [family, flags.join(), wallet, oldest, shown.length, busy]);
+  // The "nothing yet" copy only when it is true: no filter but the one, and nothing of that kind
+  // on chain (no objection filed at all, or no denial among the verdicts); any other empty
+  // combination is "No matching pleas" (r2S-N3).
+  const empty =
+    !wallet &&
+    family === "All" &&
+    flags.length === 1 &&
+    flags[0] === "Objected" &&
+    BigInt(val(s, "Tribunal.nextId") ?? 1n) <= 1n
+      ? "objections"
+      : !wallet && family === "Denied" && !flags.length && court?.denied === 0
+        ? "denied"
+        : "";
   const reset = () => {
     setFamily("All");
     setFlags([]);
@@ -282,11 +303,11 @@ export function Wall() {
         </p>
       ) : (
         <Empty
-          icon={flags.includes("Objected") ? "gavel" : "scales"}
+          icon={empty === "objections" ? "gavel" : "scales"}
           title={
-            flags.includes("Objected")
+            empty === "objections"
               ? "No objections yet"
-              : family === "Denied"
+              : empty === "denied"
                 ? "No denied pleas yet"
                 : total
                   ? "No matching pleas"
@@ -296,13 +317,15 @@ export function Wall() {
             total ? { onClick: reset, label: "Show all pleas" } : undefined
           }
         >
-          {flags.includes("Objected")
+          {empty === "objections"
             ? "Every approval so far went unchallenged. Suspicious."
-            : family === "Denied"
+            : empty === "denied"
               ? "The Cabal is in a good mood. It will not last."
               : !val(s, "PleaHook.seeded")
                 ? "The first plea comes after trading opens."
-                : "Every verdict lands here, newest first."}
+                : total
+                  ? "No plea on the Wall matches these filters."
+                  : "Every verdict lands here, newest first."}
         </Empty>
       )}
       {error && (
@@ -401,7 +424,7 @@ export function Appeal({ p }: { p: Plea }) {
         />
       )}
       {need !== undefined && (
-        <Meter need={need} fact={Number(preview.data?.fact)} />
+        <Meter need={need} fact={Number(preview.data?.fact)} own />
       )}
       <TextBox label="Your appeal" value={text} onChange={setText} />
       <label className="toggle-card">
@@ -700,6 +723,8 @@ export function PleaPage({ id }: { id: string }) {
   const held =
     !missedSeason && !p.excluded && !p.standing?.[1] && !!p.standing?.[0];
   const settled = p.escrow && !p.escrow[1];
+  const recordAt = recordFrom(p, s, now),
+    cs = caseState(p, s, now);
   const appealId = s.logs.find(
     (l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id,
   )?.args.id;
@@ -718,7 +743,9 @@ export function PleaPage({ id }: { id: string }) {
       <p className="lead">
         {pleaLead(p, s, { state, canSell, mine: !!mine, missedSeason })}{" "}
         {held
-          ? `The +${p.points} points are held while objections are open; record them after ${clock(objectionUntil)}.`
+          ? recordAt?.objection
+            ? `The +${p.points} points are held until ${rulingWait(recordAt.objections)}; record them after ${clock(recordAt.until)}.`
+            : `The +${p.points} points are held while objections are open; record them after ${clock(recordAt?.until ?? objectionUntil)}.`
           : p.recorded
             ? `+${p.points} points recorded.`
             : ""}
@@ -738,7 +765,7 @@ export function PleaPage({ id }: { id: string }) {
                 [
                   "Verdict",
                   pleaState(p, now, s) === "NO VERDICT"
-                    ? `No verdict: ${noVerdict(p, s).sub}`
+                    ? `No verdict: ${noVerdict(p, s, now).sub}`
                     : p.verdictAt > 0n
                       ? utc(p.verdictAt)
                       : "Waiting",
@@ -840,7 +867,7 @@ export function PleaPage({ id }: { id: string }) {
                       variant={mine ? "ink" : undefined}
                       primary={false}
                       block
-                      sub={`≈ ${tokenAmount(net > LETTERBOX.AUTO_SELL_FEE ? net - LETTERBOX.AUTO_SELL_FEE : 0n, s, true)}`}
+                      sub={`≈ ${tokenAmount(deliverOut(net, p.flags), s, true)}`}
                       onRun={() =>
                         tx.send("Letterbox", "deliver", [p!.id], undefined, {
                           errors: {
@@ -951,12 +978,12 @@ export function PleaPage({ id }: { id: string }) {
                   rounded down. The judges’ score and need stay the same.
                 </p>
               )}
-              {held && (
+              {held && recordAt && (
                 <Countdown
-                  until={objectionUntil}
+                  until={recordAt.until}
                   label={
-                    now > objectionUntil
-                      ? "Objection panel pending"
+                    recordAt.objection
+                      ? `${recordAt.objections.length > 1 ? `Objections ${idList(recordAt.objections)}` : `Objection #${recordAt.objection.id}`} ruled or void within`
                       : "Objections close in"
                   }
                 />
@@ -974,7 +1001,7 @@ export function PleaPage({ id }: { id: string }) {
                         : missedSeason
                           ? "Recording is closed for this season."
                           : held
-                            ? `Record ${mine ? "your" : "the"} +${p.points} points after ${clock(objectionUntil)}, when objections close.`
+                            ? recordHint(p, s, now, mine ? "your" : "the")
                             : undefined
                 }
                 label={mine ? "Record my points" : "Record the points"}
@@ -1001,7 +1028,7 @@ export function PleaPage({ id }: { id: string }) {
                             ? recordSeasonQuery.error ||
                               "Reading this plea’s season status…"
                             : held
-                              ? "Points are held while the objection window is open or a panel is pending."
+                              ? recordHint(p, s, now, mine ? "your" : "the")
                               : "Anyone may record these points. Nothing records them by itself."
                 }
               />
@@ -1015,37 +1042,34 @@ export function PleaPage({ id }: { id: string }) {
             mine && <Appeal p={p} />}
           {approved && (
             <Panel level={2} title="Objections">
-              {caseState(p, s, now).closed ? (
-                <p>
+              {cs.closed ? (
+                <div className="cluster">
+                  <span className="pill">{caseClosedText(cs.closed)}</span>
                   <span className="pill">
-                    {caseClosedText(caseState(p, s, now).closed!)}
-                  </span>{" "}
-                  · {caseState(p, s, now).filed} of {caseState(p, s, now).max}{" "}
-                  filed
-                </p>
+                    {cs.filed} of {cs.max} filed
+                  </span>
+                </div>
               ) : (
                 <>
-                  <div>
+                  <div className="cluster">
                     <Countdown
                       until={objectionUntil}
                       label="Objections close in"
                     />
+                    <span className="pill">
+                      {cs.filed} of {cs.max} filed
+                    </span>
                   </div>
-                  <span className="pill">
-                    {caseState(p, s, now).filed} of {caseState(p, s, now).max}{" "}
-                    filed
-                  </span>
-                  {caseState(p, s, now).full ? (
+                  {cs.full ? (
                     <Notice kind="warn" title="This case is full.">
                       <p>
-                        {caseState(p, s, now).pending.length ===
-                        caseState(p, s, now).max
+                        {cs.pending.length === cs.max
                           ? `Two objections are pending on plea #${p.id}. Nothing to send.`
-                          : `Objection #${caseState(p, s, now).pending[0]?.id} is pending and the other slot has a ruling. Nothing to send.`}
+                          : `Objection #${cs.pending[0]?.id} is pending and the other slot has a ruling. Nothing to send.`}
                       </p>
                     </Notice>
                   ) : mine ? (
-                    <p>
+                    <p className="small">
                       <b>You can’t object to your own plea.</b> Others may until{" "}
                       {clock(objectionUntil)}, for a{" "}
                       {tokenAmount(con(s, "Tribunal.ORACLE_FEE"), s, true)} fee
@@ -1062,7 +1086,7 @@ export function PleaPage({ id }: { id: string }) {
                   ) : address ? (
                     <>
                       <a
-                        className="btn btn--primary"
+                        className="btn btn--primary btn--block"
                         href={`#/objections?plea=${p.id}`}
                       >
                         Object{" "}
@@ -1075,7 +1099,7 @@ export function PleaPage({ id }: { id: string }) {
                           )}
                         </span>
                       </a>
-                      <p className="small">
+                      <p className="small text-2">
                         {tokenAmount(con(s, "Tribunal.ORACLE_FEE"), s, true)}{" "}
                         oracle fee +{" "}
                         {tokenAmount(con(s, "Tribunal.STAKE"), s, true)} stake.
@@ -1092,17 +1116,20 @@ export function PleaPage({ id }: { id: string }) {
                         </p>
                       </Notice>
                       <button
+                        type="button"
                         className="btn btn--primary btn--block"
                         aria-disabled="true"
                         aria-describedby="object-connect"
                       >
                         Object{" "}
-                        {tokenAmount(
-                          BigInt(con(s, "Tribunal.ORACLE_FEE")) +
-                            BigInt(con(s, "Tribunal.STAKE")),
-                          s,
-                          true,
-                        )}
+                        <span className="btn__sub">
+                          {tokenAmount(
+                            BigInt(con(s, "Tribunal.ORACLE_FEE")) +
+                              BigInt(con(s, "Tribunal.STAKE")),
+                            s,
+                            true,
+                          )}
+                        </span>
                       </button>
                       <p className="small" id="object-connect">
                         Connect a wallet first. Objections close at{" "}
@@ -1113,6 +1140,18 @@ export function PleaPage({ id }: { id: string }) {
                 </>
               )}
               <ObjectionLines p={p} />
+              {cs.stale.map((o: any) => (
+                <TxButton
+                  key={String(o.id)}
+                  connectText="Connect in the top bar to expire it."
+                  name="Tribunal"
+                  fn="expire"
+                  args={[o.id]}
+                  label="Expire unanswered objection"
+                  srLabel={` #${o.id}`}
+                  small
+                />
+              ))}
               <a className="btn" href={`#/objections?plea=${p.id}`}>
                 How objections work <Icon name="arrow-right" />
               </a>
@@ -1139,7 +1178,7 @@ export function PleaPage({ id }: { id: string }) {
                 <dd>
                   {tokenAmount(p.amount, s)}{" "}
                   {p.balance
-                    ? `(${Number((p.amount * 10000n) / p.balance) / 100}% of ${tokenAmount(p.balance, s)})`
+                    ? `(${sharePercent(p.amount, p.balance)} of ${tokenAmount(p.balance, s)})`
                     : ""}
                 </dd>
               </div>
@@ -1258,10 +1297,14 @@ export function ObjectionForm({ p }: { p: Plea }) {
           : undefined);
   const cost =
       BigInt(con(s, "Tribunal.ORACLE_FEE")) + BigInt(con(s, "Tribunal.STAKE")),
+    // A void or stale objection does not count against its objector: object() voids a stale one first.
     same = p.objections?.some(
       (o) =>
-        o.objector.toLowerCase() === address?.toLowerCase() && o.ruling !== 4,
+        o.objector.toLowerCase() === address?.toLowerCase() &&
+        o.ruling !== 4 &&
+        !objectionStale(o, p, s!, now),
     ),
+    name = useNames((p.objections || []).map((o) => o.objector)),
     reason = closed
       ? caseClosedText(closed!)
       : own
@@ -1312,16 +1355,33 @@ export function ObjectionForm({ p }: { p: Plea }) {
       </div>
       {p.objections
         ?.filter((o) => o.ruling === 1)
-        .map((o) => (
-          <div className="panel panel--sunken" key={String(o.id)}>
-            <p>
-              Objection #{String(o.id)} pending by{" "}
-              <span className="mono">{short(o.objector)}</span> · a new panel is
-              re-scoring the plea
-            </p>
-            <p>“{o.text}”</p>
-          </div>
-        ))}
+        .map((o) => {
+          const stale = objectionStale(o, p, s!, now);
+          return (
+            <div
+              className="panel panel--sunken stack stack--sm"
+              key={String(o.id)}
+            >
+              <p className="cluster cluster--sm small">
+                <span className="stamp stamp--sm stamp--objection">
+                  Objection #{String(o.id)}
+                </span>
+                <span>
+                  {stale
+                    ? `no answer within ${span(Number(con(s, "Tribunal.PENDING_EXPIRY")))}`
+                    : "pending"}
+                </span>
+                <span className="text-2">
+                  by <Who address={o.objector} name={name(o.objector)} /> ·{" "}
+                  {stale
+                    ? "void once anyone expires it; nothing changes"
+                    : "a new panel is re-scoring the plea"}
+                </span>
+              </p>
+              <p>“{o.text}”</p>
+            </div>
+          );
+        })}
       <p>
         {p.standing?.[1] || p.excluded
           ? "No points"
@@ -1334,7 +1394,13 @@ export function ObjectionForm({ p }: { p: Plea }) {
               ? "This seller is excluded from season points."
               : p.standing?.[1]
                 ? "No points for this plea."
-                : "The points may be recorded once no panel is pending."}
+                : p.recorded
+                  ? `+${p.points} points recorded.`
+                  : cs.pending.length
+                    ? "The points may be recorded once no panel is pending."
+                    : ![2, 4, 5].includes(p.status)
+                      ? "Only an approved plea can take an objection."
+                      : `+${p.points} points to record: anyone can press Record on plea #${p.id}; nothing records them by itself.`}
           </p>
         </Notice>
       ) : own ? (
@@ -1343,16 +1409,21 @@ export function ObjectionForm({ p }: { p: Plea }) {
         </Notice>
       ) : full ? (
         <>
-          <Notice kind="warn" title="This case is full.">
+          <Notice icon="prohibit" title="This case is full.">
             <p>
               A plea takes at most {String(con(s, "Tribunal.MAX_OBJECTIONS"))}{" "}
               objections, from different wallets.
             </p>
           </Notice>
-          <button className="btn" aria-disabled="true">
-            Object
+          <button
+            type="button"
+            className="btn btn--primary btn--block"
+            aria-disabled="true"
+            aria-describedby={`full-why-${p.id}`}
+          >
+            Object <span className="btn__sub">{tokenAmount(cost, s, true)}</span>
           </button>
-          <p className="small">
+          <p className="small" id={`full-why-${p.id}`}>
             {cs.pending.length === cs.max
               ? `Two objections are pending on plea #${p.id}. Nothing to send.`
               : `Objection #${cs.pending[0]?.id} is pending and the other slot has a ruling. Nothing to send.`}
@@ -1603,7 +1674,7 @@ export function Objections() {
                           }
                         </span>
                         <p className="small">
-                          {p ? objectionLine(o, p) : "Reading the plea…"}
+                          {p ? objectionLine(o, p, s, now) : "Reading the plea…"}
                         </p>
                       </td>
                       <td>
@@ -1625,7 +1696,9 @@ export function Objections() {
                             ? "to the season prize pot"
                             : o.ruling > 1
                               ? "back to the objector"
-                              : "held"}
+                              : p && objectionStale(o, p, s!, now)
+                                ? "held until expired, then back to the objector"
+                                : "held"}
                         </p>
                         {o.ruling === 1 &&
                           now >
@@ -1666,21 +1739,85 @@ export function Objections() {
   );
 }
 
+/** Display names for a list of wallets (Letterbox.nameOf), "" while unread or unnamed. */
+function useNames(addresses: string[]) {
+  const { r } = useApp(),
+    list = [...new Set(addresses.map((a) => a.toLowerCase()))].sort();
+  const names = useRead(
+    async () =>
+      Object.fromEntries(
+        await Promise.all(
+          list.map(async (a) => [a, await nameOf(r, a).catch(() => "")]),
+        ),
+      ) as Record<string, string>,
+    [list.join()],
+    list.length > 0,
+  );
+  return (a: string) => names.data?.[a.toLowerCase()] || "";
+}
+/** An objector by display name, or the short address in mono (C5). */
+function Who({ address, name }: { address: string; name: string }) {
+  return <span className={name ? "strong" : "mono"}>{name || short(address)}</span>;
+}
+const RULING = ["", "Objection", "Sustained", "Overruled", "Void"];
 function ObjectionLines({ p }: { p: Plea }) {
+  const { s, now } = useApp(),
+    name = useNames((p.objections || []).map((o) => o.objector));
   return (
     <>
-      {p.objections?.map((o) => (
-        <p className="small" key={String(o.id)}>
-          <span className="stamp stamp--sm stamp--objection">
-            {["", "OBJECTION", "SUSTAINED", "OVERRULED", "VOID"][o.ruling]}
-          </span>{" "}
-          {o.ruling === 1
-            ? `OBJECTION #${o.id} pending by ${short(o.objector)}`
-            : objectionLine(o, p)}
-          {o.text ? ` · “${o.text}”` : ""}
-        </p>
-      ))}
+      {p.objections?.map((o) => {
+        const stale = objectionStale(o, p, s!, now);
+        return (
+          <p className="cluster cluster--sm small" key={String(o.id)}>
+            <span className="stamp stamp--sm stamp--objection">
+              {o.ruling === 1 ? `Objection #${o.id}` : RULING[o.ruling]}
+            </span>
+            <span>
+              {o.ruling === 1
+                ? stale
+                  ? `no answer within ${span(Number(con(s, "Tribunal.PENDING_EXPIRY")))}`
+                  : "pending"
+                : objectionLine(o, p, s, now)}
+            </span>
+            <span className="text-2">
+              by <Who address={o.objector} name={name(o.objector)} />
+              {stale ? " · void once anyone expires it; nothing changes" : ""}
+              {o.text ? ` · “${o.text}”` : ""}
+            </span>
+          </p>
+        );
+      })}
     </>
+  );
+}
+/** One objection in the Sale status: who filed it and what its panel did (C2, E3a). */
+function ObjectionRuling({ o, p, who }: { o: any; p: Plea; who: ReactNode }) {
+  const { r, s } = useApp(),
+    panel = useRead(
+      () => oracleRequest(r, p, s!.logs, o),
+      [o.id, o.ruling],
+      o.ruling === 2 || o.ruling === 3,
+    ),
+    agreed =
+      panel.data?.agreed === undefined
+        ? ""
+        : ` (${panel.data.agreed} of ${panel.data.panelSize ?? con(s, "Tribunal.PANEL_SIZE")} agreed)`;
+  if (o.ruling === 1)
+    return (
+      <div className="stack stack--sm">
+        <p className="small">
+          Objection #{String(o.id)} by {who}:
+        </p>
+        <p className="plea__text">“{o.text}”</p>
+      </div>
+    );
+  return (
+    <p className="small">
+      Objection #{String(o.id)} by {who}:{" "}
+      {o.ruling === 2
+        ? `a second panel re-scored it ${o.newScore}${agreed}. The first panel gave ${p.score}.`
+        : `a second panel re-scored it ${o.newScore}${agreed}: overruled (sustained only at ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less).`}
+    </p>
   );
 }
 function SaleSummary({
@@ -1715,19 +1852,11 @@ function SaleSummary({
     [p.originalId],
     !!p.isAppeal,
   );
-  const o =
-    p.objections?.find((o) => o.ruling === 2) ||
-    p.objections?.find((o) => o.ruling === 1);
-  const oName = useRead(
-    () => read(r, "Letterbox", "nameOf", [o.objector]),
-    [o?.id],
-    !!o,
-  );
-  const panel = useRead(
-    () => oracleRequest(r, p, s!.logs, o),
-    [o?.id, o?.ruling],
-    !!o && o.ruling !== 1,
-  );
+  const oc = objectionCase(p, s!, now),
+    cs = caseState(p, s!, now),
+    name = useNames((p.objections || []).map((o) => o.objector)),
+    who = (o: any) => <Who address={o.objector} name={name(o.objector)} />,
+    stake = tokenAmount(con(s, "Tribunal.STAKE"), s, true);
   const sold =
     p.status === 4
       ? `${tokenAmount(p.amount, s)} sold for ${tokenAmount(soldFor(p, s!), s, true)}${time.data ? ` at ${clock(time.data)}` : ""}.`
@@ -1736,41 +1865,75 @@ function SaleSummary({
     p.isAppeal && original.data
       ? `#${p.originalId} was denied, ${original.data.score} vs need ${original.data.need}, at ${clock(original.data.verdictAt)}. The appeal scored ${p.score} at ${clock(p.verdictAt)}${state === "UPHELD" ? ": denied again." : "."}`
       : undefined;
-  if (
-    o &&
+  // A pending objection past its PENDING_EXPIRY promises nothing: it can only be voided (IMD5).
+  const staleLines = cs.stale.map((o: any) => (
+    <p className="small" key={String(o.id)}>
+      Objection #{String(o.id)} by {who(o)} got no answer within{" "}
+      {span(Number(con(s, "Tribunal.PENDING_EXPIRY")))}: anyone may expire it,
+      and it changes nothing.
+    </p>
+  ));
+  const ruled = oc.list.map((o) => (
+    <ObjectionRuling key={String(o.id)} o={o} p={p} who={who(o)} />
+  ));
+  const onSale =
     ["SOLD", "LAPSED", "OVERTURNED"].includes(state) &&
-    [4, 5, 2].includes(p.status)
-  )
+    [4, 5, 2].includes(p.status);
+  if (onSale && (oc.sustained.length || oc.pending.length))
     return (
       <>
-        <p>
-          Objection #{String(o.id)} by {oName.data || short(o.objector)}:
-          {o.ruling === 2
-            ? ` a second panel re-scored it ${o.newScore}${panel.data?.agreed === undefined ? "" : ` (${panel.data.agreed} of ${panel.data.panelSize ?? con(s, "Tribunal.PANEL_SIZE")} agreed)`}. The first panel gave ${p.score}.`
-            : ""}
+        {ruled}
+        {staleLines}
+        <p className={oc.sustained.length ? undefined : "small"}>
+          {oc.sustained.length ? (
+            <>
+              <b>No points for this plea.</b>{" "}
+              {p.status === 4 ? `The sale stands: ${sold}` : sold}
+            </>
+          ) : p.excluded ? (
+            <>
+              This seller is excluded from season points.{" "}
+              {p.status === 4 ? `The sale stands: ${sold}` : sold}
+            </>
+          ) : (
+            <>
+              <b>+{p.points} points held</b> until{" "}
+              {oc.pending.length > 1
+                ? "both panels rule"
+                : "the second panel rules"}
+              . Sustained if the new score is{" "}
+              {p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less (more
+              than {String(con(s, "Tribunal.MARGIN"))} below the need {p.need}
+              ). {p.status === 4 ? `The sale stands either way: ${sold}` : sold}
+            </>
+          )}
         </p>
-        {o.ruling === 1 && <p className="plea__text">“{o.text}”</p>}
-        <p>
-          {o.ruling === 2
-            ? `No points for this plea. ${p.status === 4 ? "The sale stands: " : ""}`
-            : `+${p.points} points held until the second panel rules. Sustained if the new score is ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less (more than ${con(s, "Tribunal.MARGIN")} below the need ${p.need}). ${p.status === 4 ? "The sale stands either way: " : ""}`}
-          {sold}
-        </p>
-        {o.ruling === 2 && (
-          <p>
-            The objector’s {tokenAmount(con(s, "Tribunal.STAKE"), s, true)}{" "}
-            stake{" "}
-            {o.settled
-              ? "was returned."
-              : "goes back when anyone calls settle."}
+        {oc.sustained.length > 0 && (
+          <p className="small text-2">
+            {oc.sustained.length === 1
+              ? `The objector’s ${stake} stake ${oc.sustained[0].settled ? "was returned." : "goes back when anyone calls settle."}`
+              : oc.sustained
+                  .map(
+                    (o) =>
+                      `Objection #${o.id}’s ${stake} stake ${o.settled ? "was returned." : "goes back when anyone calls settle."}`,
+                  )
+                  .join(" ")}
           </p>
         )}
         {appealLine && <p>{appealLine}</p>}
       </>
     );
+  // Overruled objections and stale ones are named above the sale itself (E3a, IMD5).
+  const notes = onSale ? (
+    <>
+      {ruled}
+      {staleLines}
+    </>
+  ) : null;
   if (p.status === 4)
     return (
       <>
+        {notes}
         {appealLine && <p>{appealLine}</p>}
         <Costs
           rows={
@@ -1856,6 +2019,7 @@ function SaleSummary({
   if (state === "LAPSED")
     return (
       <>
+        {notes}
         <p>
           Approved at {clock(p.verdictAt)} but not sold within{" "}
           {span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))}: the window closed
@@ -1895,12 +2059,9 @@ function SaleSummary({
   if (state === "NO VERDICT")
     return (
       <>
-        <p>{noVerdict(p, s!).sentence}</p>
+        <p>{noVerdict(p, s!, now).sentence}</p>
         <p>
-          {noVerdict(p, s!).reported
-            ? "Cleared at once by the Intake."
-            : `The request expired at ${clock(noVerdict(p, s!).time)} with no answer.`}{" "}
-          No cooldown; the{" "}
+          {noVerdict(p, s!, now).detail} No cooldown; the{" "}
           {tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true)} oracle fee is
           not refunded. The seller may plead again at once.
         </p>

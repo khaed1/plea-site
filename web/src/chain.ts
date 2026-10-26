@@ -726,12 +726,64 @@ export function seasonState(s: Snapshot | undefined, now: number) {
 }
 export const potOf = (s: Snapshot | undefined, k?: bigint) =>
   !s ? 0n : s.v.seasons?.[String(k ?? s.v.displayedSeason)]?.pot || 0n;
-export function objectionLine(o: any, p: Plea) {
-  if (o.ruling === 1) return "pending";
-  if (o.ruling === 4)
-    return `#${o.id}: ${o.reason === "stale" ? "no answer within 20 minutes" : "the panel split"}: nothing changes`;
-  return `#${o.id}: ${o.newScore} vs need ${p.need}${o.ruling === 3 ? ` · counts ${p.points || 0} points` : ""}`;
+const expiryWords = (s?: Snapshot) =>
+  span(Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200));
+/** A pending objection the Tribunal no longer treats as live (Tribunal._stale): past filedAt +
+ * PENDING_EXPIRY, or its Intake request completed without a ruling, which standing() shows as not
+ * held. standing() ignores it, object() voids it to free its slot, and anyone may expire() it (IMD5). */
+export function objectionStale(o: any, p: Plea, s: Snapshot, now: number) {
+  return (
+    o.ruling === 1 &&
+    (now >
+      Number(o.filedAt) + Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200) ||
+      (!!p.standing && !p.standing[0] && !p.standing[1] && !p.excluded))
+  );
 }
+export function objectionLine(o: any, p: Plea, s?: Snapshot, now?: number) {
+  if (o.ruling === 1)
+    return s && now !== undefined && objectionStale(o, p, s, now)
+      ? `no answer within ${expiryWords(s)}: void once anyone expires it; nothing changes`
+      : "pending";
+  if (o.ruling === 4)
+    return `#${o.id}: ${o.reason === "stale" ? `no answer within ${expiryWords(s)}` : "the panel split"}: nothing changes`;
+  return `#${o.id}: ${o.newScore} vs need ${p.need}${o.ruling === 3 && !p.standing?.[1] && !p.excluded ? ` · counts ${p.points || 0} points` : ""}`;
+}
+/** The objections that decide a plea's case now, oldest first: every ruling and every live pending
+ * objection (a void or stale one changes nothing). `state` is the one a share card and post lead
+ * with: a sustain decides the plea even beside a pending one (Tribunal.status), then a pending
+ * objection, then an overruling (E3a: every ruled objection is named). */
+export function objectionCase(p: Plea, s: Snapshot, now: number) {
+  const list = (p.objections || [])
+    .filter((o) => [1, 2, 3].includes(o.ruling) && !objectionStale(o, p, s, now))
+    .sort((a, b) => Number(a.id - b.id));
+  const of = (ruling: number) => list.filter((o) => o.ruling === ruling),
+    sustained = of(2),
+    pending = of(1),
+    overruled = of(3);
+  return {
+    list,
+    sustained,
+    pending,
+    overruled,
+    state: sustained.length
+      ? "SUSTAINED"
+      : pending.length
+        ? "OBJECTION"
+        : overruled.length
+          ? "OVERRULED"
+          : undefined,
+  };
+}
+/** "#1 and #2", "#1, #2 and #3". */
+export const idList = (items: { id: bigint }[]) =>
+  items
+    .map((o) => `#${o.id}`)
+    .join(", ")
+    .replace(/, (#\d+)$/, " and $1");
+/** A plea's share of the seller's balance as CabalGate._shareBps rounds it (up, in basis points),
+ * printed the one way everywhere: "20%", "3.32%" (E3b). */
+export const sharePercent = (amount: bigint, balance: bigint) =>
+  balance ? pct(ceil(amount * 10000n, balance)).replace(".00%", "%") : "";
 export function soldFor(p: Plea, s: Snapshot) {
   return (
     p.escrow?.[3] ||
@@ -883,7 +935,13 @@ export function openPleaNotice(p: any, s: Snapshot, now: number) {
 export function caseState(p: Plea, s: Snapshot, now: number) {
   const objections = p.objections || [],
     max = Number(con(s, "Tribunal.MAX_OBJECTIONS") ?? 2);
-  const filed = objections.filter((o) => [1, 2, 3].includes(o.ruling)).length;
+  // A stale pending objection frees its slot: object() voids it before counting (IMD5).
+  const live = objections.filter(
+      (o) => o.ruling === 1 && !objectionStale(o, p, s, now),
+    ),
+    stale = objections.filter((o) => objectionStale(o, p, s, now));
+  const filed =
+    objections.filter((o) => [2, 3].includes(o.ruling)).length + live.length;
   const rulings = objections.filter((o) => [2, 3].includes(o.ruling)).length;
   const sustained = objections.find((o) => o.ruling === 2);
   const end = Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW"));
@@ -905,37 +963,115 @@ export function caseState(p: Plea, s: Snapshot, now: number) {
     full: !closed && filed >= max,
     end,
     max,
-    pending: objections.filter((o) => o.ruling === 1),
+    pending: live,
+    stale,
+    rulings,
   };
+}
+/** When a held plea's points can be recorded. Seasons.record waits while Tribunal.standing says
+ * held: while the objection window is open with fewer than MAX_OBJECTIONS rulings, and while a
+ * live objection waits for its panel, at most until its filedAt + PENDING_EXPIRY (r2D-N5, r2C-N3).
+ * Undefined when nothing holds them: they can be recorded now (or never). */
+export function recordFrom(p: Plea, s: Snapshot, now: number) {
+  if (!p.standing?.[0] || p.standing[1] || p.excluded || p.recorded)
+    return undefined;
+  const cs = caseState(p, s, now),
+    expiry = Number(con(s, "Tribunal.PENDING_EXPIRY") ?? 1200),
+    window = cs.rulings < cs.max ? cs.end : 0,
+    last = cs.pending.reduce(
+      (a: any, o: any) => (!a || o.filedAt > a.filedAt ? o : a),
+      undefined,
+    ),
+    pending = last ? Number(last.filedAt) + expiry : 0;
+  return pending > window
+    ? { until: pending, objection: last, objections: cs.pending }
+    : { until: window, objection: undefined, objections: [] };
+}
+/** "objection #2 is ruled or expires", "objections #1 and #2 are ruled or expire". */
+export const rulingWait = (objections: { id: bigint }[]) =>
+  objections.length > 1
+    ? `objections ${idList(objections)} are ruled or expire`
+    : `objection #${objections[0]?.id} is ruled or expires`;
+/** "Record your +44 points after 15:42 UTC, when objection #2 is ruled or expires." for the
+ * Points panel, toasts and the hero; "Record your +44 points now." once nothing holds them. */
+export function recordHint(
+  p: Plea,
+  s: Snapshot,
+  now: number,
+  who: "your" | "the" = "your",
+  why = true,
+) {
+  if (
+    ![2, 4, 5].includes(p.status) ||
+    p.excluded ||
+    p.standing?.[1] ||
+    p.recorded
+  )
+    return "";
+  const f = recordFrom(p, s, now);
+  return f
+    ? `Record ${who} +${p.points} points after ${clock(f.until)}${f.objection ? `, when ${rulingWait(f.objections)}` : why ? ", when objections close" : ""}.`
+    : `Record ${who} +${p.points} points now.`;
 }
 export const caseClosedText = (closed: string) =>
   closed.startsWith("at ")
     ? `Objections closed ${closed}`
     : `Objections closed: ${closed}`;
-export function noVerdict(p: Plea, s: Snapshot) {
+/** Why a plea got no verdict. The reason is the Intake's PleaFailed log. Without that log the page
+ * says only what the chain shows: a plea cleared before its PENDING_EXPIRY (or still pending with
+ * its Intake request completed) was closed by the Intake, a plea past it with full history had no
+ * answer, and with incomplete history the reason is unknown; never an expiry still to come (r2C-N5). */
+export function noVerdict(p: Plea, s: Snapshot, now = s.timestamp) {
   const failure = p.failure,
     log = s.logs.find(
       (l) => l.eventName === "PleaFailed" && l.args.id === p.id,
-    );
-  const sub =
-    failure?.status === 1
-      ? "request refused"
-      : failure?.answered
-        ? `panel split ${failure.agreed}/${failure.answered}`
-        : "no answer";
-  const sentence =
-    sub === "request refused"
-      ? "The request was refused."
-      : failure?.answered
-        ? `The panel split: ${failure.agreed} of ${failure.answered} agreed (${con(s, "CabalGate.QUORUM")} needed).`
-        : `No answer within ${span(Number(con(s, "CabalGate.PENDING_EXPIRY")))}.`;
+    ),
+    expiry = Number(con(s, "CabalGate.PENDING_EXPIRY")),
+    end = Number(p.submittedAt) + expiry;
+  const kind: "refused" | "split" | "no answer" | "closed" | "unknown" =
+    failure
+      ? Number(failure.status) === 1
+        ? "refused"
+        : Number(failure.answered)
+          ? "split"
+          : "no answer"
+      : p.status === 1
+        ? p.completed
+          ? "closed"
+          : "no answer"
+        : now <= end
+          ? "closed"
+          : s.historyError
+            ? "unknown"
+            : "no answer";
+  const sub = {
+    refused: "request refused",
+    split: `panel split ${failure?.agreed}/${failure?.answered}`,
+    "no answer": "no answer",
+    closed: "closed by the Intake",
+    unknown: "reason unknown",
+  }[kind];
+  const sentence = {
+    refused: "The request was refused.",
+    split: `The panel split: ${failure?.agreed} of ${failure?.answered} agreed (${con(s, "CabalGate.QUORUM")} needed).`,
+    "no answer": `No answer within ${span(expiry)}.`,
+    closed: "The Intake closed the request without a verdict.",
+    unknown:
+      "The request ended without a verdict. The reason is in history this page could not read.",
+  }[kind];
   return {
+    kind,
     sub,
     sentence,
-    time:
-      p.failureAt ??
-      log?.timestamp ??
-      Number(p.submittedAt) + Number(con(s, "CabalGate.PENDING_EXPIRY")),
+    /** The Sale status line under the sentence. */
+    detail: log
+      ? "Cleared at once by the Intake."
+      : kind === "closed"
+        ? `Cleared by the Intake before the ${span(expiry)} ran out.`
+        : kind === "no answer"
+          ? `The request expired at ${clock(end)} with no answer.`
+          : "",
+    time: p.failureAt ?? log?.timestamp ?? end,
     reported: !!log,
   };
 }
@@ -997,6 +1133,22 @@ export const feeInPleaText = (s: Snapshot | undefined, fee: bigint) => {
     ? "after trading opens"
     : `about ${tokenAmount(value, s, false, 0, "up")}`;
 };
+// Display names (Letterbox.nameOf) for objectors, read on demand and kept a minute, so a plea page
+// that names its objectors does not re-read them on every 15-second refresh.
+const names = new Map<string, { at: number; value: Promise<string> }>();
+export function nameOf(r: Runtime, address: string) {
+  const key = address.toLowerCase(),
+    hit = names.get(key);
+  if (hit && Date.now() - hit.at < 60000) return hit.value;
+  const value = read(r, "Letterbox", "nameOf", [address])
+    .then((n) => String(n || ""))
+    .catch((e) => {
+      names.delete(key);
+      throw e;
+    });
+  names.set(key, { at: Date.now(), value });
+  return value;
+}
 const blockTimes = new Map<string, Promise<number>>();
 export function blockTime(r: Runtime, number: bigint) {
   const key = String(number);

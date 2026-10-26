@@ -34,6 +34,7 @@ import {
   scanLogs,
   tokenAmount,
   clock,
+  recordHint,
   type Snapshot,
 } from "./chain";
 import {
@@ -642,7 +643,7 @@ async function receiptToast(
     return {
       kind: "sold",
       text: `Sold ${tokenAmount(sale.amountIn, s)} for ${tokenAmount(sale.imdOut, s, true)}.`,
-      body: `${p.excluded || p.standing?.[1] ? "" : `Record your +${p.points} points after ${clock(Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW")))}. `}Next plea at ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`,
+      body: `${recordHint(p, s, time, "your", false)} Next plea at ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`.trim(),
     };
   }
   if (closed) {
@@ -712,7 +713,7 @@ async function deliveredToast(
   return {
     kind: "sold",
     text: `Approved, ${p.score} vs need ${p.need}, and sold for you: ${tokenAmount(p.amount, s)} for ${tokenAmount(soldFor(p, s), s, true)}.`,
-    body: `A runner (${short(event.args.runner)}) sold it within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))} and earned the ${tokenAmount(event.args.tip, s, true)} tip.${p.excluded || p.standing?.[1] ? "" : ` Record your +${p.points} points after ${clock(Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW")))}.`} Next plea after ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`,
+    body: `A runner (${short(event.args.runner)}) sold it within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))} and earned the ${tokenAmount(event.args.tip, s, true)} tip.${recordHint(p, s, time, "your", false) ? ` ${recordHint(p, s, time, "your", false)}` : ""} Next plea after ${clock(time + Number(con(s, "CabalGate.COOLDOWN")))}.`,
     hash: event.transactionHash,
   };
 }

@@ -36,6 +36,10 @@ export function pendingState(
       [3, 5, 6].includes(p.status) || ([1, 2].includes(p.status) && !open),
   };
 }
+/** What the writer gets from Letterbox._deliver for a sale of `sold`: a letter (BY_LETTER, flag 1)
+ * pays no auto-sell fee; the site's auto-sell box pays AUTO_SELL_FEE, never more than the sale (r2D-N6). */
+export const deliverOut = (sold: bigint, flags: number) =>
+  flags & 1 ? sold : sold - min(sold, LETTERBOX.AUTO_SELL_FEE);
 export function potFor(
   fees: bigint,
   season: bigint,

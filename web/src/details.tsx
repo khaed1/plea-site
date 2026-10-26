@@ -7,6 +7,8 @@ import {
   con,
   pct,
   caseState,
+  recordFrom,
+  rulingWait,
   noVerdict,
   feeInPleaText,
   read,
@@ -320,7 +322,7 @@ export function PleaTimeline({
           ? "Judged"
           : "Waiting for the Cabal",
       state === "NO VERDICT"
-        ? noVerdict(p, s!).sentence
+        ? noVerdict(p, s!, now).sentence
         : p.verdictAt
           ? `${clock(p.verdictAt)} · ${p.score} vs need ${p.need}`
           : "Usually 3 to 6 minutes.",
@@ -351,8 +353,8 @@ export function PleaTimeline({
       [
         "Objections",
         caseState(p, s!, now).closed
-          ? `Closed: ${caseState(p, s!, now).closed}`
-          : `Points held until ${clock(objection)} or the panel rules`,
+          ? `Closed${caseState(p, s!, now).closed!.startsWith("at ") ? " " : ": "}${caseState(p, s!, now).closed}${recordFrom(p, s!, now)?.objection ? `. Points held until ${clock(recordFrom(p, s!, now)!.until)}, when ${rulingWait(recordFrom(p, s!, now)!.objections)}` : ""}`
+          : `Points held until ${clock(recordFrom(p, s!, now)?.until ?? objection)}${recordFrom(p, s!, now)?.objection ? `, when ${rulingWait(recordFrom(p, s!, now)!.objections)}` : " or the panel rules"}`,
         "megaphone-simple",
         p.standing?.[0] && missedSeason === undefined ? "is-now" : "is-done",
       ],

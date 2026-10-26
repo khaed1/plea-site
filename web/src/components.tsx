@@ -18,6 +18,7 @@ import {
   signedPercent,
   noVerdict,
   caseState,
+  recordHint,
   clock,
   words,
   span,
@@ -989,13 +990,14 @@ export function Stamp({
             ? `until ${utc(Number(p.submittedAt) + Number(con(s, "CabalGate.PENDING_EXPIRY"))).slice(11)}`
             : `${duration(Number(p.submittedAt) + Number(con(s, "CabalGate.PENDING_EXPIRY")) - now)} left`
           : state === "NO VERDICT"
-            ? noVerdict(p, s!).sub
+            ? noVerdict(p, s!, now).sub
             : `${p.score} vs need ${p.need}`}
       </span>
     </span>
   );
 }
 export function ObjectionStamps({ p }: { p: Plea }) {
+  const { s, now } = useApp();
   return (
     <>
       {p.objections?.map((o) => (
@@ -1004,7 +1006,7 @@ export function ObjectionStamps({ p }: { p: Plea }) {
             {["", "OBJECTION", "SUSTAINED", "OVERRULED", "VOID"][o.ruling]}
             {o.ruling === 1 ? ` #${o.id}` : ""}
           </span>
-          <span>{objectionLine(o, p)}</span>
+          <span>{objectionLine(o, p, s, now)}</span>
         </p>
       ))}
     </>
@@ -1032,27 +1034,80 @@ export function PleaFoot({
     !p.appealed &&
     !!val(s, "CabalGate.cabalAlive") &&
     now <= Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN"));
+  // The hero's summary is index.html's: numbers in bold, and the sell-by time only in its meta line.
+  const n = (v: bigint | undefined, pair = false) =>
+    hero ? (
+      <>
+        <b>{amount(v, s!.constants[pair ? "pairDecimals" : "decimals"] ?? 18, pair ? 2 : 0)}</b>{" "}
+        {s!.constants[pair ? "pairSymbol" : "symbol"]}
+      </>
+    ) : (
+      tokenAmount(v, s, pair)
+    );
+  const b = (v: ReactNode) => (hero ? <b>{v}</b> : v);
   if (state === "PENDING")
     return (
       <>
-        <span>{tokenAmount(p.amount, s)}</span>
-        <span>need {p.need}</span>
+        <span>{n(p.amount)}</span>
+        <span>need {b(p.need)}</span>
       </>
     );
   if (![2, 4, 5].includes(p.status))
     return (
       <>
-        <span>{tokenAmount(p.amount, s)}</span>
+        <span>{n(p.amount)}</span>
         <span>no points</span>
         {state === "NO VERDICT" && <span>no cooldown</span>}
         {appeal ? (
-          <span>appealed in #{String(appeal)}</span>
+          <span>appealed in {b(`#${appeal}`)}</span>
         ) : canAppeal ? (
           <span>
             appeal until{" "}
-            {clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}
+            {b(
+              clock(
+                Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")),
+              ),
+            )}
           </span>
         ) : null}
+      </>
+    );
+  if (hero)
+    return (
+      <>
+        <span>
+          {p.status === 4 ? (
+            <>
+              Sold {n(p.amount)} for {n(soldFor(p, s!), true)}
+            </>
+          ) : state === "LAPSED" ? (
+            <>
+              {n(p.amount)} · not sold in{" "}
+              {Number(con(s, "CabalGate.EXECUTE_WINDOW")) / 60} min
+            </>
+          ) : (
+            <>
+              Sells {n(p.amount)}
+              {quote.data !== undefined && <> ≈ {n(quote.data, true)}</>}
+            </>
+          )}
+        </span>
+        <span>
+          {earns && (p.points || 0) > 0 ? (
+            missedSeason ? (
+              "not recorded before the season closed"
+            ) : (
+              <>
+                <b>+{p.points}</b> points{p.standing?.[0] ? " held" : ""}
+                {p.seat
+                  ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000})`
+                  : ""}
+              </>
+            )
+          ) : (
+            "no points"
+          )}
+        </span>
       </>
     );
   return (
@@ -1205,6 +1260,11 @@ export function HeroPlea({ p }: { p: Plea }) {
       <p className="plea__text">“{p.text}”</p>
       {p.facts && <FactCells parts={p.facts} total={p.factScore} />}
       <Meter fact={p.factScore} need={p.need} score={p.score} verdict={state} />
+      {!!p.objections?.length && (
+        <div>
+          <ObjectionStamps p={p} />
+        </div>
+      )}
       <div className="plea__summary">
         <PleaFoot p={p} hero />
       </div>
@@ -1232,7 +1292,7 @@ export function HeroPlea({ p }: { p: Plea }) {
       {p.status === 2 && now <= sell && (
         <p className="meta">
           {mine
-            ? `Sell by ${clock(sell)}.${p.excluded || p.standing?.[1] ? "" : ` Record your +${p.points} points after ${clock(objection)}.`}`
+            ? `Sell by ${clock(sell)}.${recordHint(p, s!, now, "your", false) ? ` ${recordHint(p, s!, now, "your", false)}` : ""}`
             : `${p.name || short(p.seller)} can sell until ${clock(sell)}.${caseState(p, s!, now).closed ? "" : ` Anyone else may object until ${clock(objection)}.`}`}
         </p>
       )}
@@ -1248,12 +1308,15 @@ export function Meter({
   score = 0,
   verdict,
   label,
+  own = false,
 }: {
   fact: number;
   need: number;
   score?: number;
   verdict?: string;
   label?: string;
+  /** The viewer's own plea being written (Plead, the appeal box): "Your need is…". */
+  own?: boolean;
 }) {
   const { s } = useApp(),
     max = Number(con(s, "CabalGate.MAX_PLEA_SCORE") || 45),
@@ -1299,7 +1362,9 @@ export function Meter({
           label ||
           (judged
             ? `Score ${score} of ${max}, need ${need}: ${difference}`
-            : `No score yet. Your need is ${need} of ${max}.`)
+            : own
+              ? `No score yet. Your need is ${need} of ${max}.`
+              : `No score yet, need ${need} of ${max}.`)
         }
       >
         <span className="meter__fill" />

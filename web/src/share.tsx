@@ -10,14 +10,20 @@ import {
   con,
   getPlea,
   short,
-  tokenAmount,
-  pleaState,
+  objectionCase,
   objectionLine,
+  objectionStale,
   clock,
   soldFor,
-  seasonState,
+  sharePercent,
   type Plea,
 } from "./chain";
+import {
+  shareSentence,
+  shareState,
+  shareStatus,
+  shareSubject,
+} from "./share-text";
 import { Empty, Icon, Panel, Stamp, Title } from "./components";
 export function ShareCard({ p }: { p?: Plea }) {
   const { s, r, now } = useApp();
@@ -72,26 +78,16 @@ export function ShareCard({ p }: { p?: Plea }) {
       observer.disconnect();
     };
   }, [p?.text, fit]);
-  const objection =
-    p?.objections?.find((o) => o.ruling === 2) ||
-    p?.objections?.find((o) => o.ruling === 1) ||
-    p?.objections?.at(-1);
+  // Every ruled or live objection gets its own stamp and line (E3a); with none, the latest void or
+  // stale one shows what happened to it.
+  const ruled = p && s ? objectionCase(p, s, now).list : [],
+    shown = ruled.length
+      ? ruled
+      : p?.objections?.length
+        ? [p.objections.reduce((a, o) => (o.id > a.id ? o : a))]
+        : [];
   const sold = p?.status === 4;
-  const latestObjection =
-    p?.objections?.find((o) => o.ruling === 2) ||
-    p?.objections?.find((o) => o.ruling === 1) ||
-    p?.objections?.at(-1);
-  const state =
-    latestObjection && [1, 2, 3].includes(latestObjection.ruling)
-      ? (
-          { 1: "OBJECTION", 2: "SUSTAINED", 3: "OVERRULED" } as Record<
-            number,
-            string
-          >
-        )[latestObjection.ruling]
-      : p && s
-        ? pleaState(p, now, s)
-        : "";
+  const state = p && s ? shareState(p, s, now) : "";
   const cardUrl = location.host + location.pathname + (p ? `#/p/${p.id}` : "");
   const dead = !!s?.v["CabalGate.diedAt"];
   return (
@@ -101,7 +97,7 @@ export function ShareCard({ p }: { p?: Plea }) {
       role="img"
       aria-label={
         p
-          ? `Share card for plea #${p.id} by ${p.name || short(p.seller)}${p.seat ? ", seat holder" : ""}${p.flags & 1 ? ", by letter" : ""}${p.isAppeal ? `, the appeal of #${p.originalId}` : ""}: “${p.text}” ${state === "NO VERDICT" ? `No verdict: ${noVerdict(p, s!).sentence} No cooldown. No points.` : ["OBJECTION", "SUSTAINED", "OVERRULED"].includes(state) ? `Objection #${latestObjection.id} ${state.toLowerCase()}, ${latestObjection.ruling === 1 ? `a new panel re-scores it; ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less means no points` : `${latestObjection.newScore} vs need ${p.need}: ${state === "SUSTAINED" ? "no points" : `+${p.points} points`}`}.` : `${state}, ${p.score} vs need ${p.need}. ${earnsPoints && p.points ? `+${p.points} points${p.standing?.[0] ? " held" : ""}.` : "No points."}${state === "DENIED" && !p.appealed && !p.isAppeal && !dead && now <= Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")) ? ` Appeal open until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`} ${cardUrl}`
+          ? `Share card for plea #${p.id} by ${p.name || short(p.seller)}${p.seat ? ", seat holder" : ""}${p.flags & 1 ? ", by letter" : ""}${p.isAppeal ? `, the appeal of #${p.originalId}` : ""}: “${p.text}” ${shareSentence(p, s!, now, { rank: extra.data?.rank, season: extra.data?.season, originalScore: extra.data?.original?.score })} ${cardUrl}`
           : "PLEA: buying is open, selling needs a plea."
       }
     >
@@ -141,18 +137,22 @@ export function ShareCard({ p }: { p?: Plea }) {
             </p>
             <div className="share-card__stamp share-card__stamp--pair">
               <Stamp p={p} staticTime />
-              {objection ? (
-                <span className="share-card__objection">
+              {shown.map((o) => (
+                <span className="share-card__objection" key={String(o.id)}>
                   <span className="stamp stamp--sm stamp--objection">
-                    {objection.ruling === 1
-                      ? `OBJECTION #${objection.id}`
-                      : ["", "", "SUSTAINED", "OVERRULED", "VOID"][
-                          objection.ruling
-                        ]}
+                    {o.ruling === 1
+                      ? `OBJECTION #${o.id}`
+                      : ["", "", "SUSTAINED", "OVERRULED", "VOID"][o.ruling]}
                   </span>
-                  <span>{objectionLine(objection, p)}</span>
+                  <span>
+                    {o.ruling === 4
+                      ? `#${o.id}: ${o.reason === "stale" ? "no answer" : "panel split"} · nothing changes`
+                      : o.ruling === 1 && objectionStale(o, p, s!, now)
+                        ? "no answer · void once expired"
+                        : objectionLine(o, p, s, now)}
+                  </span>
                 </span>
-              ) : null}
+              ))}
             </div>
           </>
         ) : (
@@ -184,7 +184,7 @@ export function ShareCard({ p }: { p?: Plea }) {
                       <span>
                         PLEA ·{" "}
                         {p.balance
-                          ? `${Number((p.amount * 10000n) / p.balance) / 100}% of the bag`
+                          ? `${sharePercent(p.amount, p.balance)} of the bag`
                           : "waiting for the judges"}
                       </span>
                     </div>
@@ -193,16 +193,26 @@ export function ShareCard({ p }: { p?: Plea }) {
                   <>
                     <div>
                       <b>
-                        {noVerdict(p, s!).sub === "no answer"
-                          ? "No answer"
-                          : noVerdict(p, s!).sub === "request refused"
-                            ? "Request refused"
-                            : `${p.failure.agreed} of ${p.failure.answered}`}
+                        {
+                          {
+                            "no answer": "No answer",
+                            refused: "Request refused",
+                            split: `${p.failure?.agreed} of ${p.failure?.answered}`,
+                            closed: "Closed",
+                            unknown: "No verdict",
+                          }[noVerdict(p, s!, now).kind]
+                        }
                       </b>
                       <span>
-                        {noVerdict(p, s!).sub.startsWith("panel split")
-                          ? `judges agreed · ${con(s, "CabalGate.QUORUM")} needed`
-                          : `within ${span(Number(con(s, "CabalGate.PENDING_EXPIRY")))}`}
+                        {
+                          {
+                            "no answer": `within ${span(Number(con(s, "CabalGate.PENDING_EXPIRY")))}`,
+                            refused: "cleared at once",
+                            split: `judges agreed · ${con(s, "CabalGate.QUORUM")} needed`,
+                            closed: "by the Intake, no verdict",
+                            unknown: "reason unknown",
+                          }[noVerdict(p, s!, now).kind]
+                        }
                       </span>
                     </div>
                     <div>
@@ -321,41 +331,12 @@ export function Share({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const url = location.href.split("#")[0] + (p ? `#/p/${p.id}` : "#/");
-  const latestObjection =
-    p?.objections?.find((o) => o.ruling === 2) ||
-    p?.objections?.find((o) => o.ruling === 1) ||
-    p?.objections?.at(-1);
-  const state =
-    latestObjection && [1, 2, 3].includes(latestObjection.ruling)
-      ? (
-          { 1: "OBJECTION", 2: "SUSTAINED", 3: "OVERRULED" } as Record<
-            number,
-            string
-          >
-        )[latestObjection.ruling]
-      : p && s
-        ? pleaState(p, now, s)
-        : "";
-  const subject = p
-    ? address?.toLowerCase() === p.seller.toLowerCase()
-      ? "my plea"
-      : `plea #${p.id} by ${p.name || short(p.seller)}`
-    : "PLEA";
+  const subject = p ? shareSubject(p, address) : "PLEA";
   const ending = s?.v["CabalGate.diedAt"]
     ? "The Cabal is dead; PLEA trades freely:"
     : "Plead your case:";
   const statusText = p
-    ? state === "PENDING"
-      ? `PENDING: the Cabal is judging ${subject}; need ${p.need}.`
-      : state === "NO VERDICT"
-        ? `NO VERDICT on ${subject}; ${noVerdict(p, s!).sub}. No cooldown.`
-        : state === "OBJECTION"
-          ? `OBJECTION #${latestObjection.id} to ${subject} (${pleaState(p, now, s!)}, ${p.score} vs need ${p.need}): a new panel re-scores it, and ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less means no points.`
-          : state === "SUSTAINED"
-            ? `Objection #${latestObjection.id} SUSTAINED: ${subject} re-scored ${latestObjection.newScore} vs need ${p.need}, no points; the sale stands.`
-            : state === "OVERRULED"
-              ? `Objection #${latestObjection.id} OVERRULED: ${subject} re-scored ${latestObjection.newScore} vs need ${p.need}, counts ${p.points} points.`
-              : `${state}: ${subject}, ${latestObjection && [2, 3].includes(latestObjection.ruling) ? latestObjection.newScore : p.score} vs need ${p.need}.${p.status === 4 ? ` Sold for ${tokenAmount(soldFor(p, s!), s, true)}.` : state === "UPHELD" ? " No further appeal." : state === "SUSTAINED" ? " No points; the sale stands." : state === "DENIED" && !p.appealed ? ` Appeal until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`
+    ? shareStatus(p, s!, now, subject)
     : "Buying is open. Selling needs a plea.";
   let quote =
     p?.text

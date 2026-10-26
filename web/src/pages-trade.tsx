@@ -1191,7 +1191,7 @@ export function Plead() {
                 </span>
               </div>
               <FactCells parts={parts} total={fact.data} />
-              <Meter fact={fact.data} need={need!} />
+              <Meter fact={fact.data} need={need!} own />
             </>
           ) : address && raw > 0n && fact.loading ? (
             <div className="stack" aria-busy="true">
