@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build && node scripts/manifest.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "verify-export": "npm run build && git -C .. diff --exit-code --stat -- dist && test -z \"$(git -C .. status --porcelain -- dist)\""
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -25,5 +26,10 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "axe-core": "^4.11.0"
-  }
+  },
+  "engines": {
+    "node": "22.22.0",
+    "npm": "10.9.4"
+  },
+  "packageManager": "npm@10.9.4"
 }
