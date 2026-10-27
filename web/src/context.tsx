@@ -198,14 +198,22 @@ export function DataProvider({
         // diedAt rides along for the loading band only: Home's lead and title differ once the
         // Cabal is dead, and the constants alone cannot tell (r2X-11). It stays out of the
         // snapshot's constants; when it fails, the band keeps its skeleton lead.
-        const [c, diedAt] = await Promise.all([
+        // So do the season Seasons is titled by (startedAt, currentSeason: sweep R17).
+        const [c, diedAt, startedAt, currentSeason] = await Promise.all([
           readStatic(r),
           read(r, "CabalGate", "diedAt").catch(() => undefined),
+          read(r, "CabalGate", "startedAt").catch(() => undefined),
+          read(r, "Seasons", "currentSeason").catch(() => undefined),
         ]);
         constants.current = c;
-        setStatics(
-          diedAt === undefined ? c : { ...c, "CabalGate.diedAt": diedAt },
-        );
+        setStatics({
+          ...c,
+          ...(diedAt === undefined ? {} : { "CabalGate.diedAt": diedAt }),
+          ...(startedAt === undefined ? {} : { "CabalGate.startedAt": startedAt }),
+          ...(currentSeason === undefined
+            ? {}
+            : { "Seasons.currentSeason": currentSeason }),
+        });
         setVerified(true);
       }
       const next = await readSnapshot(r, constants.current, previous.current);

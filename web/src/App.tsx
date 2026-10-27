@@ -1,4 +1,4 @@
-import { PageLoading } from "./page-loading";
+import { PageHeading, PageLoading } from "./page-loading";
 import { PageBoundary } from "./page-boundary";
 import { resetHealth } from "./config";
 import { NO_ANSWER, readErrorTitle } from "./rpc-health";
@@ -292,7 +292,7 @@ export default function App() {
           </div>
         )}
         <PageBoundary key={hash}>
-        {!s && error ? null : !s ? (<PageLoading page={page} id={path[1]}/>
+        {!s && error ? (<PageHeading page={page} id={path[1]}/>) : !s ? (<PageLoading page={page} id={path[1]}/>
         ) : page === "buy" ? (
           <Buy />
         ) : page === "plead" ? (

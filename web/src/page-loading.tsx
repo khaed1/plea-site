@@ -2,7 +2,37 @@ import { isAddress } from "viem";
 import { useAccount } from "wagmi";
 import { Icon, Notice, Title } from "./components";
 import { useApp } from "./context";
-import { homeLead, loadingLine, loadingTitle } from "./loading-text";
+import { homeButtons, homeLead, loadingLine, loadingTitle } from "./loading-text";
+/** The page's h1 alone, for a first read that failed (no snapshot, a read error): the error box
+ * says what failed, and the page keeps its heading (sweep R16). */
+export function PageHeading({ page, id }: { page: string; id?: string }) {
+  const { address } = useAccount();
+  const { statics } = useApp();
+  const known = !!statics && statics["CabalGate.diedAt"] !== undefined,
+    dead = known && !!statics!["CabalGate.diedAt"];
+  if (["", "how", "contracts"].includes(page))
+    return (
+      <div className="page-title">
+        <h1 className="hero-title">
+          <span className="hero-line">Buying is open.</span>
+          {known && (
+            <>
+              {" "}
+              Selling{" "}
+              {dead ? (
+                "is open forever."
+              ) : (
+                <>
+                  needs <span className="nowrap">a plea.</span>
+                </>
+              )}
+            </>
+          )}
+        </h1>
+      </div>
+    );
+  return <Title title={loadingTitle(page, id, address, statics)} />;
+}
 /** The first read's loading band for each route (round-2 X5), as the mockups' "Loading" reference
  * bands: a still skeleton under the page's real h1 and labels, with a line saying what is read. */
 export function PageLoading({ page, id }: { page: string; id?: string }) {
@@ -36,17 +66,30 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
           <div className="stack stack--lg">
             <div>
               <div className="page-title">
+                {/* Whether selling needs a plea is known only with CabalGate.diedAt: until then the
+                    h1 says what holds either way, and the rest is a still skeleton (sweep R14). */}
                 <h1 className="hero-title">
-                  <span className="hero-line">Buying is open.</span> Selling{" "}
-                  {dead ? (
-                    "is open forever."
-                  ) : (
+                  <span className="hero-line">Buying is open.</span>
+                  {known && (
                     <>
-                      needs <span className="nowrap">a plea.</span>
+                      {" "}
+                      Selling{" "}
+                      {dead ? (
+                        "is open forever."
+                      ) : (
+                        <>
+                          needs <span className="nowrap">a plea.</span>
+                        </>
+                      )}
                     </>
                   )}
                 </h1>
               </div>
+              {!known && (
+                <div className="skeleton" aria-hidden="true">
+                  <div className="skeleton__line skeleton__line--mid" />
+                </div>
+              )}
               {/* The loaded hero's own lead (r2X-11). It names the chain's panel size and top score,
                   and whether the Cabal is dead, which arrive with the constants a moment before the
                   snapshot; until then it is a still skeleton rather than a different sentence. */}
@@ -60,12 +103,17 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
               )}
             </div>
             <div className="btn-row">
-              <a className="btn btn--primary" href="#/buy">
-                {dead ? "Buy or sell PLEA" : `Buy ${statics?.symbol || "PLEA"}`}
-              </a>
-              <a className="btn" href={dead ? "#/wall" : "#/plead"}>
-                {dead ? "See the Wall" : "Plead to sell"}
-              </a>
+              {homeButtons(known ? dead : undefined, statics?.symbol || "PLEA").map(
+                (b, i) => (
+                  <a
+                    key={b.href}
+                    className={i ? "btn" : "btn btn--primary"}
+                    href={b.href}
+                  >
+                    {b.label}
+                  </a>
+                ),
+              )}
             </div>
           </div>
           {/* Where the loaded hero's "Latest verdict" card goes. */}
@@ -126,7 +174,7 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
     );
   return (
     <div className="page-loading stack stack--lg">
-      <Title title={loadingTitle(page, id, address)} />
+      <Title title={loadingTitle(page, id, address, statics)} />
       {wall ? (
         <div className="stack stack--sm" aria-busy="true">
           {line}

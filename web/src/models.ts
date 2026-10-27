@@ -301,9 +301,26 @@ export function feeDisplay(
     launch: round(launchFee, cashDigits, true),
   });
   let values = parts();
+  const exact: Record<string, bigint> = {
+    cash: part("CASHBACK_BPS"),
+    owner: part("OWNER_BPS"),
+    prize: dead ? 0n : part("PRIZE_BPS"),
+    wall: part("POOL_BPS") + (dead ? part("PRIZE_BPS") : 0n),
+    launch: launchFee,
+  };
+  // A part rounded at its decimals may hide most of itself on a small buy (0.000196 owner shown as
+  // 0.01, a 0.0049 cashback as 0.00), and "reaches the pool" with it. More decimals until no shown
+  // part is off by more than half of the exact one (buy.html's 2 and 3 decimals for usual amounts).
+  const hides = (v: Record<string, bigint>) =>
+    Object.entries(v).some(([k, n]) => {
+      const e = exact[k],
+        d = n > e ? n - e : e - n;
+      return e > 0n && d * 2n > e;
+    });
   // Sub-cent inputs need more precision to keep conservative rounding from exceeding the payment.
   while (
-    Object.values(values).reduce((a, b) => a + b, 0n) > pay &&
+    (Object.values(values).reduce((a, b) => a + b, 0n) > pay ||
+      hides(values)) &&
     partDigits < 18
   ) {
     cashDigits++;

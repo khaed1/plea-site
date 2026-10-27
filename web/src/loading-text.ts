@@ -32,12 +32,39 @@ const TITLES: Record<string, string> = {
   objections: "Objection!",
   letters: "Plead by letter",
   claim: "Claim your PLEA",
-  share: "Share cards",
+  share: "Share PLEA",
+  "share-cards": "Share PLEA",
 };
+/** The season Seasons is titled by (seasons.tsx: "Season N"), from the reads that ride along with
+ * the constants (CabalGate.startedAt, diedAt, Seasons.currentSeason), as readSnapshot computes
+ * displayedSeason; undefined when they are not in. */
+export function loadingSeason(c?: Record<string, any>) {
+  if (!c) return undefined;
+  const started = c["CabalGate.startedAt"],
+    died = c["CabalGate.diedAt"],
+    current = c["Seasons.currentSeason"],
+    length = c["Seasons.SEASON"];
+  if (started === undefined || died === undefined) return undefined;
+  if (!BigInt(started)) return null;
+  if (BigInt(died) && length)
+    return (BigInt(died) - 1n - BigInt(started)) / BigInt(length);
+  return current === undefined ? undefined : BigInt(current[1]);
+}
 /** The loading band's h1: the loaded page's own where it is known before the first read. A profile
  * is titled by its short address until the name arrives (profile.tsx: name, else the address). */
-export function loadingTitle(page: string, id?: string, connected?: string) {
+export function loadingTitle(
+  page: string,
+  id?: string,
+  connected?: string,
+  statics?: Record<string, any>,
+) {
   if (page === "p") return `Plea #${id}`;
+  if ((page === "share" || page === "share-cards") && id && /^\d+$/.test(id))
+    return `Share plea #${id}`;
+  if (page === "seasons") {
+    const k = loadingSeason(statics);
+    if (k !== undefined && k !== null) return `Season ${k + 1n}`;
+  }
   if (page === "profile") {
     const who = id || connected;
     return who && isAddress(who, { strict: false })
@@ -60,4 +87,22 @@ export function homeLead(
       ? "The Cabal is dead, so buying and selling are open to everyone, forever."
       : `To sell, you write why, and the Cabal, ${c["CabalGate.PANEL_SIZE"]} judges on an IMD oracle panel, scores it from 0 to ${c["CabalGate.MAX_PLEA_SCORE"]}.`
   }`;
+}
+/** Home's hero buttons: alive, dead, or (state not known yet: Home's loading band before the
+ * constants carry CabalGate.diedAt) the two that hold either way, Buy and the Wall (sweep R14). */
+export function homeButtons(dead: boolean | undefined, symbol = "PLEA") {
+  return dead === undefined
+    ? [
+        { label: `Buy ${symbol}`, href: "#/buy" },
+        { label: "See the Wall", href: "#/wall" },
+      ]
+    : dead
+      ? [
+          { label: "Buy or sell PLEA", href: "#/buy" },
+          { label: "See the Wall", href: "#/wall" },
+        ]
+      : [
+          { label: `Buy ${symbol}`, href: "#/buy" },
+          { label: "Plead to sell", href: "#/plead" },
+        ];
 }

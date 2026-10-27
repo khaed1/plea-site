@@ -442,3 +442,103 @@ test("sweep P3: an open escrow is named on Letters and Profile, before and after
     "Plea #7’s escrow still holds this wallet’s 500,000 PLEA.",
   );
 });
+
+const loading = await load("loading-text");
+const walletList = await load("wallet-list");
+const share = await load("share-text");
+
+test("sweep R1, R12: a part that rounding would mostly hide gets more decimals", () => {
+  const hook = Object.fromEntries(
+    Object.entries({ IMD_FEE_BPS: 200, CASHBACK_BPS: 50, OWNER_BPS: 100, PRIZE_BPS: 25, POOL_BPS: 25 }).map(
+      ([k, v]) => ["PleaHook." + k, v],
+    ),
+  );
+  const d = (text) => {
+    const [w, f = ""] = text.split(".");
+    return models.feeDisplay(BigInt(w) * E + BigInt((f + "0".repeat(18)).slice(0, 18)), hook, 0n, false, text);
+  };
+  // 0.02 imdTEST: about 0.0196 reaches the pool, not 0.008 (the owner's 0.000196 is no 0.01).
+  const tiny = d("0.02");
+  assert.equal(`${tiny.reaches} + ${tiny.fees} = ${tiny.pay}`, "0.01961 + 0.00039 = 0.02");
+  assert.equal(tiny.owner, "0.00020");
+  // 1 imdTEST: the 0.0049 cashback shows as 0.004, never 0.00 (the note under the button prints
+  // the same figure).
+  assert.equal(d("1").cash, "0.004");
+  // Usual amounts keep buy.html's 2 and 3 decimals.
+  const usual = d("100");
+  assert.deepEqual([usual.cash, usual.owner, usual.prize, usual.reaches], ["0.49", "0.99", "0.246", "98.028"]);
+  assert.equal(`${d("26").reaches} + ${d("26").fees}`, "25.492 + 0.508");
+});
+
+test("sweep R14, R16, R17: loading bands use the loaded page's h1 and hold no alive/dead guess", () => {
+  assert.deepEqual(
+    loading.homeButtons(undefined).map((b) => b.label),
+    ["Buy PLEA", "See the Wall"],
+  );
+  assert.deepEqual(loading.homeButtons(true).map((b) => b.label), ["Buy or sell PLEA", "See the Wall"]);
+  assert.deepEqual(loading.homeButtons(false).map((b) => b.href), ["#/buy", "#/plead"]);
+  assert.equal(loading.loadingTitle("share", "9"), "Share plea #9");
+  assert.equal(loading.loadingTitle("share"), "Share PLEA");
+  assert.equal(loading.loadingTitle("seasons"), "Seasons");
+  const c = {
+    "CabalGate.startedAt": 1000n,
+    "CabalGate.diedAt": 0n,
+    "Seasons.currentSeason": [true, 1n],
+    "Seasons.SEASON": 18000n,
+  };
+  assert.equal(loading.loadingTitle("seasons", undefined, undefined, c), "Season 2");
+  assert.equal(
+    loading.loadingTitle("seasons", undefined, undefined, { ...c, "CabalGate.diedAt": 1000n + 18000n * 8n + 5n }),
+    "Season 9",
+  );
+  assert.equal(
+    loading.loadingTitle("seasons", undefined, undefined, { ...c, "CabalGate.startedAt": 0n }),
+    "Seasons",
+  );
+});
+
+test("sweep R15: connecting without a wallet says so; an iPad in desktop mode gets the Open-in links", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+  assert.equal(walletList.isMobileWithoutWallet(mac, undefined, 5), true);
+  assert.equal(walletList.isMobileWithoutWallet(mac, undefined, 0), false);
+  assert.equal(walletList.isMobileWithoutWallet(mac, {}, 5), false);
+  const notFound = Object.assign(new Error("Provider not found.\n\nVersion: @wagmi/core@2"), {
+    name: "ProviderNotFoundError",
+  });
+  assert.match(walletList.connectErrorText(notFound), /^No browser wallet found\./);
+  assert.doesNotMatch(walletList.connectErrorText(notFound), /simulated/);
+  assert.match(walletList.connectErrorText({ code: 4001, message: "User rejected the request." }), /declined/);
+  assert.match(walletList.connectErrorText(new Error("boom")), /^The wallet did not connect/);
+});
+
+test("sweep R19, R20: the latest appeal decides the denied plea's label; an excluded seller's overturned sale says why", () => {
+  const s = snap({
+    logs: [
+      { eventName: "PleaSubmitted", args: { id: 9n, originalId: 8n } },
+      { eventName: "PleaExpired", args: { id: 9n } },
+      { eventName: "PleaSubmitted", args: { id: 20n, originalId: 8n } },
+      { eventName: "Verdict", args: { id: 20n, approved: true } },
+    ],
+  });
+  assert.equal(chain.latestAppealOf(s, 8n), 20n);
+  assert.equal(chain.latestAppealOf({ logs: [], pleas: [plea({ id: 21n, isAppeal: true, originalId: 8n })] }, 8n), 21n);
+  assert.equal(chain.latestAppealOf(s, 7n), undefined);
+  const denied = plea({ id: 8n, status: 3, score: 9, need: 40 });
+  assert.equal(
+    share.shareSentence(denied, s, V + 60000),
+    "Denied, 9 vs need 40. Appealed in plea #20, overturned.",
+  );
+  const sold = plea({
+    id: 13n,
+    status: 4,
+    isAppeal: true,
+    originalId: 12n,
+    excluded: true,
+    points: 0,
+    escrow: ["0xa", false, 0n, 168n * 10n ** 16n],
+  });
+  assert.equal(
+    share.shareSentence(sold, snap(), V + 60),
+    "Overturned on appeal, 44 vs need 37. Sold for 1.68 imdTEST. This seller is excluded from season points.",
+  );
+});

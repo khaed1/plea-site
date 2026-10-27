@@ -3,6 +3,7 @@ import {
   clock,
   con,
   idList,
+  latestAppealOf,
   noVerdict,
   objectionCase,
   pointsHeld,
@@ -32,10 +33,7 @@ function appealOpen(p: Plea, s: Snapshot, now: number) {
     now <= Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN"))
   );
 }
-const appealOf = (p: Plea, s: Snapshot) =>
-  s.logs.find(
-    (l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id,
-  )?.args.id as bigint | undefined;
+const appealOf = (p: Plea, s: Snapshot) => latestAppealOf(s, p.id);
 /** How a denied plea's appeal ended, for "Appealed in plea #207, overturned." (share-cards.html):
  * the appeal's own state when the snapshot holds it, else its Verdict log (approved: overturned),
  * else its PleaFailed or PleaExpired log (no verdict). Undefined while nothing says. */
@@ -118,7 +116,8 @@ export function shareSentence(
     const facts = [soldKnown ? `Sold for ${forX}` : "", points, rank]
       .filter(Boolean)
       .join(", ");
-    return `Overturned on appeal, ${p.score} vs need ${p.need}.${facts ? ` ${cap(facts)}.` : p.excluded ? " This seller is excluded from season points." : ""}`;
+    // An excluded seller's card shows "No points": the label says why, sold or not (sweep R20).
+    return `Overturned on appeal, ${p.score} vs need ${p.need}.${facts ? ` ${cap(facts)}.` : ""}${p.excluded ? " This seller is excluded from season points." : ""}`;
   }
   const head =
     state === "OVERTURNED"

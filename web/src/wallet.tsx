@@ -3,7 +3,11 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { short, read } from "./chain";
 import { useApp, useRead } from "./context";
 import { explainError } from "./errors";
-import { listedConnectors, isMobileWithoutWallet } from "./wallet-list";
+import {
+  connectErrorText,
+  listedConnectors,
+  isMobileWithoutWallet,
+} from "./wallet-list";
 const OPEN = [
   {
     id: "metaMask",
@@ -54,6 +58,7 @@ export function Wallet() {
   const mobile = isMobileWithoutWallet(
     navigator.userAgent,
     (window as any).ethereum,
+    navigator.maxTouchPoints || 0,
   );
   useEffect(() => {
     if (address) {
@@ -183,7 +188,7 @@ export function Wallet() {
                     try {
                       await connectAsync({ connector: c });
                     } catch (e) {
-                      setError(explainError(e).title);
+                      setError(connectErrorText(e));
                     }
                   }}
                 >

@@ -14,6 +14,7 @@ import {
   objectionLine,
   voidWords,
   pointsHeld,
+  latestAppealOf,
   objectionStale,
   clock,
   soldFor,
@@ -267,7 +268,7 @@ export function ShareCard({ p }: { p?: Plea }) {
                         </b>
                         <span>
                           {p.appealed
-                            ? `in #${s?.logs.find((l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id)?.args.id || "…"}`
+                            ? `in #${latestAppealOf(s, p.id) || "…"}`
                             : `appeal until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}`}
                         </span>
                       </div>

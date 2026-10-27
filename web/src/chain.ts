@@ -1139,6 +1139,25 @@ export function escrowWaiting(
       : `Anyone can return it to the writer, with the ${tip} tip: Return escrow and tip on plea #${o.id}.`,
   };
 }
+/** The newest appeal of denied plea `id`. CabalGate._expire resets the original's appealed flag,
+ * so after an unanswered or refused appeal the writer may appeal again: the latest one decides (its
+ * PleaSubmitted log, or the newest pleas read from the contract when history has a gap). */
+export function latestAppealOf(
+  s: Pick<Snapshot, "logs" | "pleas"> | undefined,
+  id: bigint,
+): bigint | undefined {
+  const ids = [
+    ...(s?.logs || [])
+      .filter(
+        (l) => l.eventName === "PleaSubmitted" && l.args.originalId === id,
+      )
+      .map((l) => BigInt(l.args.id)),
+    ...(s?.pleas || [])
+      .filter((p) => p.isAppeal && BigInt(p.originalId) === id)
+      .map((p) => p.id),
+  ];
+  return ids.length ? ids.reduce((a, b) => (b > a ? b : a)) : undefined;
+}
 /** Plead's notice body (plead.html): "Sell by 08:06 UTC. Next plea …", or the pending line. */
 export function openPleaNotice(p: any, s: Snapshot, now: number) {
   const parts = openPleaParts(p, s, now);

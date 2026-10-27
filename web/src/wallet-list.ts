@@ -13,6 +13,27 @@ export function listedConnectors<T extends { id: string; type: string }>(
   return connectors.filter((c) => c.id !== "injected" || (!named && !mobile));
 }
 /** A phone or tablet browser with no injected wallet: the wallet apps' in-app browsers set
- * window.ethereum, plain Safari or Chrome do not. */
-export const isMobileWithoutWallet = (userAgent: string, ethereum: unknown) =>
-  /Android|iPhone|iPad|iPod/i.test(userAgent) && !ethereum;
+ * window.ethereum, plain Safari or Chrome do not. iPadOS Safari in its default desktop mode sends
+ * a Mac user agent: a "Mac" with a touch screen (navigator.maxTouchPoints > 1) is an iPad. */
+export const isMobileWithoutWallet = (
+  userAgent: string,
+  ethereum: unknown,
+  maxTouchPoints = 0,
+) =>
+  (/Android|iPhone|iPad|iPod/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && maxTouchPoints > 1)) &&
+  !ethereum;
+/** Why connecting failed, in the Connect sheet: no wallet behind the generic connector (wagmi's
+ * ProviderNotFoundError), a declined request, or else a plain retry line; never the transaction
+ * texts of explainError (nothing is simulated or sent when connecting). */
+export function connectErrorText(e: any) {
+  const all = [e, e?.cause].filter(Boolean),
+    text = all.map((x) => `${x?.name || ""} ${x?.message || ""}`).join(" ");
+  if (/ProviderNotFound|provider not found|no provider/i.test(text))
+    return "No browser wallet found. Install a wallet extension, or open this page in your wallet app’s browser.";
+  if (all.some((x) => x?.code === 4001) || /user rejected|user denied/i.test(text))
+    return "You declined the connection in your wallet. Nothing was shared; try again when ready.";
+  if (all.some((x) => x?.code === -32002) || /already pending/i.test(text))
+    return "Your wallet already has a connection request open. Finish it in the wallet.";
+  return "The wallet did not connect. Try again, or choose another wallet.";
+}

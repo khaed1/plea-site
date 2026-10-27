@@ -20,6 +20,7 @@ import {
   caseState,
   recordHint,
   pointsHeld,
+  latestAppealOf,
   clock,
   words,
   span,
@@ -1064,9 +1065,7 @@ export function PleaFoot({
     state = pleaState(p, now, s!),
     quote = useSaleQuote(hero ? p : undefined),
     earns = [2, 4, 5].includes(p.status) && !p.excluded && !p.standing?.[1],
-    appeal = s!.logs.find(
-      (l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id,
-    )?.args.id;
+    appeal = latestAppealOf(s, p.id);
   const canAppeal =
     p.status === 3 &&
     !p.isAppeal &&

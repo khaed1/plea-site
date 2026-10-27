@@ -39,6 +39,7 @@ import {
   read,
   recordFrom,
   pointsHeld,
+  latestAppealOf,
   recordHint,
   rulingWait,
   idList,
@@ -767,9 +768,7 @@ export function PleaPage({ id }: { id: string }) {
   const settled = p.escrow && !p.escrow[1];
   const recordAt = recordFrom(p, s, now),
     cs = caseState(p, s, now);
-  const appealId = s.logs.find(
-    (l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id,
-  )?.args.id;
+  const appealId = latestAppealOf(s, p.id);
   return (
     <div className="stack stack--lg">
       <nav aria-label="Breadcrumb" className="meta">
@@ -911,7 +910,10 @@ export function PleaPage({ id }: { id: string }) {
                       variant={mine ? "ink" : undefined}
                       primary={false}
                       block
-                      sub={`≈ ${tokenAmount(deliverOut(net, p.flags), s, true)}`}
+                      sub={quoteSub(saleQuote, (n) =>
+                        tokenAmount(deliverOut(n, p.flags), s, true),
+                      )}
+                      reason={saleQuote.error || undefined}
                       onRun={() =>
                         tx.send("Letterbox", "deliver", [p!.id], undefined, {
                           errors: {
@@ -951,7 +953,7 @@ export function PleaPage({ id }: { id: string }) {
                       spender={r.addresses.CabalGate}
                       spend={p.amount}
                       variant="ink"
-                      sub={`≈ ${tokenAmount(net, s, true)}`}
+                      sub={quoteSub(saleQuote, (n) => tokenAmount(n, s, true))}
                       disabled={minOut <= 0n}
                       reason={saleQuote.error}
                       prepare={async () => {
@@ -1521,6 +1523,18 @@ export function ObjectionForm({ p }: { p: Plea }) {
       )}
     </article>
   );
+}
+/** A sale button's sub-label: "≈ 25.98 imdTEST" from the quote, "no quote" when the pool cannot
+ * quote it (a failed read, or nothing out), never "≈ 0.00". */
+function quoteSub(
+  q: { data?: bigint; error: string; loading: boolean },
+  fmt: (n: bigint) => string,
+) {
+  return q.data
+    ? `≈ ${fmt(q.data)}`
+    : q.error || q.data === 0n
+      ? "no quote"
+      : "reading the pool…";
 }
 export function Objections() {
   const { r, s, now, refresh } = useApp(),

@@ -675,11 +675,20 @@ export function Profile({ target }: { target?: string }) {
                 ) : null;
               })()}
             {data.pleas.length ? (
-              <div className="wall-grid">
-                {data.pleas.map((p) => (
-                  <PleaCard key={String(p.id)} p={p} />
-                ))}
-              </div>
+              <>
+                <div className="wall-grid">
+                  {data.pleas.map((p) => (
+                    <PleaCard key={String(p.id)} p={p} />
+                  ))}
+                </div>
+                {/* The two newest come from history and the newest pleas read; with a gap in
+                    history an older one may be missing (r2S-N1). */}
+                {s!.historyError && (
+                  <p className="small">
+                    Older pleas show once the history is read.
+                  </p>
+                )}
+              </>
             ) : (
               <Empty
                 title="No pleas yet"

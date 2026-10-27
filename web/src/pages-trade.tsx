@@ -563,7 +563,8 @@ export function Buy() {
                   >
                     Max
                     <span className="sr-only">
-                      : pay all {tokenAmount(available, s, !selling)}
+                      : {selling ? "sell" : "pay"} all{" "}
+                      {tokenAmount(available, s, !selling)}
                     </span>
                   </button>
                 </>
@@ -641,7 +642,9 @@ export function Buy() {
                     `Minimum, ${slip / 100}% slippage`,
                     minOut !== undefined
                       ? tokenAmount(minOut, s, selling)
-                      : "Waiting for the quote",
+                      : quote.error
+                        ? "No quote"
+                        : "Waiting for the quote",
                   ],
                   ...(!selling
                     ? ([["Reaches the pool", `${display.reaches} ${pair}`]] as [
@@ -665,23 +668,30 @@ export function Buy() {
                             : `${display.cash} ${pair}${payout.data === "claims" ? ", paid as a claim on the PoolManager (see Profile)" : ""}`,
                           "part",
                         ],
+                        // An opening buy's payouts join the pool (PleaHook._payFees: PayoutsToPool
+                        // zeroes the cashback, owner and prize shares; the whole fee is retained for
+                        // the buy wall).
                         [
                           `Owner (${pct(con(s, "PleaHook.OWNER_BPS"))})`,
-                          `${display.owner} ${pair}`,
+                          payout.data === "pool"
+                            ? "none: joins the pool"
+                            : `${display.owner} ${pair}`,
                           "part",
                         ],
                         ...(!dead
                           ? [
                               [
                                 `Season prize pot (${pct(con(s, "PleaHook.PRIZE_BPS"))})`,
-                                `${display.prize} ${pair}`,
+                                payout.data === "pool"
+                                  ? "none: joins the pool"
+                                  : `${display.prize} ${pair}`,
                                 "part",
                               ],
                             ]
                           : []),
                         [
-                          `Buy wall (${pct(BigInt(con(s, "PleaHook.POOL_BPS")) + (dead ? BigInt(con(s, "PleaHook.PRIZE_BPS")) : 0n))})`,
-                          `${display.wall} ${pair}`,
+                          `Buy wall (${pct(payout.data === "pool" ? normal : BigInt(con(s, "PleaHook.POOL_BPS")) + (dead ? BigInt(con(s, "PleaHook.PRIZE_BPS")) : 0n))})`,
+                          `${payout.data === "pool" ? display.fees : display.wall} ${pair}`,
                           "part",
                         ],
                         [
@@ -775,7 +785,8 @@ export function Buy() {
               <p className="small">
                 {needsApproval
                   ? `Step 1 of 2: lets the ${selling ? "sale" : "buy"} spend exactly ${exactAmount(raw, Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}. Nothing is ${selling ? "sold" : "bought"} yet.`
-                  : `${smallAmount(cashbackNow, s)} cashback is paid to you in the same transaction.`}
+                  : // The costs row's own figure: one rounding rule for both (sweep R12).
+                    `${display ? `${display.cash} ${pair}` : smallAmount(cashbackNow, s)} cashback is paid to you in the same transaction.`}
               </p>
             )}
           {fill && <p role="status">{fill}</p>}

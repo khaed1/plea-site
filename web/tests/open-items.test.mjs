@@ -96,10 +96,12 @@ test("r2T-N1: the amounts the testers saw now add up", () => {
   };
   assert.equal(line("26"), "25.492 + 0.508 = 26.00");
   assert.equal(line("77"), "75.492 + 1.508 = 77.00");
-  assert.equal(line("1.01"), "0.994 + 0.016 = 1.01");
+  // Sweep R1/R12: a part that rounding would hide by more than half (a 0.00495 cashback shown as
+  // 0.00) gets more decimals, so these sub-cent parts no longer push "reaches the pool" down.
+  assert.equal(line("1.01"), "0.991 + 0.019 = 1.01");
   assert.equal(line("4.07"), "4.00 + 0.07 = 4.07");
   assert.equal(line("6.11"), "6.00 + 0.11 = 6.11");
-  assert.equal(line("0.5"), "0.486 + 0.014 = 0.50");
+  assert.equal(line("0.5"), "0.4904 + 0.0096 = 0.50");
   // Home's 100 imdTEST sentence is unchanged.
   const d = feeDisplay(100n * E, hook);
   assert.deepEqual(
