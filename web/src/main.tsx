@@ -16,7 +16,7 @@ root.render(
   </main>,
 );
 // A failed load (one static file, or offline) tries again by itself: when the browser is back
-// online, when the tab is shown again, and after 5, 10, 20, then every 60 seconds (r2X-6).
+// online, when the tab is shown again, and after 5, 10, 20, 40, then every 60 seconds (r2X-6).
 let loading = false,
   failures = 0,
   timer: ReturnType<typeof setTimeout> | undefined;

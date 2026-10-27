@@ -125,8 +125,11 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
         // Read up to the block the node names; when it names none, one block less, then 2, 4, 8…
         const has = min(nodeHead(text) ?? b - (1n << BigInt(step)), b - 1n);
         if (step >= 5 || to - has > HEAD_LAG) throw e;
-        lagged = true;
+        // The blocks up to `has` are read first, splitting on the node's range limit as any read
+        // does; only then is the lag flagged, which stops the loops after this chunk. Flagged
+        // before, it stopped the split loop of that very read and skipped the range unread (P1).
         if (has >= a) await chunk(a, has, step + 1);
+        lagged = true;
         return;
       }
       const limit = text.match(/limited to ([\d,]+) blocks/i);
@@ -659,6 +662,20 @@ export function verifyClaim(c: any, root: string) {
 export const countdown = duration;
 export const deadman = (s: number) =>
   `${Math.floor(Math.max(s, 0) / 3600)}h ${Math.floor((Math.max(s, 0) % 3600) / 60)}m`;
+/** The dead-man countdown in words, hours and minutes like its visible "32h 59m":
+ * "32 hours 59 minutes" (index.html's aria-label, X8), never days or seconds. */
+export function deadmanWords(s: number) {
+  s = Math.max(0, Math.floor(s));
+  const hours = Math.floor(s / 3600),
+    minutes = Math.floor((s % 3600) / 60),
+    unit = (n: number, u: string) => `${n} ${u}${n === 1 ? "" : "s"}`;
+  return [
+    hours ? unit(hours, "hour") : "",
+    minutes || !hours ? unit(minutes, "minute") : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 export function span(s: number, adjective?: "adj") {
   const unit =
     s >= 172800 && s % 86400 === 0
@@ -1043,20 +1060,27 @@ export function caseState(p: Plea, s: Snapshot, now: number) {
   const filed =
     objections.filter((o) => [2, 3].includes(o.ruling)).length + live.length;
   const rulings = objections.filter((o) => [2, 3].includes(o.ruling)).length;
-  const sustained = objections.find((o) => o.ruling === 2);
+  // Every sustained objection is named: "objections #1 and #2 were sustained" (E3a).
+  const sustained = objections
+    .filter((o) => o.ruling === 2)
+    .sort((a, b) => Number(a.id - b.id));
   const end = Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW"));
   const closed =
-    sustained || p.standing?.[1]
-      ? `objection #${sustained?.id ?? ""} was sustained`
-      : rulings >= max
-        ? "both objections were ruled"
-        : p.recorded
-          ? "the points were recorded"
-          : p.excluded
-            ? "the seller is excluded"
-            : now > end
-              ? `at ${clock(end)}`
-              : undefined;
+    sustained.length > 1
+      ? `objections ${idList(sustained)} were sustained`
+      : sustained.length
+        ? `objection #${sustained[0].id} was sustained`
+        : p.standing?.[1]
+          ? "an objection was sustained"
+          : rulings >= max
+            ? "both objections were ruled"
+            : p.recorded
+              ? "the points were recorded"
+              : p.excluded
+                ? "the seller is excluded"
+                : now > end
+                  ? `at ${clock(end)}`
+                  : undefined;
   return {
     filed,
     closed,

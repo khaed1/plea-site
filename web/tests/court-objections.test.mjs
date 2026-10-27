@@ -337,16 +337,16 @@ test("S13/r2C-V1/E3a: share labels and posts per state; 'the sale stands' only f
   assert.equal(shareStatus(denied, s, V + 14401, "my plea"), "DENIED: my plea, 20 vs need 37.");
   assert.equal(
     shareSentence(denied, s, V + 14401),
-    "Denied, 20 vs need 37: no points.",
+    "Denied, 20 vs need 37.",
   );
   // Appeals: overturned and sold, upheld with the first plea's score.
   assert.equal(
     shareSentence(plea({ isAppeal: true, originalId: 5n, standing: [false, false, 255] }), s, V + 3000),
-    "Overturned on appeal, 44 vs need 37. Sold for 10.78 imdTEST. +44 points.",
+    "Overturned on appeal, 44 vs need 37. Sold for 10.78 imdTEST, +44 points.",
   );
   assert.equal(
     shareSentence(plea({ isAppeal: true, originalId: 5n, status: 3, score: 30, points: 0 }), s, V + 3000, { originalScore: 28 }),
-    "Upheld on appeal, 30 vs need 37: no points. The first plea, #5, scored 28. No further appeal.",
+    "Upheld on appeal, 30 vs need 37. The first plea, #5, scored 28. No further appeal.",
   );
   // Plain approved, with the rank.
   assert.equal(

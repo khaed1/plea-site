@@ -1,6 +1,7 @@
 import { PageLoading } from "./page-loading";
 import { PageBoundary } from "./page-boundary";
 import { resetHealth } from "./config";
+import { NO_ANSWER, readErrorTitle } from "./rpc-health";
 import { Profile } from "./profile";
 import { Seasons } from "./seasons";
 import { useEffect, useState, useRef } from "react";
@@ -212,7 +213,9 @@ export default function App() {
               <b>
                 {!s
                   ? error
-                    ? "Can’t reach Sepolia"
+                    ? error === NO_ANSWER
+                      ? "Can’t reach Sepolia"
+                      : "Can’t read Sepolia"
                     : "Reading the Cabal…"
                   : !s.v["PleaHook.seeded"]
                     ? "Trading not open yet"
@@ -273,17 +276,7 @@ export default function App() {
           <div className="app-error error-box" role="alert">
             <p className="error-box__title">
               <Icon name="plugs" />
-              {page === "buy"
-                ? "Can’t read the price"
-                : page === "profile"
-                  ? "Can’t read this profile"
-                  : page === ""
-                    ? "Can’t read the latest verdicts"
-                    : page === "wall"
-                      ? "Can’t read the Wall"
-                      : page === "seasons"
-                        ? "Can’t read the leaderboard"
-                        : "Can’t reach Sepolia"}
+              {readErrorTitle(page, error, path[1])}
             </p>
             <p className="small">{error}</p><div className="btn-row"><button className="btn btn--sm" type="button" onClick={()=>{resetHealth();void refresh();}}><Icon name="arrow-clockwise"/>Try again</button></div>
           </div>

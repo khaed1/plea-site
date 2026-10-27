@@ -1,5 +1,6 @@
+import { isAddress } from "viem";
 import { useAccount } from "wagmi";
-import { Icon, Title } from "./components";
+import { Icon, Notice, Title } from "./components";
 import { useApp } from "./context";
 import { homeLead, loadingLine, loadingTitle } from "./loading-text";
 /** The first read's loading band for each route (round-2 X5), as the mockups' "Loading" reference
@@ -8,7 +9,10 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
   const { address } = useAccount();
   const { statics } = useApp();
   const home = ["", "how", "contracts"].includes(page),
-    wall = page === "wall";
+    wall = page === "wall",
+    // Read with the constants: alive or dead decides Home's title, lead and buttons (r2X-11).
+    known = !!statics && statics["CabalGate.diedAt"] !== undefined,
+    dead = known && !!statics!["CabalGate.diedAt"];
   // wall.html "Loading": five lines per card; three cards, two where the grid has two columns.
   const card = (key: number) => (
     <div key={key} className="panel skeleton" aria-hidden="true">
@@ -33,15 +37,21 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
             <div>
               <div className="page-title">
                 <h1 className="hero-title">
-                  <span className="hero-line">Buying is open.</span> Selling
-                  needs <span className="nowrap">a plea.</span>
+                  <span className="hero-line">Buying is open.</span> Selling{" "}
+                  {dead ? (
+                    "is open forever."
+                  ) : (
+                    <>
+                      needs <span className="nowrap">a plea.</span>
+                    </>
+                  )}
                 </h1>
               </div>
               {/* The loaded hero's own lead (r2X-11). It names the chain's panel size and top score,
-                  which arrive with the constants a moment before the snapshot; until then it is a
-                  still skeleton rather than a different sentence. */}
-              {statics ? (
-                <p className="lead">{homeLead(statics)}</p>
+                  and whether the Cabal is dead, which arrive with the constants a moment before the
+                  snapshot; until then it is a still skeleton rather than a different sentence. */}
+              {known ? (
+                <p className="lead">{homeLead(statics!, dead)}</p>
               ) : (
                 <div className="skeleton lead" aria-hidden="true">
                   <div className="skeleton__line" />
@@ -51,10 +61,10 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
             </div>
             <div className="btn-row">
               <a className="btn btn--primary" href="#/buy">
-                Buy PLEA
+                {dead ? "Buy or sell PLEA" : `Buy ${statics?.symbol || "PLEA"}`}
               </a>
-              <a className="btn" href="#/plead">
-                Plead to sell
+              <a className="btn" href={dead ? "#/wall" : "#/plead"}>
+                {dead ? "See the Wall" : "Plead to sell"}
               </a>
             </div>
           </div>
@@ -98,6 +108,20 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
           </div>
           <div className="wall-grid wall-grid--loading">{[1, 2, 3].map(card)}</div>
         </section>
+      </div>
+    );
+  // A profile path that is no address says so at once, as the loaded page does: there is
+  // nothing to read (it read "Reading notanaddress’s balances…" first).
+  if (page === "profile" && id && !isAddress(id, { strict: false }))
+    return (
+      <div className="page-loading stack stack--lg">
+        <Title title="Profile" />
+        <Notice kind="bad" title="That is not an address.">
+          <p>
+            Paste one that starts with 0x and has 40 more characters, 0–9 and
+            a–f in either case.
+          </p>
+        </Notice>
       </div>
     );
   return (

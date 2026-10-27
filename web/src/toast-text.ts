@@ -41,6 +41,9 @@ export type Toast = {
   href?: string;
   link?: string;
   role?: "status" | "alert";
+  /** The receipt-wait note ("Sent. Waiting for the receipt."): replaced by the transaction's next
+   * toast, or removed when its receipt comes with no toast of its own (an approval). */
+  wait?: boolean;
 };
 /** The links a toast shows, in its body: the site page first, then the transaction. One
  * "Open plea #N" to #/p/N and one "View transaction" to the explorer, never two links with the same

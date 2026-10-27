@@ -7,7 +7,7 @@ import {
   tokenAmount,
   amount,
   deadman,
-  words,
+  deadmanWords,
   short,
   seasonState,
 } from "./chain";
@@ -341,7 +341,7 @@ export function HowItWorks() {
                   until={dies}
                   label="Dies without a verdict in"
                   format="deadman"
-                  ariaLabel={`The Cabal dies in ${words(dies - now)} without a verdict`}
+                  ariaLabel={`The Cabal dies in ${deadmanWords(dies - now)} without a verdict`}
                 />
               </div>
             )}

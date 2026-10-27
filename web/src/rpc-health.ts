@@ -74,6 +74,8 @@ export async function rpcFetch(input: RequestInfo | URL, init?: RequestInit) {
 /** A failed read in plain words. The site's own errors pass through. A timeout, an HTTP error or a
  * rate limit means the RPC did not answer; a read that reverted or came back as a JSON-RPC error
  * means it did answer, so the text says so (r2X-9). */
+export const NO_ANSWER =
+  "The public RPC did not answer. The site tries the next one by itself; your funds are not affected.";
 export function explainReadError(e: any) {
   if (
     e?.constructor === Error &&
@@ -82,6 +84,26 @@ export function explainReadError(e: any) {
     return e.message;
   // A plain Error that names the network (the transport's own "did not answer") is no answer either.
   return classifyRpc(e) === "transport" || e?.constructor === Error
-    ? "The public RPC did not answer. The site tries the next one by itself; your funds are not affected."
+    ? NO_ANSWER
     : "The RPC answered, but with an error instead of the contract data. The site reads again by itself; your funds are not affected.";
+}
+/** The error box's title and the status strip's word for a read error (r2X-9): "Can’t reach
+ * Sepolia" only when the RPC did not answer (`NO_ANSWER`); a read that came back with an error
+ * reached the chain, so the page says what it could not read. */
+export function readErrorTitle(page: string, error: string, id?: string) {
+  const titles: Record<string, string> = {
+    buy: "Can’t read the price",
+    profile: "Can’t read this profile",
+    "": "Can’t read the latest verdicts",
+    wall: "Can’t read the Wall",
+    seasons: "Can’t read the leaderboard",
+  };
+  return (
+    titles[page] ||
+    (error === NO_ANSWER
+      ? "Can’t reach Sepolia"
+      : page === "p" || (page === "share" && id)
+        ? "Can’t read this plea"
+        : "Can’t read Sepolia")
+  );
 }

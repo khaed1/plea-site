@@ -1,4 +1,5 @@
-import { LETTERBOX, Q96 } from "./models";
+import { LETTERBOX, Q96, appealFeeBlock } from "./models";
+import { letterPrecheck } from "./appeal";
 import { HowItWorks, ContractsPanel } from "./home-info";
 import { homeLead } from "./loading-text";
 import {
@@ -131,7 +132,8 @@ export function Home() {
             ],
             [
               "PLEA burned",
-              amount(total - supply),
+              // Rounded up, as the Supply panel's "Burned so far" (r2T-N5): one figure on the page.
+              amount(total - supply, 18, 0, "up"),
               `Of ${amount(total)} at launch`,
             ],
             [
@@ -241,15 +243,23 @@ export function Letters() {
   const tx = useTx(text);
   const result = textCheck("letter", text);
   const [copied, setCopied] = useState(false);
-  // A plain letter pleads 20% of the balance: below the least balance the Letterbox accepts,
-  // Send letter is off with the reason (E1, r2D-N4). APPEAL, SELL and NAME have other rules.
-  const held = useRead(
-    () => read(r, "PLEA", "balanceOf", [address]),
+  // A letter first settles the writer's earlier escrow when it can (Letterbox._settleOpen), so that
+  // PLEA counts, as on Plead. A plain letter pleads 20% of the balance: below the least balance the
+  // Letterbox accepts, Send letter is off with the reason (E1, r2D-N4). An APPEAL letter's fees must
+  // fit 10% of the balance or the denied plea's amount + 10% (Letterbox._appeal). SELL and NAME
+  // have other rules.
+  const pre = useRead(
+    () => letterPrecheck(r, s!, address!),
     [address],
     !!s && !!address,
   );
   const limit = letterLimit(s),
     feeCap = BigInt(s?.v.fees?.[1] || 0n),
+    appealCap = BigInt(s?.v.appealFees?.[1] || 0n),
+    data = pre.data,
+    holds = data
+      ? `You hold ${tokenAmount(data.held, s)}${data.returned ? `, and the letter first settles plea #${data.escrowId}, whose escrow returns ${tokenAmount(data.returned, s)} to you` : ""}.`
+      : "",
     needText = limit && !limit.possible
       ? `At today’s price no letter passes: even ${tokenAmount(con(s, "CabalGate.MAX_SELL"), s)}, the most a letter pleads, is worth less than ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}.`
       : limit
@@ -261,17 +271,40 @@ export function Letters() {
               : `20% of it must be at least ${tokenAmount(LETTERBOX.MIN_LETTER, s)}`
         }.`
       : "",
+    // Letterbox._appeal: fees ≤ 10% of the balance, or ≤ the denied plea's amount + 10%
+    // (FEE_CAP_BPS); a balance of 10 times the fees always passes.
+    appealFeeText = (fee: bigint, balance: bigint, original?: bigint) =>
+      `An APPEAL letter’s fees (at most ${tokenAmount(fee, s, false, 0, "up")}) may take at most 10% of your PLEA (${tokenAmount(balance, s)})${original !== undefined ? `, or be at most the denied plea’s amount plus 10% (${tokenAmount((original * LETTERBOX.FEE_CAP_BPS) / 10000n, s)})` : ", or be at most the denied plea’s amount plus 10%"}. You need about ${tokenAmount(fee * 10n, s, false, 0, "up")}.`,
+    appealBlock =
+      result.kind === "appeal" && data?.appeal && data.appealable
+        ? appealFeeBlock(
+            appealCap,
+            data.balance,
+            data.appeal.original,
+            data.appeal.amount,
+          )
+        : "",
     shortOf =
-      result.kind === "plea" &&
-      limit &&
-      held.data !== undefined &&
-      (!limit.possible || BigInt(held.data) < limit.minimum)
-        ? `${needText} You hold ${tokenAmount(BigInt(held.data), s)}.`
-        : "";
+      data?.blocked && ["plea", "appeal"].includes(result.kind)
+        ? `${data.blocked} A new letter waits until it ends.`
+        : result.kind === "plea" &&
+            limit &&
+            data &&
+            (!limit.possible || data.balance < limit.minimum)
+          ? `${needText} ${holds}`
+          : appealBlock === "cap"
+            ? `${appealFeeText(appealCap, data!.balance, data!.appeal!.original)}${data!.returned ? ` ${holds}` : ""}`
+            : appealBlock === "fit"
+              ? `An APPEAL letter needs its escrow (${tokenAmount(data!.appeal!.amount, s)}) and its fees (at most ${tokenAmount(appealCap, s, false, 0, "up")}) within your PLEA (${tokenAmount(data!.balance, s)}).`
+              : "";
   const letterErrors = {
     FeeTooHigh: (args: any) =>
       result.kind === "appeal"
-        ? `An APPEAL letter’s fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA (${tokenAmount(BigInt(args[1]), s)}), or fit the denied plea’s amount with 10% to spare.`
+        ? appealFeeText(
+            BigInt(args[0]),
+            BigInt(args[1]),
+            data?.appeal?.original,
+          )
         : `A letter needs at least about ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}: its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, and you hold ${tokenAmount(BigInt(args[1]), s)}.`,
     TooSmallForTheFee: (args: any) =>
       `${result.kind === "appeal" ? "This appeal" : "20% of your PLEA"} is worth ${tokenAmount(BigInt(args[0]), s, true)} at the hourly price; a letter must be worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}${limit && result.kind !== "appeal" ? `, so it needs a balance of about ${tokenAmount(limit.byValue, s, false, 0, "up")}` : ""}.`,
@@ -796,6 +829,10 @@ export function Claim() {
                       <input
                         type="file"
                         accept="application/json,.json"
+                        aria-invalid={!!fileError}
+                        aria-describedby={
+                          fileError ? "claim-file-error" : undefined
+                        }
                         onChange={async (e) => {
                           try {
                             const f = e.target.files?.[0];
@@ -819,7 +856,11 @@ export function Claim() {
                       />
                     </label>
                     {fileError && (
-                      <p className="field__hint bad-text" role="alert">
+                      <p
+                        className="field__hint bad-text"
+                        id="claim-file-error"
+                        role="alert"
+                      >
                         {fileError}
                       </p>
                     )}

@@ -1,5 +1,11 @@
-import { isAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 import { short } from "./chain";
+/** A wallet as the loaded profile shows it: checksummed, so the letter case does not change on
+ * load (#/profile/0x8826…af16 reads 0x8826…Af16 throughout). */
+const wallet = (id: string) =>
+  short(
+    isAddress(id, { strict: false }) ? getAddress(id.toLowerCase()) : id,
+  );
 /** The line each route's loading band reads (round-2 X5; the mockups' Loading bands). A profile
  * names its wallet short, as everywhere else (0x7a3f…c21e): the full 42-character address
  * does not wrap and pushed a 320-360 px page sideways (r2X-4). Its display name is not known
@@ -11,7 +17,7 @@ export function loadingLine(page: string, id?: string, connected?: string) {
     wall: "Reading pleas from the chain…",
     seasons: "Reading the leaderboard from Seasons…",
     objections: "Reading approvals and objections from the chain…",
-    profile: `Reading ${id ? short(id) : connected ? short(connected) : "your wallet"}’s balances, pleas and seasons from the chain…`,
+    profile: `Reading ${id ? wallet(id) : connected ? wallet(connected) : "your wallet"}’s balances, pleas and seasons from the chain…`,
     p: `Reading plea #${id} from the chain…`,
   };
   return (
@@ -33,9 +39,9 @@ const TITLES: Record<string, string> = {
 export function loadingTitle(page: string, id?: string, connected?: string) {
   if (page === "p") return `Plea #${id}`;
   if (page === "profile") {
-    const wallet = id || connected;
-    return wallet && isAddress(wallet, { strict: false })
-      ? short(wallet)
+    const who = id || connected;
+    return who && isAddress(who, { strict: false })
+      ? wallet(who)
       : id
         ? "Profile"
         : "Your profile";

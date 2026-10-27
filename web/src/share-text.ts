@@ -35,6 +35,32 @@ const appealOf = (p: Plea, s: Snapshot) =>
   s.logs.find(
     (l) => l.eventName === "PleaSubmitted" && l.args.originalId === p.id,
   )?.args.id as bigint | undefined;
+/** How a denied plea's appeal ended, for "Appealed in plea #207, overturned." (share-cards.html):
+ * the appeal's own state when the snapshot holds it, else its Verdict log (approved: overturned),
+ * else its PleaFailed or PleaExpired log (no verdict). Undefined while nothing says. */
+export function appealOutcome(id: bigint, s: Snapshot, now: number) {
+  const a = s.pleas.find((x) => x.id === id);
+  if (a) {
+    const state = pleaState(a, now, s);
+    return state === "UPHELD"
+      ? "upheld"
+      : state === "PENDING"
+        ? "pending"
+        : state === "NO VERDICT"
+          ? "no verdict"
+          : "overturned";
+  }
+  const verdict = s.logs.find((l) => l.eventName === "Verdict" && l.args.id === id);
+  if (verdict) return verdict.args.approved ? "overturned" : "upheld";
+  if (
+    s.logs.some(
+      (l) =>
+        ["PleaFailed", "PleaExpired"].includes(l.eventName) && l.args.id === id,
+    )
+  )
+    return "no verdict";
+  return undefined;
+}
 
 /** The share frame's sentence after the quote, per state, from share-cards.html's aria-labels:
  * "Approved, 36 vs need 33. +43 points held, season 2 rank 4.", "Sold, 34 vs need 33, for 10.78
@@ -75,12 +101,24 @@ export function shareSentence(
       }[nv.kind];
     return `No verdict${why}. No cooldown.`;
   }
+  // share-cards.html: "Denied, 31 vs need 36. Appeal open until 11:53 UTC.", "Denied, 30 vs need
+  // 33. Appealed in plea #207, overturned.", "Upheld on appeal, 29 vs need 33. The first plea, #201,
+  // scored 28. No further appeal." (S13: the mockup wins; no "no points" after the score).
   if (state === "DENIED") {
-    const appeal = appealOf(p, s);
-    return `Denied, ${p.score} vs need ${p.need}: no points.${appeal ? ` Appealed in plea #${appeal}.` : appealOpen(p, s, now) ? ` Appeal open until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`;
+    const appeal = appealOf(p, s),
+      outcome = appeal && appealOutcome(appeal, s, now);
+    return `Denied, ${p.score} vs need ${p.need}.${appeal ? ` Appealed in plea #${appeal}${outcome ? `, ${outcome}` : ""}.` : appealOpen(p, s, now) ? ` Appeal open until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`;
   }
   if (state === "UPHELD")
-    return `Upheld on appeal, ${p.score} vs need ${p.need}: no points.${extra.originalScore !== undefined ? ` The first plea, #${p.originalId}, scored ${extra.originalScore}.` : ""} No further appeal.`;
+    return `Upheld on appeal, ${p.score} vs need ${p.need}.${extra.originalScore !== undefined ? ` The first plea, #${p.originalId}, scored ${extra.originalScore}.` : ""} No further appeal.`;
+  // "Overturned on appeal, 34 vs need 33. Sold for 15.48 IMD, +40 points." The sale and the
+  // points share one sentence, as in the mockup.
+  if (state === "OVERTURNED" && !oc.state) {
+    const facts = [soldKnown ? `Sold for ${forX}` : "", points, rank]
+      .filter(Boolean)
+      .join(", ");
+    return `Overturned on appeal, ${p.score} vs need ${p.need}.${facts ? ` ${cap(facts)}.` : p.excluded ? " This seller is excluded from season points." : ""}`;
+  }
   const head =
     state === "OVERTURNED"
       ? `Overturned on appeal, ${p.score} vs need ${p.need}.${soldKnown ? ` Sold for ${forX}.` : ""}`
@@ -119,15 +157,24 @@ export function shareStatus(
     sold = p.status === 4,
     many = (n: number, one: string, more: string) => (n > 1 ? more : one),
     scores = (list: any[]) =>
-      list.map((o) => o.newScore).join(" and ");
+      list.map((o) => o.newScore).join(" and "),
+    // The objections the lead does not name: an overruling beside a sustain or a pending one, a
+    // pending one beside a sustain (E3a: every ruled or live objection is named).
+    others = (overruled: any[], pending: any[]) =>
+      (overruled.length
+        ? ` ${many(overruled.length, "Objection", "Objections")} ${idList(overruled)} ${many(overruled.length, "was", "were")} overruled, ${scores(overruled)} vs need ${p.need}.`
+        : "") +
+      (pending.length
+        ? ` ${many(pending.length, "Objection", "Objections")} ${idList(pending)} ${many(pending.length, "is", "are")} still pending.`
+        : "");
   if (state === "PENDING")
     return `PENDING: the Cabal is judging ${subject}; need ${p.need}.`;
   if (state === "NO VERDICT")
     return `NO VERDICT on ${subject}; ${noVerdict(p, s, now).sub}. No cooldown.`;
   if (oc.state === "SUSTAINED")
-    return `${many(oc.sustained.length, "Objection", "Objections")} ${idList(oc.sustained)} SUSTAINED: ${subject} re-scored ${scores(oc.sustained)} vs need ${p.need}, no points${sold ? "; the sale stands" : state === "LAPSED" ? "; nothing was sold" : ""}.`;
+    return `${many(oc.sustained.length, "Objection", "Objections")} ${idList(oc.sustained)} SUSTAINED: ${subject} re-scored ${scores(oc.sustained)} vs need ${p.need}, no points${sold ? "; the sale stands" : state === "LAPSED" ? "; nothing was sold" : ""}.${others(oc.overruled, oc.pending)}`;
   if (oc.state === "OBJECTION")
-    return `${many(oc.pending.length, "OBJECTION", "OBJECTIONS")} ${idList(oc.pending)} to ${subject} (${state}, ${p.score} vs need ${p.need}): ${many(oc.pending.length, "a new panel re-scores", "new panels re-score")} it, and ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less means no points.`;
+    return `${many(oc.pending.length, "OBJECTION", "OBJECTIONS")} ${idList(oc.pending)} to ${subject} (${state}, ${p.score} vs need ${p.need}): ${many(oc.pending.length, "a new panel re-scores", "new panels re-score")} it, and ${p.need - Number(con(s, "Tribunal.MARGIN")) - 1} or less means no points.${others(oc.overruled, [])}`;
   if (oc.state === "OVERRULED")
     return `${many(oc.overruled.length, "Objection", "Objections")} ${idList(oc.overruled)} OVERRULED: ${subject} re-scored ${scores(oc.overruled)} vs need ${p.need}, counts ${p.points} points.`;
   return `${state}: ${subject}, ${p.score} vs need ${p.need}.${sold ? (soldFor(p, s) !== undefined ? ` Sold for ${tokenAmount(soldFor(p, s), s, true)}.` : "") : state === "UPHELD" ? " No further appeal." : state === "DENIED" && appealOpen(p, s, now) ? ` Appeal until ${clock(Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")))}.` : ""}`;

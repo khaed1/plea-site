@@ -1187,8 +1187,9 @@ export function PleaPage({ id }: { id: string }) {
                   name="Tribunal"
                   fn="expire"
                   args={[o.id]}
-                  label="Expire unanswered objection"
-                  srLabel={` #${o.id}`}
+                  // Each button names its objection on screen: two stale ones gave two
+                  // identical buttons below both lines.
+                  label={`Expire objection #${o.id}`}
                   small
                 />
               ))}

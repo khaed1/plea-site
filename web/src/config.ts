@@ -1,4 +1,9 @@
-import { classifyRpc, rpcFetch, registerHealthReset } from "./rpc-health";
+import {
+  NO_ANSWER,
+  classifyRpc,
+  rpcFetch,
+  registerHealthReset,
+} from "./rpc-health";
 export { resetHealth } from "./rpc-health";
 import {
   createPublicClient,
@@ -256,9 +261,7 @@ export function resilientTransport(
         throw (
           answer ||
           first ||
-          Error(
-            "The public RPC did not answer. The site tries the next one by itself; your funds are not affected.",
-          )
+          Error(NO_ANSWER)
         );
       },
     },

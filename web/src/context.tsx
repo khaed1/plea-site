@@ -73,6 +73,8 @@ type AppContext = {
   verified: boolean;
   now: number;
   toast?: (x: Toast) => void;
+  /** Removes the receipt-wait note of transaction `hash`. */
+  untoast?: (hash: string) => void;
   landVerdict: (id: string) => boolean;
   receipts: { key: string; hash: string; text: string }[];
   snapshot: () => Snapshot | undefined;
@@ -119,8 +121,17 @@ export function DataProvider({
           )
         )
           return old;
-        return [...old.slice(-2), { ...t, id: ++toastId.current }];
+        // A transaction's next word replaces its receipt-wait note.
+        const kept = t.hash
+          ? old.filter((x) => !(x.wait && x.hash === t.hash))
+          : old;
+        return [...kept.slice(-2), { ...t, id: ++toastId.current }];
       }),
+    [],
+  );
+  const untoast = useCallback(
+    (hash: string) =>
+      setToasts((old) => old.filter((x) => !(x.wait && x.hash === hash))),
     [],
   );
   const { address } = useAccount();
@@ -176,8 +187,17 @@ export function DataProvider({
     try {
       if (!constants.current) {
         await discover(r);
-        constants.current = await readStatic(r);
-        setStatics(constants.current);
+        // diedAt rides along for the loading band only: Home's lead and title differ once the
+        // Cabal is dead, and the constants alone cannot tell (r2X-11). It stays out of the
+        // snapshot's constants; when it fails, the band keeps its skeleton lead.
+        const [c, diedAt] = await Promise.all([
+          readStatic(r),
+          read(r, "CabalGate", "diedAt").catch(() => undefined),
+        ]);
+        constants.current = c;
+        setStatics(
+          diedAt === undefined ? c : { ...c, "CabalGate.diedAt": diedAt },
+        );
         setVerified(true);
       }
       const next = await readSnapshot(r, constants.current, previous.current);
@@ -339,6 +359,7 @@ export function DataProvider({
         verified,
         now,
         toast: pushToast,
+        untoast,
         landVerdict,
         receipts,
         snapshot: () => previous.current,
@@ -470,7 +491,8 @@ export function useRead<T = any>(
   return { data, error, loading };
 }
 export function useTx(resetKey?: string) {
-  const { r, s, verified, refresh, toast, saveReceipt, snapshot } = useApp();
+  const { r, s, verified, refresh, toast, untoast, saveReceipt, snapshot } =
+    useApp();
   const { address, chainId, connector } = useAccount();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorMessage>();
@@ -573,12 +595,16 @@ export function useTx(resetKey?: string) {
               text: note.title,
               body: note.body,
               hash: h,
+              wait: true,
             });
           }
           // An RPC error ends viem's wait at once: try again shortly.
           if ((e as any)?.name !== "WaitForTransactionReceiptTimeoutError")
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
+      // The receipt came: the "waiting for the receipt" note is no longer true. A toast that
+      // follows replaces it anyway; an approval has none (FIXUP).
+      if (noted) untoast?.(h);
       if (receipt.status !== "success") {
         // The replay names the contract's reason when it can; otherwise the neutral text for
         // this kind of write (r2D-N7).

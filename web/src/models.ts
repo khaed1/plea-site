@@ -203,6 +203,24 @@ export function letterMinimum(
       minimum === byFee ? "fee" : minimum === byValue ? "value" : "letter",
   } as const;
 }
+/** Letterbox._appeal's FeeTooHigh, for an APPEAL letter and the site's auto-sell appeal alike: the
+ * fees may take 10% of the balance or, when that is more, at most the denied plea's amount + 10%
+ * (FEE_CAP_BPS) ("cap"); and the escrow and the fees must fit the balance ("fit"). The balance is
+ * the one after Letterbox._settleOpen returned an earlier escrow. */
+export function appealFeeBlock(
+  maxFeePlea: bigint,
+  balance: bigint,
+  original: bigint,
+  amount: bigint,
+): "" | "cap" | "fit" {
+  if (!maxFeePlea) return "";
+  if (
+    maxFeePlea * 10000n > balance * LETTERBOX.MAX_FEE_SHARE_BPS &&
+    maxFeePlea * 10000n > original * LETTERBOX.FEE_CAP_BPS
+  )
+    return "cap";
+  return amount + maxFeePlea > balance ? "fit" : "";
+}
 /** Why the site's auto-sell box (Letterbox.plead) cannot work for this balance at any amount, or
  * "" (TRAP2): its fees may take at most 10% of the balance (FeeTooHigh), and the plea must be worth
  * MIN_SALE_VALUE at the hourly price (TooSmallForTheFee) within the gate's max (50%, MAX_SELL). */
