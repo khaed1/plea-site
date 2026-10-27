@@ -1,5 +1,5 @@
 import { resetHealth } from "./config";
-import { site } from "./site";
+import { cashbackWords, site } from "./site";
 import { LETTERBOX, Q96, feeDisplay, letterMinimum } from "./models";
 import { useAccount } from "wagmi";
 import { useState } from "react";
@@ -97,7 +97,7 @@ export function HomeDetails() {
           <Costs
             rows={[
               [
-                `Cashback to you, in plain ${pair}`,
+                cashbackWords(String(pair)).feesRow,
                 `${pct(c("CASHBACK_BPS"))}`,
               ],
               ["Owner", `${pct(c("OWNER_BPS"))}`],

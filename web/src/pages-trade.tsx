@@ -18,7 +18,9 @@ import {
   estimateHookOutput,
   priceLimit,
   bandOf,
-  bandAmount0,
+  bandImd,
+  pleaIsZero,
+  swapZeroForOne,
   unpackDelta,
 } from "./swap-math";
 import { useEffect, useState } from "react";
@@ -35,6 +37,7 @@ import {
 import { useApp, useRead, useTx, receiptEvents } from "./context";
 import { erc20Abi, swapAbi, resetHealth } from "./config";
 import { cashbackWords, sellGateWarning } from "./site";
+import { tradeSteps } from "./trade-text";
 import {
   encodeBuy,
   encodeSell,
@@ -214,7 +217,12 @@ export async function poolQuote(
   const launchExtra = extra ?? BigInt(liveExtra);
   return estimateHookOutput({
     amount: raw,
-    zeroForOne: !selling,
+    // The pool key decides the direction: imdTEST is currency0 on Sepolia run 9, PLEA may be on
+    // Ethereum (a buy is then oneForZero).
+    zeroForOne: swapZeroForOne(
+      selling,
+      pleaIsZero(val(s, "PleaHook.poolKey"), r.addresses.PLEA),
+    ),
     sqrt,
     bands: [bandOf(market), bandOf(wall)],
     inputBps: BigInt(
@@ -226,37 +234,6 @@ export async function poolQuote(
       con(s, selling ? "PleaHook.IMD_FEE_BPS" : "PleaHook.PLEA_BURN_BPS"),
     ),
   });
-}
-/** The line under the Buy button: which step this is, what it allows, and where the cashback goes. */
-export function tradeSteps(o: {
-  step: "token" | "permit2" | "trade";
-  stepNumber: number;
-  total: number;
-  universal: boolean;
-  selling: boolean;
-  amount: string;
-  cashback?: string;
-  claims?: boolean;
-  staked?: boolean;
-}) {
-  const nothing = `Nothing is ${o.selling ? "sold" : "bought"} yet.`,
-    head = `Step ${o.stepNumber} of ${o.total}:`;
-  if (o.step === "token")
-    return o.universal
-      ? `${head} lets Permit2 move exactly ${o.amount} from your wallet, for Uniswap’s router. ${nothing}`
-      : `${head} lets the ${o.selling ? "sale" : "buy"} spend exactly ${o.amount}. ${nothing}`;
-  if (o.step === "permit2")
-    return `${head} lets Uniswap’s Universal Router take exactly ${o.amount} through Permit2, for 30 minutes. ${nothing}`;
-  const cash = o.cashback
-    ? o.claims
-      ? `${o.cashback} cashback arrives as a claim on the PoolManager (see Profile), in the same transaction.`
-      : o.staked
-        ? `${o.cashback} cashback is staked for you in the same transaction.`
-        : `${o.cashback} cashback is paid to you in the same transaction.`
-    : "";
-  return [o.total > 1 ? `${head} the ${o.selling ? "sale" : "buy"}.` : "", cash]
-    .filter(Boolean)
-    .join(" ");
 }
 export function Buy() {
   const { r, s, now, toast } = useApp(),
@@ -401,9 +378,10 @@ export function Buy() {
       const own =
         BigInt(val(s, "PleaHook.imdInMarket")) +
         BigInt(val(s, "PleaHook.retainClaims")) +
-        bandAmount0(
+        bandImd(
           bandOf(val(s, "PleaHook.wall")),
           BigInt(val(s, "PleaHook.currentSqrtPriceX96")),
+          pleaIsZero(val(s, "PleaHook.poolKey"), r.addresses.PLEA),
         );
       const needed =
         feePart("CASHBACK_BPS") +

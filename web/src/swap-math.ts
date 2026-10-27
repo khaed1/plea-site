@@ -1,6 +1,7 @@
-/** PoolSwapTest's live hook delivers PLEA directly, so v4 Quoter may report zero delta.
- * This indicative calculation walks the hook's two liquidity bands. Execution still simulates
- * the real router, and the UI discloses that its price limit can partially fill an input.
+/** The hook delivers PLEA directly while the Cabal lives, so the v4 Quoter may report zero delta.
+ * This indicative calculation walks the hook's two liquidity bands in either direction (token0 in
+ * or token1 in). Execution still simulates the real router: PoolSwapTest's price limit can partially
+ * fill an input; the Universal Router's balance check refuses less than the minimum.
  */
 const Q96 = 2n ** 96n;
 const ceil = (a: bigint, b: bigint) => (a + b - 1n) / b;
@@ -136,6 +137,24 @@ export function bandAmount0(b: Band, sqrt: bigint) {
   const at = sqrt < lo ? lo : sqrt > hi ? hi : sqrt;
   return (b.liquidity * Q96 * (hi - at)) / (at * hi);
 }
+/** The band's token1 at `sqrt`: what it holds below the price (L · (√P − √lo) / Q96). */
+export function bandAmount1(b: Band, sqrt: bigint) {
+  if (!b.liquidity) return 0n;
+  const lo = sqrtAtTick(b.tickLower),
+    hi = sqrtAtTick(b.tickUpper);
+  const at = sqrt < lo ? lo : sqrt > hi ? hi : sqrt;
+  return (b.liquidity * (at - lo)) / Q96;
+}
+/** Whether PLEA is the pool's currency0 (PleaHook.pleaIsZero): on Sepolia run 9 imdTEST sorts first,
+ * on Ethereum PLEA may. Every swap direction and band amount follows the pool key, never a guess. */
+export const pleaIsZero = (key: { currency0: string }, plea: string) =>
+  key.currency0.toLowerCase() === plea.toLowerCase();
+/** The IMD a band holds at `sqrt` (the buy wall's IMD), whichever side of the pool IMD is. */
+export const bandImd = (b: Band, sqrt: bigint, pleaFirst: boolean) =>
+  pleaFirst ? bandAmount1(b, sqrt) : bandAmount0(b, sqrt);
+/** A swap's zeroForOne: a buy pays IMD in, a sale PLEA. */
+export const swapZeroForOne = (selling: boolean, pleaFirst: boolean) =>
+  selling ? pleaFirst : !pleaFirst;
 export function unpackDelta(delta: bigint) {
   return [
     BigInt.asIntN(128, delta >> 128n),

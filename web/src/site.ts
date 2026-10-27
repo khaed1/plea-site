@@ -140,6 +140,10 @@ export function cashbackWords(pair: string, x = site()) {
       : `Paid in the same transaction.`,
     /** Where a network never stakes it. */
     plainNote: staked ? "" : `In this test run it arrives as plain ${pair}, not staked.`,
+    /** Home's fees table row. */
+    feesRow: staked
+      ? `Cashback to you, as staked ${pair} through imd/acc`
+      : `Cashback to you, in plain ${pair}`,
     /** Profile's cashback stat note. */
     profileNote: staked ? `As staked ${pair} through imd/acc` : `Paid in plain ${pair} in this test run`,
   };
