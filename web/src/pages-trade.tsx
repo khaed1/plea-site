@@ -359,9 +359,14 @@ export function Buy() {
         ? `You have ${tokenAmount(available, s, !selling)}. Lower the amount or press Max.`
         : capError ||
           // The pool cannot fill this amount at any price: no approval can help, so none is offered.
-          (quote.error === LIQUIDITY_SHORT || quote.error === NO_LIQUIDITY
-            ? `${quote.error} ${selling ? "Sell less PLEA" : `Pay less ${pair}`}.`
-            : "");
+          (quote.error === LIQUIDITY_SHORT
+            ? `Lower the amount: the pool cannot fill ${selling ? "this sale" : "this buy"}.`
+            : quote.error === NO_LIQUIDITY
+              ? selling
+                ? `The pool has no ${pair} left to pay for a sale; nothing can be sold until someone buys.`
+                : "The pool has no PLEA left to buy; nothing can be bought until someone sells."
+              : "");
+  const poolBlocked = quote.error === LIQUIDITY_SHORT || quote.error === NO_LIQUIDITY;
   const reason = tradeDone
     ? ""
     : amountReason ||
@@ -895,18 +900,20 @@ export function Buy() {
               }
             >
               <p>{quote.error}</p>
-              <div className="btn-row">
-                <button
-                  className="btn btn--sm"
-                  onClick={() => {
-                    resetHealth();
-                    setRevision((n) => n + 1);
-                  }}
-                >
-                  <Icon name="arrow-clockwise" />
-                  Try again
-                </button>
-              </div>
+              {!poolBlocked && (
+                <div className="btn-row">
+                  <button
+                    className="btn btn--sm"
+                    onClick={() => {
+                      resetHealth();
+                      setRevision((n) => n + 1);
+                    }}
+                  >
+                    <Icon name="arrow-clockwise" />
+                    Try again
+                  </button>
+                </div>
+              )}
             </Notice>
           )}
           <Action
@@ -944,6 +951,7 @@ export function Buy() {
             raw > 0n &&
             seeded &&
             !tradeDone &&
+            !poolBlocked &&
             (needsApproval ||
               total > 1 ||
               (!selling && payout.data !== "pool")) && (

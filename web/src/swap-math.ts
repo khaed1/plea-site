@@ -5,10 +5,10 @@
  */
 const Q96 = 2n ** 96n;
 const ceil = (a: bigint, b: bigint) => (a + b - 1n) / b;
-/** Exact Uniswap v4 TickMath Q128.128 products, uint256 inversion, Q64.96 round up. */
 /** The pool cannot fill this amount at any price: no approval or trade can help, only a smaller amount. */
 export const LIQUIDITY_SHORT = "This amount crosses the pool’s available liquidity.";
 export const NO_LIQUIDITY = "Not enough active pool liquidity for this quote.";
+/** Exact Uniswap v4 TickMath Q128.128 products, uint256 inversion, Q64.96 round up. */
 export function sqrtAtTick(tick: number): bigint {
   if (!Number.isInteger(tick) || Math.abs(tick) > 887272)
     throw Error("Tick is outside the pool's range.");

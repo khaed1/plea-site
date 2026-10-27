@@ -409,9 +409,9 @@ test("quotes cross an empty range: a PLEA-first pool seeded 1 below its band quo
     buy = { amount: 2n * 10n ** 18n, zeroForOne: m.swapZeroForOne(false, true), ...fees };
   assert.equal(seeded, 297188430358616436973918922n);
   const q = m.estimateHookOutput({ ...buy, sqrt: seeded, bands: [market, wall] });
-  // 82,426 PLEA for the 2 IMD opening buy at the launch window's start: what the owner's real opening
-  // buy through the Universal Router received on the Ethereum fork, one block after the seed
-  // (web/scripts/ethereum-fork-trade.mjs: 82,426.35 PLEA).
+  // 82,426 PLEA for the 2 IMD opening buy in the same second as the seed (launchExtraBps 7,000): what a
+  // real Universal Router buy received on the Ethereum fork (82,426.35 PLEA; 12 s later, with 6,984 bps,
+  // it is 82,503, and the site's quote matched the chain to the wei at every offset checked).
   assert.equal(q.out / 10n ** 18n, 82426n);
   assert.equal(q.gross / 10n ** 18n, 82632n);
   assert.ok(q.next > m.sqrtAtTick(market.tickLower), "the price ends inside the band");
