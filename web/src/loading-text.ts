@@ -42,3 +42,16 @@ export function loadingTitle(page: string, id?: string, connected?: string) {
   }
   return TITLES[page] || "PLEA";
 }
+/** Home's lead, the same words in the loaded hero and in its loading band (r2X-11): the panel
+ * size and the top score are CabalGate.PANEL_SIZE and MAX_PLEA_SCORE, read with the other constants
+ * before the first snapshot. */
+export function homeLead(
+  c: { symbol?: string; [key: string]: any },
+  dead = false,
+) {
+  return `${c.symbol || "PLEA"} is a meme token on Uniswap v4. ${
+    dead
+      ? "The Cabal is dead, so buying and selling are open to everyone, forever."
+      : `To sell, you write why, and the Cabal, ${c["CabalGate.PANEL_SIZE"]} judges on an IMD oracle panel, scores it from 0 to ${c["CabalGate.MAX_PLEA_SCORE"]}.`
+  }`;
+}

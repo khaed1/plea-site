@@ -1,5 +1,6 @@
 import { LETTERBOX, Q96 } from "./models";
 import { HowItWorks, ContractsPanel } from "./home-info";
+import { homeLead } from "./loading-text";
 import {
   HomeDetails,
   LetterDetails,
@@ -95,12 +96,7 @@ export function Home() {
                 )}
               </h1>
             </div>
-            <p className="lead">
-              {symbol} is a meme token on Uniswap v4.{" "}
-              {dead
-                ? "The Cabal is dead, so buying and selling are open to everyone, forever."
-                : `To sell, you write why, and the Cabal, ${con(s, "CabalGate.PANEL_SIZE")} judges on an IMD oracle panel, scores it from 0 to ${con(s, "CabalGate.MAX_PLEA_SCORE")}.`}
-            </p>
+            <p className="lead">{homeLead(s?.constants || {}, dead)}</p>
           </div>
           <div className="btn-row">
             <a className="btn btn--primary" href="#/buy">

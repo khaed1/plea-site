@@ -44,6 +44,8 @@ const {
   windowClosedToast,
   verdictToast,
   deliveredToast,
+  ruledToast,
+  plainText,
   objectionVoidToast,
   revertedText,
   unconfirmedText,
@@ -53,7 +55,7 @@ const {
   RECEIPT_GIVE_UP,
 } = await load("toast-text");
 const { clock } = await load("chain");
-const { loadingLine, loadingTitle } = await load("loading-text");
+const { loadingLine, loadingTitle, homeLead } = await load("loading-text");
 
 const E = 10n ** 18n;
 const V = 1792600000; // verdict time
@@ -112,7 +114,7 @@ const plea = (o = {}) => ({
   text: "A plea.",
   ...o,
 });
-const words = (t) => [t.text, t.body].filter(Boolean).join(" / ");
+const words = (t) => [plainText(t.text), plainText(t.body)].filter(Boolean).join(" / ");
 
 test("r2X-3/r2D-N3: one 'Open plea #N' to the plea page and one 'View transaction' to the explorer", () => {
   const links = toastLinks(
@@ -153,9 +155,13 @@ test("X6: window closed after a sustained objection or for an excluded seller na
       windowClosedToast(p, snap(), V + 421).body,
       `Plea #7 lapsed: nothing was sold. Next plea at ${clock(V + 14400)}.`,
     );
-  // Nothing holds them any more: record now.
+  // Nothing holds them any more: record now, never a hold that already ended.
   assert.match(
     windowClosedToast(plea({ standing: [false, false, 255] }), snap(), V + 1300).body,
+    /Your \+44 points still count: record them now\./,
+  );
+  assert.match(
+    windowClosedToast(plea(), snap(), V + 1300).body,
     /Your \+44 points still count: record them now\./,
   );
 });
@@ -171,15 +177,18 @@ test("X6: a denied letter's toast gives the APPEAL letter, its fee, and what set
   assert.equal(t.kind, "bad");
   assert.equal(t.icon, "x-circle");
   assert.equal(t.role, "status");
+  // The command is bold mono and the fee kept on one line, as letters.html:360 marks them.
+  assert.deepEqual(t.body[1], { text: "APPEAL <text>", mono: true, strong: true });
+  assert.deepEqual(t.body[3], { text: "1.10 imdTEST" });
   assert.match(
-    t.body,
+    plainText(t.body),
     new RegExp(
       `^One appeal: send APPEAL <text> before ${clock(V + 14400)} \\(1\\.10 imdTEST in PLEA, about [\\d,]+ PLEA\\)\\. Or call settle to get your 189,495 PLEA and the 0\\.25 imdTEST tip back; the 0\\.50 imdTEST oracle fee is spent\\.$`,
     ),
   );
   // The fee is read from Letterbox.feesFor(true), not added up from literals (r2D-N9).
   assert.match(
-    verdictToast(plea({ status: 3, score: 6, flags: 1 }), snap({ v: { ...s.v, appealFees: [2n * E, 0n] } }), false).body,
+    plainText(verdictToast(plea({ status: 3, score: 6, flags: 1 }), snap({ v: { ...s.v, appealFees: [2n * E, 0n] } }), false).body),
     /\(2\.00 imdTEST in PLEA/,
   );
   // A site plea: one appeal until the cooldown ends; none once it is closed or already used.
@@ -212,17 +221,55 @@ test("r2D-N1: Delivered tells the writer it was sold for them, the runner only w
   const runner = deliveredToast(p, s, args, time, RUNNER);
   assert.equal(
     words(runner),
-    "Delivered plea #7: 500,000 PLEA sold for the writer. / You earned the 0.25 imdTEST tip; the writer (0x3EF8…51c4) got 2.40 imdTEST.",
+    "Delivered plea #7: 500,000 PLEA sold for the writer; you earned the 0.25 imdTEST tip. / The writer (0x3EF8…51c4) got 2.40 imdTEST.",
   );
+  // Addresses are mono, as letters.html:359's runner.
+  assert.deepEqual(writer.body[1], { text: "0x490C…fe62", mono: true });
+  assert.deepEqual(runner.body[1], { text: "0x3EF8…51c4", mono: true });
   assert.doesNotMatch(words(runner), /points|Next plea|sold for you/);
   assert.equal(runner.href, "#/p/7");
   // No wallet (or another one): the runner's wording, never the writer's.
-  assert.match(deliveredToast(p, s, args, time, undefined).text, /^Delivered plea #7/);
+  assert.match(plainText(deliveredToast(p, s, args, time, undefined).text), /^Delivered plea #7/);
   const self = deliveredToast(p, s, { ...args, runner: SELLER }, time, SELLER);
   assert.equal(self.text, "Sold 500,000 PLEA for 2.40 imdTEST.");
   assert.match(self.body, /^You delivered it yourself, so the 0\.25 imdTEST tip came back to you\./);
   // Without the block's time the next plea is left out, never guessed.
-  assert.doesNotMatch(deliveredToast(p, s, args, undefined, SELLER).body, /Next plea/);
+  assert.doesNotMatch(plainText(deliveredToast(p, s, args, undefined, SELLER).body), /Next plea/);
+});
+
+test("X6: a ruled objection tells its objector what the plea now counts and where the stake goes (objections.html:275-276)", () => {
+  const s = snap({ constants: { ...snap().constants, "Seasons.SEAT_MULTIPLIER_BPS": 12000n } });
+  const sustained = ruledToast({ id: 8n, ruling: 2, newScore: 29 }, plea({ id: 209n, need: 33, standing: [false, true, 29] }), s);
+  assert.equal(
+    words(sustained),
+    "Objection #8 sustained, 29 vs need 33. / Plea #209 gets no points. Your 0.35 imdTEST stake comes back when anyone calls settle. The Tribunal thanks you for your service.",
+  );
+  assert.equal(sustained.icon, "gavel");
+  assert.equal(sustained.kind, "info");
+  // Overruled with a seat: the lowest panel score, times the seat multiplier (Seasons.record).
+  const seat = ruledToast(
+    { id: 7n, ruling: 3, newScore: 33 },
+    plea({ id: 206n, need: 33, score: 36, seat: true, points: 39, name: "brine_oracle", standing: [true, false, 33] }),
+    s,
+  );
+  assert.equal(
+    words(seat),
+    "Objection #7 overruled, 33 vs need 33. / Plea #206 counts 33: 39 points with brine_oracle’s seat (33 × 1.2). Your 0.35 imdTEST stake goes to the season prize pot when anyone calls settle.",
+  );
+  const plain = ruledToast({ id: 7n, ruling: 3, newScore: 40 }, plea({ score: 44, points: 40, standing: [true, false, 40] }), s);
+  assert.match(plainText(plain.body), /^Plea #7 counts 40\. Your 0\.35 imdTEST stake goes to the season prize pot/);
+});
+
+test("r2X-11: Home's lead is one sentence for the loading band and the loaded hero", () => {
+  const c = { symbol: "PLEA", "CabalGate.PANEL_SIZE": 30, "CabalGate.MAX_PLEA_SCORE": 45 };
+  assert.equal(
+    homeLead(c),
+    "PLEA is a meme token on Uniswap v4. To sell, you write why, and the Cabal, 30 judges on an IMD oracle panel, scores it from 0 to 45.",
+  );
+  assert.equal(
+    homeLead(c, true),
+    "PLEA is a meme token on Uniswap v4. The Cabal is dead, so buying and selling are open to everyone, forever.",
+  );
 });
 
 test("r2D-N10: expiring an unanswered objection says it is void and how the stake comes back", () => {

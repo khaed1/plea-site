@@ -323,7 +323,7 @@
   margin-top: var(--space-4);
 }
 @media (min-width: 768px) and (max-width: 1279px) {
-  .loading-wall > :nth-child(3) {
+  .wall-grid--loading > :nth-child(3) {
     display: none;
   }
 }

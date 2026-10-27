@@ -1,4 +1,4 @@
-import { potFor } from "./models";
+import { potFor, LETTERBOX } from "./models";
 import { resetHealth } from "./config";
 import { getAddress } from "viem";
 import { Fragment, useState } from "react";
@@ -490,11 +490,12 @@ function SeasonBody({
                       ),
                     ],
                     [
-                      `Site auto-sell sales (${deliveries.length} × 0.35; letters pay none)`,
+                      // Letterbox.AUTO_SELL_FEE is internal (pinned in models.ts); the stake is Tribunal.STAKE (r2D-N9).
+                      `Site auto-sell sales (${deliveries.length} × ${amount(LETTERBOX.AUTO_SELL_FEE, s!.constants.pairDecimals ?? 18, 2)}; letters pay none)`,
                       tokenAmount(autoFees, s, true),
                     ],
                     [
-                      `Overruled stakes (${stakes.length} × 0.35)`,
+                      `Overruled stakes (${stakes.length} × ${amount(BigInt(con(s, "Tribunal.STAKE")), s!.constants.pairDecimals ?? 18, 2)})`,
                       tokenAmount(stakeFees, s, true),
                     ],
                   ] as [string, string][])),

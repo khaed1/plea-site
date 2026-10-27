@@ -17,9 +17,21 @@ import {
   type Snapshot,
 } from "./chain";
 import type { ErrorMessage } from "./errors";
+/** A toast line: plain text, or parts where an object is kept on one line, in the mono face when
+ * `mono` (an address or a letter command) and bold when `strong`, as the mockups' toasts mark them
+ * (<span class="mono nowrap">0x7a3f…c21e</span>, <b class="mono nowrap">APPEAL &lt;text&gt;</b>). */
+export type ToastPart = string | { text: string; mono?: boolean; strong?: boolean };
+export type ToastText = string | ToastPart[];
+/** The words of a toast line, without its marks (tests, receipts, de-duplication). */
+export const plainText = (t?: ToastText) =>
+  t === undefined
+    ? undefined
+    : typeof t === "string"
+      ? t
+      : t.map((part) => (typeof part === "string" ? part : part.text)).join("");
 export type Toast = {
-  text: string;
-  body?: string;
+  text: ToastText;
+  body?: ToastText;
   icon?: string;
   kind?: "bad" | "ok" | "pending" | "sold" | "info";
   /** The transaction: linked once, as "View transaction" (or `receiptLabel`). */
@@ -58,9 +70,10 @@ export function windowClosedToast(p: Plea, s: Snapshot, now: number): Toast {
   if (counts && p.recorded) points = ` Your +${p.points} points are recorded.`;
   else if (counts) {
     const held = recordFrom(p, s, now);
-    points = held
-      ? ` Your +${p.points} points still count: held until ${clock(held.until)}, then record them.`
-      : ` Your +${p.points} points still count: record them now.`;
+    points =
+      held && held.until > now
+        ? ` Your +${p.points} points still count: held until ${clock(held.until)}, then record them.`
+        : ` Your +${p.points} points still count: record them now.`;
   }
   return {
     kind: "info",
@@ -95,7 +108,7 @@ export function verdictToast(p: Plea, s: Snapshot, approved: boolean): Toast {
       !p.appealed &&
       !!val(s, "CabalGate.cabalAlive") &&
       s.timestamp <= until;
-  let body: string | undefined;
+  let body: ToastText | undefined;
   if (open && p.flags & 1) {
     const fee = BigInt(
         s.v.appealFees?.[0] ??
@@ -104,7 +117,13 @@ export function verdictToast(p: Plea, s: Snapshot, approved: boolean): Toast {
             LETTERBOX.TIP,
       ),
       plea = feeInPlea(s, fee);
-    body = `One appeal: send APPEAL <text> before ${clock(until)} (${tokenAmount(fee, s, true)} in ${s.constants.symbol}${plea === undefined ? "" : `, about ${tokenAmount(plea, s, false, 0, "up")}`}). Or call settle to get your ${tokenAmount(p.escrow?.[2] || p.amount, s)} and the ${tokenAmount(LETTERBOX.TIP, s, true)} tip back; the ${tokenAmount(BigInt(con(s, "CabalGate.ORACLE_FEE")), s, true)} oracle fee is spent.`;
+    body = [
+      "One appeal: send ",
+      { text: "APPEAL <text>", mono: true, strong: true },
+      ` before ${clock(until)} (`,
+      { text: tokenAmount(fee, s, true) },
+      ` in ${s.constants.symbol}${plea === undefined ? "" : `, about ${tokenAmount(plea, s, false, 0, "up")}`}). Or call settle to get your ${tokenAmount(p.escrow?.[2] || p.amount, s)} and the ${tokenAmount(LETTERBOX.TIP, s, true)} tip back; the ${tokenAmount(BigInt(con(s, "CabalGate.ORACLE_FEE")), s, true)} oracle fee is spent.`,
+    ];
   } else if (open) body = `One appeal until ${clock(until)}.`;
   return {
     kind: "bad",
@@ -140,8 +159,12 @@ export function deliveredToast(
   if (wallet?.toLowerCase() !== seller)
     return {
       kind: "sold",
-      text: `Delivered plea #${p.id}: ${tokenAmount(p.amount, s)} sold for the writer.`,
-      body: `You earned the ${tip} tip; the writer (${short(p.seller)}) got ${tokenAmount(out, s, true)}.`,
+      text: `Delivered plea #${p.id}: ${tokenAmount(p.amount, s)} sold for the writer; you earned the ${tip} tip.`,
+      body: [
+        "The writer (",
+        { text: short(p.seller), mono: true },
+        `) got ${tokenAmount(out, s, true)}.`,
+      ],
       href: `#/p/${p.id}`,
       link: `Open plea #${p.id}`,
     };
@@ -154,7 +177,48 @@ export function deliveredToast(
   return {
     kind: "sold",
     text: `Approved, ${p.score} vs need ${p.need}, and sold for you: ${tokenAmount(p.amount, s)} for ${tokenAmount(out, s, true)}.`,
-    body: `A runner (${short(args.runner)}) sold it within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))} and earned the ${tip} tip.${hint ? ` ${hint}` : ""}${next}`,
+    body: [
+      "A runner (",
+      { text: short(args.runner), mono: true },
+      `) sold it within the ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))} and earned the ${tip} tip.${hint ? ` ${hint}` : ""}${next}`,
+    ],
+  };
+}
+/** The objector's toast when its objection is ruled (objections.html:275-276). A sustained
+ * objection takes the plea's points and settle pays the stake back to the objector; an overruled
+ * one leaves the plea counting the lowest panel score (Seasons.record: lowest < score ? lowest :
+ * score), times the seat multiplier for a seat holder, and settle pays the stake to the season's
+ * prize pot (Tribunal.settle). */
+export function ruledToast(
+  o: { id: bigint; ruling: number; newScore: number },
+  p: Plea | undefined,
+  s: Snapshot,
+): Toast {
+  const sustained = o.ruling === 2,
+    stake = tokenAmount(BigInt(con(s, "Tribunal.STAKE")), s, true),
+    text = `Objection #${o.id} ${sustained ? "sustained" : "overruled"}, ${o.newScore} vs need ${p?.need ?? "?"}.`;
+  if (!p) return { kind: "info", icon: "gavel", text };
+  const counted = Math.min(p.score, Number(o.newScore), Number(p.standing?.[2] ?? 255)),
+    mult = Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000,
+    seat =
+      p.seat && p.points !== undefined && p.points !== counted
+        ? [
+            `: ${p.points} points with `,
+            p.name ? p.name : { text: short(p.seller), mono: true },
+            `’s seat (${counted} × ${mult})`,
+          ]
+        : [];
+  return {
+    kind: "info",
+    icon: "gavel",
+    text,
+    body: sustained
+      ? `Plea #${p.id} gets no points. Your ${stake} stake comes back when anyone calls settle. The Tribunal thanks you for your service.`
+      : [
+          `Plea #${p.id} counts ${counted}`,
+          ...seat,
+          `. Your ${stake} stake goes to the season prize pot when anyone calls settle.`,
+        ],
   };
 }
 /** Tribunal.expire's toast (ObjectionVoid, r2D-N10): expire voids only a stale objection

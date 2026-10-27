@@ -48,7 +48,9 @@ import {
   afterSend,
   deliveredToast,
   objectionVoidToast,
+  plainText,
   receiptWaitStep,
+  ruledToast,
   revertedText,
   toastLinks,
   unconfirmedText,
@@ -57,12 +59,15 @@ import {
   RECEIPT_GIVE_UP,
   RECEIPT_WAIT,
   type Toast,
+  type ToastText,
 } from "./toast-text";
 import { LETTERBOX } from "./models";
 export type { Toast } from "./toast-text";
 type AppContext = {
   r: Runtime;
   s?: Snapshot;
+  /** The contracts' constants and the token symbols, read once before the first snapshot. */
+  statics?: Record<string, any>;
   error: string;
   refresh: () => Promise<boolean>;
   verified: boolean;
@@ -100,13 +105,19 @@ export function DataProvider({
   }, []);
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
+  const [statics, setStatics] = useState<Record<string, any>>();
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
   const [toasts, setToasts] = useState<(Toast & { id: number })[]>([]);
   const toastId = useRef(0);
   const pushToast = useCallback(
     (t: Toast) =>
       setToasts((old) => {
-        if (t.hash && old.some((x) => x.hash === t.hash && x.text === t.text))
+        if (
+          t.hash &&
+          old.some(
+            (x) => x.hash === t.hash && plainText(x.text) === plainText(t.text),
+          )
+        )
           return old;
         return [...old.slice(-2), { ...t, id: ++toastId.current }];
       }),
@@ -166,6 +177,7 @@ export function DataProvider({
       if (!constants.current) {
         await discover(r);
         constants.current = await readStatic(r);
+        setStatics(constants.current);
         setVerified(true);
       }
       const next = await readSnapshot(r, constants.current, previous.current);
@@ -206,11 +218,13 @@ export function DataProvider({
                 .flatMap((p) => p.objections || [])
                 .find((o) => o.id === event.args.id);
               if (o?.objector?.toLowerCase() === me)
-                pushToast({
-                  kind: "info",
-                  icon: "gavel",
-                  text: `Objection #${o.id} ${o.ruling === 2 ? "sustained" : "overruled"}, ${o.newScore} vs need ${next.pleas.find((p) => p.id === o.pleaId)?.need}.`,
-                });
+                pushToast(
+                  ruledToast(
+                    o,
+                    next.pleas.find((p) => p.id === o.pleaId),
+                    next,
+                  ),
+                );
             }
             // Only the writer hears a runner's sale here; the runner has the receipt's toast.
             if (event.eventName === "Delivered" && p?.seller.toLowerCase() === me)
@@ -319,6 +333,7 @@ export function DataProvider({
       value={{
         r,
         s,
+        statics,
         error,
         refresh,
         verified,
@@ -348,10 +363,10 @@ export function DataProvider({
               />
             </svg>
             <div>
-              <p className="toast__title">{toast.text}</p>
+              <p className="toast__title">{rich(toast.text)}</p>
               {(toast.body || toastLinks(toast, r.network.explorer).length > 0) && (
                 <p>
-                  {toast.body}
+                  {rich(toast.body)}
                   {toastLinks(toast, r.network.explorer).map((l, i) => (
                     <Fragment key={l.href}>
                       {toast.body || i > 0 ? " " : ""}
@@ -385,6 +400,24 @@ export function DataProvider({
       </div>
     </C.Provider>
   );
+}
+/** A toast line with its marks: kept parts on one line, addresses and commands in mono. */
+function rich(t?: ToastText) {
+  return typeof t === "string" || t === undefined
+    ? t
+    : t.map((part, i) =>
+        typeof part === "string" ? (
+          part
+        ) : part.strong ? (
+          <b key={i} className={part.mono ? "mono nowrap" : "nowrap"}>
+            {part.text}
+          </b>
+        ) : (
+          <span key={i} className={part.mono ? "mono nowrap" : "nowrap"}>
+            {part.text}
+          </span>
+        ),
+      );
 }
 export const useApp = () => useContext(C);
 export function useRead<T = any>(
@@ -585,7 +618,7 @@ export function useTx(resetKey?: string) {
         saveReceipt({
           key: resetKey || name + ":" + fn,
           hash: h,
-          text: message.text,
+          text: plainText(message.text)!,
         });
       }
       return h;
@@ -773,7 +806,11 @@ async function receiptToast(
   if (claim) {
     const vault = claim.account.toLowerCase() !== wallet?.toLowerCase();
     return {
-      text: `Claimed ${tokenAmount(claim.amount, s)} for ${vault ? "the vault " : ""}${short(claim.account)}.`,
+      text: [
+        `Claimed ${tokenAmount(claim.amount, s)} for ${vault ? "the vault " : ""}`,
+        { text: short(claim.account), mono: true },
+        ".",
+      ],
       body: vault
         ? "The PLEA is on the vault; this wallet paid only the gas."
         : `Claim #${claim.index} is done. Selling it will take a plea.`,
