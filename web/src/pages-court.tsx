@@ -7,7 +7,7 @@ import { oracleRequest, type OracleData } from "./oracle";
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useAccount } from "wagmi";
 import { formatUnits, type Address } from "viem";
-import { useApp, useRead, useTx } from "./context";
+import { rich, useApp, useRead, useTx } from "./context";
 import {
   amount,
   caseState,
@@ -23,6 +23,8 @@ import {
   potOf,
   soldFor,
   objectionLine,
+  stakeNote,
+  missingTxText,
   con,
   courtCounts,
   duration,
@@ -524,9 +526,10 @@ export function Appeal({ p }: { p: Plea }) {
               ]
         }
       />
-      <p className="small">
+      {/* plea.html:301. An open escrow is named above, only when there is one. */}
+      <p className="small text-2">
         {auto
-          ? "Press Sell yourself and keep the tip. Your open escrow comes back first; the oracle fee is spent."
+          ? "Press Sell yourself and you keep the tip. If nobody sells it, or on any other ending, your PLEA and the tip come back; the oracle fee and the buy-wall share are spent."
           : `Off: you pay in ${s?.constants.pairSymbol} and, if approved, sell yourself within ${span(Number(con(s, "CabalGate.EXECUTE_WINDOW")))}.`}
       </p>
       {auto ? (
@@ -779,7 +782,7 @@ export function PleaPage({ id }: { id: string }) {
         {mine && <span className="badge badge--you">YOU</span>}
       </div>
       <p className="lead">
-        {pleaLead(p, s, { state, canSell, mine: !!mine, missedSeason })}{" "}
+        {rich(pleaLead(p, s, { state, canSell, mine: !!mine, missedSeason }))}{" "}
         {held
           ? recordAt?.objection
             ? `The +${p.points} points are held until ${rulingWait(recordAt.objections)}; record them after ${clock(recordAt.until)}.`
@@ -1284,7 +1287,7 @@ export function PleaPage({ id }: { id: string }) {
                         {clock(time)} · View transaction
                       </a>
                     ) : (
-                      "No transaction yet"
+                      missingTxText(time, s.historyError)
                     )}
                   </dd>
                 </div>
@@ -1305,7 +1308,7 @@ export function PleaPage({ id }: { id: string }) {
     </div>
   );
 }
-import { APP } from "./config";
+import { APP, resetHealth } from "./config";
 export function ObjectionForm({ p }: { p: Plea }) {
   const { r, s, now } = useApp(),
     { address } = useAccount(),
@@ -1519,7 +1522,7 @@ export function ObjectionForm({ p }: { p: Plea }) {
   );
 }
 export function Objections() {
-  const { r, s, now } = useApp(),
+  const { r, s, now, refresh } = useApp(),
     specific = new URLSearchParams(location.hash.split("?")[1]).get("plea"),
     requested = useRead(
       () => getPlea(r, BigInt(specific!), s?.logs),
@@ -1548,6 +1551,7 @@ export function Objections() {
   )
     .slice()
     .sort((a: any, b: any) => Number(b.id - a.id));
+  const objectorName = useNames(objections.map((o: any) => o.objector));
   const cases = useRead(
     () =>
       Promise.all(
@@ -1581,8 +1585,9 @@ export function Objections() {
         <div className="section__head">
           <h2>Open now</h2>
           <p className="meta">
-            {list.length} approved plea{list.length === 1 ? "" : "s"} · closing
-            soonest first
+            {s?.historyError && !specific && !list.length
+              ? "History incomplete"
+              : `${list.length} approved plea${list.length === 1 ? "" : "s"} · closing soonest first`}
           </p>
         </div>
         <div className="split">
@@ -1599,6 +1604,23 @@ export function Objections() {
               </Empty>
             ) : list.length ? (
               list.map((p) => <ObjectionForm p={p} key={String(p.id)} />)
+            ) : s?.historyError && !specific ? (
+              // The open cases come from history; with a gap in it, "none" is not known (r2S-N1).
+              <Empty
+                icon="megaphone-simple"
+                title="Can’t tell which cases are open yet"
+                action={{
+                  label: "Try history again",
+                  onClick: () => {
+                    resetHealth();
+                    void refresh();
+                  },
+                }}
+              >
+                Approved pleas inside their objection window are found in the
+                history, and part of it could not be read. They show once the
+                history is read.
+              </Empty>
             ) : (
               <Empty
                 icon="megaphone-simple"
@@ -1706,8 +1728,14 @@ export function Objections() {
                   return (
                     <tr key={String(o.id)}>
                       <th scope="row">
-                        #{String(o.id)}
-                        <p className="mono small">{short(o.objector)}</p>
+                        <span className="mono">#{String(o.id)}</span>
+                        {/* "<name or 0x…>", as the plea page names objectors (review-2 C5). */}
+                        <span className="cell-note">
+                          by{" "}
+                          {objectorName(o.objector) || (
+                            <span className="mono">{short(o.objector)}</span>
+                          )}
+                        </span>
                       </th>
                       <td>
                         <span className="stamp stamp--sm stamp--objection">
@@ -1735,14 +1763,10 @@ export function Objections() {
                       </td>
                       <td>
                         <p>
-                          {tokenAmount(con(s, "Tribunal.STAKE"), s, true)}{" "}
-                          {o.ruling === 3
-                            ? "to the season prize pot"
-                            : o.ruling > 1
-                              ? "back to the objector"
-                              : p && objectionStale(o, p, s!, now)
-                                ? "held until expired, then back to the objector"
-                                : "held"}
+                          {tokenAmount(con(s, "Tribunal.STAKE"), s, true)}
+                          <span className="cell-note">
+                            {stakeNote(o, !!p && objectionStale(o, p, s!, now))}
+                          </span>
                         </p>
                         {o.ruling === 1 &&
                           now >
@@ -1882,6 +1906,7 @@ function SaleSummary({
       (l) => l.eventName === "Delivered" && l.args.id === p.id,
     ),
     { address } = useAccount(),
+    mine = address?.toLowerCase() === p.seller.toLowerCase(),
     end = Number(p.verdictAt) + Number(con(s, "CabalGate.COOLDOWN"));
   const saleLog =
     delivered ||
@@ -2089,14 +2114,16 @@ function SaleSummary({
             </>
           )}
         </p>
-        {now < end && (
+        {/* The countdown is the seller's own; others read whose cooldown it is (review-2 C5). */}
+        {now < end && mine && (
           <div>
             <Countdown until={end} label="Next plea in" />
           </div>
         )}
         <p>
-          The {span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown runs
-          from the verdict, until {clock(end)}.
+          The {mine ? "" : "seller’s "}
+          {span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown{" "}
+          {now < end ? "runs" : "ran"} from the verdict, until {clock(end)}.
         </p>
       </>
     );
@@ -2107,7 +2134,11 @@ function SaleSummary({
         <p>
           {noVerdict(p, s!, now).detail} No cooldown; the{" "}
           {tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true)} oracle fee is
-          not refunded. The seller may plead again at once.
+          not refunded.{" "}
+          {/* After the death a new plea reverts (CabalGate._requireCanPlead: CabalNotWatching). */}
+          {val(s, "CabalGate.diedAt")
+            ? "Pleas are closed: the Cabal is dead. PLEA sells freely on the Buy page."
+            : `${mine ? "You" : "The seller"} may plead again at once.`}
         </p>
       </>
     );
@@ -2140,8 +2171,7 @@ function SaleSummary({
   if (now > end) return <p>The appeal window closed at {clock(end)}.</p>;
   return (
     <p>
-      {address?.toLowerCase() === p.seller.toLowerCase() ? "You" : "The seller"}{" "}
-      may appeal once, until {clock(end)}.
+      {mine ? "You" : "The seller"} may appeal once, until {clock(end)}.
     </p>
   );
 }

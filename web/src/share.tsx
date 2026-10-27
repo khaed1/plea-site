@@ -12,6 +12,7 @@ import {
   short,
   objectionCase,
   objectionLine,
+  voidWords,
   objectionStale,
   clock,
   soldFor,
@@ -147,7 +148,7 @@ export function ShareCard({ p }: { p?: Plea }) {
                   </span>
                   <span>
                     {o.ruling === 4
-                      ? `#${o.id}: ${o.reason === "stale" ? "no answer" : "panel split"} · nothing changes`
+                      ? `#${o.id}: ${voidWords(o.reason, s, true)} · nothing changes`
                       : o.ruling === 1 && objectionStale(o, p, s!, now)
                         ? "no answer · void once expired"
                         : objectionLine(o, p, s, now)}

@@ -19,6 +19,8 @@ import {
   span,
   soldFor,
   pleaState,
+  cooldownStep,
+  blockTime,
   short,
   type Plea,
 } from "./chain";
@@ -376,6 +378,22 @@ export function PleaTimeline({
   missedSeason?: bigint;
 }) {
   const { s, now, r } = useApp(),
+    { address } = useAccount(),
+    mine = address?.toLowerCase() === p.seller.toLowerCase(),
+    // The sale's block time starts a sold plea's cooldown (CabalGate._sell).
+    saleLog =
+      p.status === 4
+        ? s!.logs.find(
+            (l) =>
+              ["SellExecuted", "Delivered"].includes(l.eventName) &&
+              l.args.id === p.id,
+          )
+        : undefined,
+    saleTime = useRead(
+      () => blockTime(r, saleLog!.blockNumber),
+      [saleLog?.blockNumber],
+      !!saleLog,
+    ),
     approved = [2, 4, 5].includes(p.status),
     points = approved && !p.standing?.[1] && !p.excluded,
     window = Number(p.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW")),
@@ -401,12 +419,12 @@ export function PleaTimeline({
     ],
   ];
   if (state === "NO VERDICT")
-    steps.push([
-      "No cooldown",
-      "The seller may plead again at once.",
-      "check",
-      "is-done",
-    ]);
+    steps.push(
+      // After the death no plea is taken (CabalGate._requireCanPlead: CabalNotWatching).
+      val(s, "CabalGate.diedAt")
+        ? ["Pleas closed", "The Cabal is dead; sell on the Buy page.", "check", "is-done"]
+        : ["No cooldown", "The seller may plead again at once.", "check", "is-done"],
+    );
   if (approved)
     steps.push([
       p.status === 4 ? "Sold" : "Sell window",
@@ -454,15 +472,15 @@ export function PleaTimeline({
       "arrow-right",
       now <= cooldown && !p.appealed ? "is-now" : "is-done",
     ]);
-  if (p.verdictAt)
+  if (p.verdictAt) {
+    const step = cooldownStep(p, s!, now, saleTime.data, mine);
     steps.push([
       `${span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown`,
-      p.status === 4
-        ? "Runs from the sale."
-        : `From this verdict until ${clock(cooldown)}`,
+      step.text,
       "timer",
-      now > cooldown ? "is-done" : "is-now",
+      step.done ? "is-done" : p.status === 2 && now <= window ? "is-later" : "is-now",
     ]);
+  }
   return (
     <Panel level={2} title="Timeline">
       <ol className="timeline">

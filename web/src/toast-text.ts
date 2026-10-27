@@ -249,6 +249,173 @@ export function objectionVoidToast(
     link: `Open plea #${args.pleaId}`,
   };
 }
+const who = (address: string, wallet?: string, name?: string): ToastPart =>
+  wallet && address.toLowerCase() === wallet.toLowerCase()
+    ? "you"
+    : name
+      ? name
+      : { text: short(address), mono: true };
+/** Seasons.record's toast (seasons.html:295). The season line is Seasons.bestOf / topOf for the
+ * recorded wallet; anyone may record anyone's plea, so when the recorder is not the seller the toast
+ * names whose points they are (review-2 C5) instead of reading as the recorder's own standing. */
+export function recordedToast(
+  recorded: { pleaId: bigint; season: bigint; wallet: string },
+  points: number,
+  standing: { best: number[]; rank: number } | undefined,
+  wallet?: string,
+  name?: string,
+): Toast {
+  const own = !!wallet && recorded.wallet.toLowerCase() === wallet.toLowerCase(),
+    best = (standing?.best || []).filter(Number).sort((a, b) => b - a),
+    total = best.reduce((a, b) => a + b, 0),
+    season = `Season ${Number(recorded.season) + 1}`,
+    rank = standing && standing.rank >= 0 ? `, rank ${standing.rank + 1}` : "";
+  if (own)
+    return {
+      text: `+${points} points recorded.`,
+      body: standing
+        ? `${season}: ${total} points (${best.join(" + ")})${rank}.`
+        : undefined,
+    };
+  return {
+    text: [
+      `Plea #${recorded.pleaId}: +${points} points recorded for `,
+      who(recorded.wallet, undefined, name),
+      ".",
+    ],
+    body: standing ? `${season}: ${total} points${rank}.` : undefined,
+    href: `#/p/${recorded.pleaId}`,
+    link: `Open plea #${recorded.pleaId}`,
+  };
+}
+/** PleaDistributor.claim's toast (claim.html:235, 242). The PLEA always goes to the listed
+ * account; the vault wording is only for a claim sent from the Delegated vaults panel. */
+export function claimToast(
+  claim: { index: bigint; account: string; amount: bigint },
+  s: Snapshot,
+  vault = false,
+): Toast {
+  return {
+    text: [
+      `Claimed ${tokenAmount(claim.amount, s)} for ${vault ? "the vault " : ""}`,
+      { text: short(claim.account), mono: true },
+      ".",
+    ],
+    body: vault
+      ? "The PLEA is on the vault; this wallet paid only the gas."
+      : `Claim #${claim.index} is done. Selling it will take a plea.`,
+    receiptLabel: "View the receipt",
+  };
+}
+/** Tribunal.settle's toast, from StakeSettled(id, to, amount): an overruled stake goes to Seasons
+ * (the season prize pot), any other ruling's back to the objector. */
+export function stakeSettledToast(
+  args: { id: bigint; to: string; amount: bigint },
+  s: Snapshot,
+  seasons: string,
+  wallet?: string,
+  pleaId?: bigint,
+): Toast {
+  const amount = tokenAmount(BigInt(args.amount), s, true),
+    link =
+      pleaId === undefined
+        ? {}
+        : { href: `#/p/${pleaId}`, link: `Open plea #${pleaId}` };
+  return args.to.toLowerCase() === seasons.toLowerCase()
+    ? {
+        kind: "ok",
+        text: `Objection #${args.id} settled: ${amount} went to the season prize pot.`,
+        body: "The overruled stake joins the prize pot of the plea’s season.",
+        ...link,
+      }
+    : {
+        kind: "ok",
+        text: [
+          `Objection #${args.id} settled: ${amount} returned to `,
+          who(args.to, wallet),
+          ".",
+        ],
+        ...link,
+      };
+}
+/** Letterbox.settle's toast, from Settled(id, writer, amount, tip): the escrowed PLEA and the tip
+ * go back to the writer; the oracle fee was spent (letters.html:360). */
+export function escrowReturnedToast(
+  args: { id: bigint; writer: string; amount: bigint; tip: bigint },
+  s: Snapshot,
+  wallet?: string,
+): Toast {
+  return {
+    kind: "ok",
+    text: [
+      `Plea #${args.id}’s escrow returned: ${tokenAmount(BigInt(args.amount), s)}${BigInt(args.tip) ? ` and the ${tokenAmount(BigInt(args.tip), s, true)} tip` : ""} to `,
+      who(args.writer, wallet),
+      ".",
+    ],
+    body: `The ${tokenAmount(BigInt(con(s, "CabalGate.ORACLE_FEE")), s, true)} oracle fee is spent.`,
+    href: `#/p/${args.id}`,
+    link: `Open plea #${args.id}`,
+  };
+}
+/** CabalGate.expire's toast (PleaExpired, the plea twin of r2D-N10): expire clears only a stale
+ * pending plea (CabalGate._stale: past submittedAt + PENDING_EXPIRY, or its Intake request
+ * completed without a verdict). No cooldown starts and the oracle fee is not refunded. `p` is the
+ * plea as last read (its submittedAt and flags), `at` the expire's block time. */
+export function pleaExpiredToast(
+  id: bigint,
+  s: Snapshot,
+  p?: { submittedAt: bigint; flags: number; isAppeal?: boolean; originalId?: bigint },
+  at?: number,
+): Toast {
+  const expiry = Number(con(s, "CabalGate.PENDING_EXPIRY")),
+    early =
+      p !== undefined && at !== undefined && at <= Number(p.submittedAt) + expiry;
+  return {
+    kind: "ok",
+    text: `Plea #${id} expired: ${early ? "the Intake closed it without a verdict" : `no answer within ${span(expiry)}`}.`,
+    body: `No cooldown; the ${tokenAmount(BigInt(con(s, "CabalGate.ORACLE_FEE")), s, true)} oracle fee is spent.${p && p.flags & 2 ? " Return escrow and tip gives the writer’s PLEA and the tip back." : ""}${p?.isAppeal ? ` Plea #${p.originalId} may be appealed again while its appeal window is open.` : ""}`,
+    href: `#/p/${id}`,
+    link: `Open plea #${id}`,
+  };
+}
+/** PleaHook.rebalance's toast: the old wall closed (WallSettled: the PLEA it bought is burned) and
+ * the retained imdTEST placed as a new wall just below the price (WallDeployed). */
+export function rebalanceToast(
+  s: Snapshot,
+  deployed?: { imdDeployed: bigint },
+  settled?: { pleaBurned: bigint },
+): Toast {
+  const burned = settled && BigInt(settled.pleaBurned) ? BigInt(settled.pleaBurned) : 0n;
+  return {
+    kind: "ok",
+    text: deployed
+      ? `Buy wall rebalanced: ${tokenAmount(BigInt(deployed.imdDeployed), s, true)} placed just below the price.`
+      : "Buy wall rebalanced.",
+    body:
+      [
+        burned ? `The old wall’s ${tokenAmount(burned, s)} was burned.` : "",
+        deployed ? "" : "No new wall was placed this time.",
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
+  };
+}
+/** Seasons.flushToWall's toast (seasons.html:380), with the amounts from LeftoverToWall and
+ * BonusBurned. */
+export function flushToast(
+  s: Snapshot,
+  toWall?: bigint,
+  burned?: bigint,
+): Toast {
+  return {
+    kind: "ok",
+    text: "Leftovers sent to the buy wall.",
+    body:
+      toWall || burned
+        ? `${toWall ? `The ${tokenAmount(toWall, s, true)} now backs the wall` : `No ${s.constants.pairSymbol} was left`}${burned ? ` and the unused ${tokenAmount(burned, s)} bonus is burned` : ""}. Nothing is left in Seasons.`
+        : "Nothing was left in Seasons to send.",
+  };
+}
 /** Writes whose revert means a trade did not happen: the swap (buy, or sell after the death), Sell
  * now and a Letterbox delivery. Every other write gets the neutral text (r2D-N7). */
 export const TRADE_WRITES = ["swap", "executeSell", "deliver"];

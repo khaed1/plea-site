@@ -203,11 +203,7 @@ export async function getPlea(
       ...(known.find((o) => o.id === id) ||
         (await read(r, "Tribunal", "objection", [id]))),
       id,
-      reason: logs
-        .find((l) => l.eventName === "ObjectionVoid" && l.args.id === id)
-        ?.args.reason?.startsWith("0x7374616c65")
-        ? "stale"
-        : "split",
+      reason: voidKind(logs, id),
     })),
   );
   return {
@@ -384,12 +380,7 @@ export async function readSnapshot(
       return { ...(await read(r, "Tribunal", "objection", [id])), id };
     }),
   );
-  for (const o of objections as any[])
-    o.reason = logs
-      .find((l) => l.eventName === "ObjectionVoid" && l.args.id === o.id)
-      ?.args.reason?.startsWith("0x7374616c65")
-      ? "stale"
-      : "split";
+  for (const o of objections as any[]) o.reason = voidKind(logs, o.id);
   v.objections = objections;
   for (const p of pleas)
     p.objections = objections.filter((o) => o.pleaId === p.id).reverse();
@@ -477,6 +468,15 @@ export async function readCourtHistory(
     if (now > verdictTimes[key] + window) break;
     if (log.args.approved) openIds.push(log.args.id);
   }
+  // The newest pleas are read from the contract with their verdict time, so an approval inside
+  // its window is open even when the history scan stopped short of its Verdict log (r2S-N1).
+  for (const p of recent)
+    if (
+      [2, 4, 5].includes(p.status) &&
+      Number(p.verdictAt) > 0 &&
+      now <= Number(p.verdictAt) + window
+    )
+      openIds.push(p.id);
   const open = (await Promise.all([...new Set(openIds)].map(load))).filter(
     (p) => [2, 4, 5].includes(p.status),
   );
@@ -568,9 +568,13 @@ export function duration(seconds: number) {
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
 }
-export const utc = (s: number | bigint) =>
-  new Date(Number(s) * 1000).toISOString().slice(0, 16).replace("T", " ") +
-  " UTC";
+/** Always with the date, "2026-10-27 09:14 UTC" (or with seconds): for "on …" dates, where
+ * clock()'s bare time of today would read "on 13:07 UTC" (claim.html:126, 215). */
+export const utc = (s: number | bigint, seconds = false) =>
+  new Date(Number(s) * 1000)
+    .toISOString()
+    .slice(0, seconds ? 19 : 16)
+    .replace("T", " ") + " UTC";
 export function pleaState(p: Plea, now: number, s: Snapshot) {
   if (p.status === 1)
     return p.completed ||
@@ -643,6 +647,17 @@ export function normalizeClaims(data: any): any[] {
       return [];
     }
   });
+}
+/** A listed allocation's state from PleaDistributor.isClaimed: "claimed", "claimable", "checking"
+ * while the first read runs, "unknown" while it cannot be read (never "claimable" then). */
+export function claimState(read: {
+  data?: boolean;
+  error?: string;
+  loading?: boolean;
+}): "claimed" | "claimable" | "checking" | "unknown" {
+  if (read.data === true) return "claimed";
+  if (read.data === false) return "claimable";
+  return read.error ? "unknown" : "checking";
 }
 export function verifyClaim(c: any, root: string) {
   let hash = keccak256(
@@ -765,14 +780,47 @@ export function objectionStale(o: any, p: Plea, s: Snapshot, now: number) {
       (!!p.standing && !p.standing[0] && !p.standing[1] && !p.excluded))
   );
 }
+/** How objection `id` became void, from its ObjectionVoid log (Tribunal._void): "stale" when
+ * expire() voided it, or object() freed its stale slot (status 2, reason "stale"); "refused" when
+ * the Intake refused the request (status 1); "failed" when the Intake completed it without a ruling
+ * (status 2: the panel split or gave no answer; the event carries no agreed/answered, so the two
+ * cannot be told apart); "unknown" without the log (history is incomplete). */
+export type VoidKind = "stale" | "refused" | "failed" | "unknown";
+export function voidKind(logs: any[], id: bigint): VoidKind {
+  const log = logs.find(
+    (l) => l.eventName === "ObjectionVoid" && l.args.id === id,
+  );
+  if (!log) return "unknown";
+  if (String(log.args.reason ?? "").startsWith("0x7374616c65")) return "stale";
+  return Number(log.args.status) === 1 ? "refused" : "failed";
+}
+/** A void objection's reason, in the long form (plea page, Wall, Objections) or the share card's
+ * short one. */
+export function voidWords(kind: VoidKind | undefined, s?: Snapshot, short = false) {
+  return {
+    stale: short ? "no answer" : `no answer within ${expiryWords(s)}`,
+    refused: "request refused",
+    failed: short ? "split or no answer" : "the panel split or gave no answer",
+    unknown: "no ruling",
+  }[kind || "unknown"];
+}
 export function objectionLine(o: any, p: Plea, s?: Snapshot, now?: number) {
   if (o.ruling === 1)
     return s && now !== undefined && objectionStale(o, p, s, now)
       ? `no answer within ${expiryWords(s)}: void once anyone expires it; nothing changes`
       : "pending";
   if (o.ruling === 4)
-    return `#${o.id}: ${o.reason === "stale" ? `no answer within ${expiryWords(s)}` : "the panel split"}: nothing changes`;
+    return `#${o.id}: ${voidWords(o.reason, s)}: nothing changes`;
   return `#${o.id}: ${o.newScore} vs need ${p.need}${o.ruling === 3 && !p.standing?.[1] && !p.excluded ? ` · counts ${p.points || 0} points` : ""}`;
+}
+/** Where an objection's stake is, for the Recent rulings table (objections.html:236): once
+ * Tribunal.settle paid it (objection.settled), where it went; before, where it will go. An
+ * overruled stake goes to Seasons, any other ruling's back to the objector (Tribunal.settle). */
+export function stakeNote(o: { ruling: number; settled?: boolean }, stale = false) {
+  if (o.ruling === 3)
+    return o.settled ? "went to the season prize pot" : "to the season prize pot";
+  if (o.ruling > 1) return o.settled ? "returned" : "back to the objector";
+  return stale ? "held until expired, then back to the objector" : "held";
 }
 /** The objections that decide a plea's case now, oldest first: every ruling and every live pending
  * objection (a void or stale one changes nothing). `state` is the one a share card and post lead
@@ -820,11 +868,13 @@ export function soldFor(p: Plea, s: Snapshot) {
 /** The plea page's lead. It agrees with the sale panel: a sustained objection
  * (Tribunal.standing) or an excluded seller (Seasons.excluded) means no points,
  * and only a sold plea's sale stands (C2, r2C-N1). */
+/** A line of text with addresses marked for the mono face (the shape of toast-text's ToastPart). */
+export type LeadPart = string | { text: string; mono?: boolean };
 export function pleaLead(
   p: Plea,
   s: Snapshot,
   o: { state: string; canSell: boolean; mine: boolean; missedSeason: boolean },
-) {
+): string | LeadPart[] {
   const sustained = !!p.standing?.[1],
     noPoints = sustained
       ? "An objection was sustained: no points for this plea."
@@ -832,13 +882,26 @@ export function pleaLead(
         ? "This seller is excluded from season points."
         : "",
     window = Number(con(s, "CabalGate.EXECUTE_WINDOW"));
+  // Only the wallet that can sell is told to sell (the sale panel: "Only the seller can sell plea
+  // #N."); others read who can, "<name or 0x…> can sell until 08:06 UTC" (review-2 C5). A letter's
+  // escrowed plea (auto-sell) is sold by anyone, for the writer.
+  if (o.canSell && !o.mine) {
+    const who = p.name ? p.name : { text: short(p.seller), mono: true };
+    return [
+      "The Cabal approved this plea. ",
+      ...(p.flags & 2 ? ["Anyone can sell it for ", who] : [who, " can sell"]),
+      ` until ${clock(Number(p.verdictAt) + window)}.${noPoints ? ` ${noPoints}` : ""}`,
+    ] as LeadPart[];
+  }
   const lead =
     o.state === "PENDING"
       ? "Waiting for the Cabal: usually 3 to 6 minutes."
       : o.state === "NO VERDICT"
         ? "No verdict. No cooldown; the oracle fee is spent."
         : o.canSell
-          ? `The Cabal approved ${o.mine ? "your" : "this"} plea. Sell within the ${span(window, "adj")} window, by ${clock(Number(p.verdictAt) + window)}. ${noPoints}`
+          ? o.mine
+            ? `The Cabal approved your plea. Sell within the ${span(window, "adj")} window, by ${clock(Number(p.verdictAt) + window)}. ${noPoints}`
+            : ""
           : p.status === 4
             ? sustained
               ? "A second panel sustained an objection. No points; the sale stands."
@@ -1018,6 +1081,45 @@ export function openPleaParts(p: any, s: Snapshot, now: number) {
     sellBy,
     rest: `Next plea ${span(cooldown)} after the sale (${clock(now + cooldown)} if sold now), or ${clock(Number(p.verdictAt) + cooldown)} if it lapses.`,
   };
+}
+/** The Timeline's cooldown step (plea.html:181). A sale starts the cooldown at the sale
+ * (CabalGate._sell: lastExecutedAt = block.timestamp), a lapse at the verdict (_clearStale:
+ * lastLapsedAt = verdictAt), a denial at the verdict. So inside the sell window both times are
+ * shown; a sold plea's cooldown runs from the sale's block time (`saleTime`, when read). */
+export function cooldownStep(
+  p: Plea,
+  s: Snapshot,
+  now: number,
+  saleTime?: number,
+  mine = false,
+) {
+  const cooldown = Number(con(s, "CabalGate.COOLDOWN")),
+    fromVerdict = Number(p.verdictAt) + cooldown,
+    window = Number(p.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW"));
+  if (p.status === 2 && now <= window)
+    return {
+      text: `From the sale: next plea at ${clock(now + cooldown)} if ${mine ? "you sell" : "it is sold"} now. If the plea lapses, from the verdict: ${clock(fromVerdict)}.`,
+      done: false,
+    };
+  if (p.status === 4)
+    return saleTime === undefined
+      ? { text: "Runs from the sale.", done: false }
+      : {
+          text: `From the sale until ${clock(saleTime + cooldown)}`,
+          done: now > saleTime + cooldown,
+        };
+  return {
+    text: `From this verdict until ${clock(fromVerdict)}`,
+    done: now > fromVerdict,
+  };
+}
+/** A Details row for a plea's transaction when its log is not in hand. With incomplete history
+ * (r2S-N1) a plea that was submitted or judged (its time is on the plea itself) has a transaction
+ * this page could not read yet; only a zero time means none yet. */
+export function missingTxText(time: number | bigint, historyError?: string) {
+  return Number(time) > 0 && historyError
+    ? `${clock(time)} · the link shows once the history is read`
+    : "No transaction yet";
 }
 /** Plead's notice body (plead.html): "Sell by 08:06 UTC. Next plea …", or the pending line. */
 export function openPleaNotice(p: any, s: Snapshot, now: number) {

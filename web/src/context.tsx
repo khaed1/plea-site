@@ -34,6 +34,7 @@ import {
   tokenAmount,
   clock,
   recordHint,
+  readPlea,
   type Snapshot,
 } from "./chain";
 import { explainReadError } from "./rpc-health";
@@ -46,7 +47,14 @@ import {
 } from "./errors";
 import {
   afterSend,
+  claimToast,
   deliveredToast,
+  escrowReturnedToast,
+  flushToast,
+  pleaExpiredToast,
+  rebalanceToast,
+  recordedToast,
+  stakeSettledToast,
   objectionVoidToast,
   plainText,
   receiptWaitStep,
@@ -423,7 +431,7 @@ export function DataProvider({
   );
 }
 /** A toast line with its marks: kept parts on one line, addresses and commands in mono. */
-function rich(t?: ToastText) {
+export function rich(t?: ToastText) {
   return typeof t === "string" || t === undefined
     ? t
     : t.map((part, i) =>
@@ -816,37 +824,51 @@ async function receiptToast(
           e.eventName === "SeatMultiplier" && e.args.pleaId === recorded.pleaId,
       )?.args.pleaPoints ?? recorded.score;
     // The season line needs Seasons reads; without them the toast keeps the receipt's points.
-    const season = await Promise.all([
-      read(r, "Seasons", "bestOf", [recorded.season, recorded.wallet]),
-      read(r, "Seasons", "topOf", [recorded.season]),
-    ])
-      .then(([bestOf, top]) => {
-        const best = bestOf
-            .filter(Number)
-            .sort((a: number, b: number) => b - a),
-          rank = top.findIndex(
+    const [standing, name] = await Promise.all([
+      Promise.all([
+        read(r, "Seasons", "bestOf", [recorded.season, recorded.wallet]),
+        read(r, "Seasons", "topOf", [recorded.season]),
+      ])
+        .then(([bestOf, top]) => ({
+          best: [...bestOf].map(Number),
+          rank: top.findIndex(
             (e: any) =>
               e.wallet.toLowerCase() === recorded.wallet.toLowerCase(),
-          );
-        return `Season ${Number(recorded.season) + 1}: ${best.reduce((a: number, b: number) => a + b, 0)} points (${best.join(" + ")})${rank >= 0 ? `, rank ${rank + 1}` : ""}.`;
-      })
-      .catch(() => undefined);
-    return { text: `+${points} points recorded.`, body: season };
+          ),
+        }))
+        .catch(() => undefined),
+      s.pleas.find((x) => x.id === recorded.pleaId)?.name ??
+        read(r, "Letterbox", "nameOf", [recorded.wallet]).catch(() => ""),
+    ]);
+    return recordedToast(recorded, Number(points), standing, wallet, name);
   }
-  if (claim) {
-    const vault = claim.account.toLowerCase() !== wallet?.toLowerCase();
-    return {
-      text: [
-        `Claimed ${tokenAmount(claim.amount, s)} for ${vault ? "the vault " : ""}`,
-        { text: short(claim.account), mono: true },
-        ".",
-      ],
-      body: vault
-        ? "The PLEA is on the vault; this wallet paid only the gas."
-        : `Claim #${claim.index} is done. Selling it will take a plea.`,
-      receiptLabel: "View the receipt",
-    };
-  }
+  // From "Check an address" the toast is claim.html's own; the Delegated vaults panel passes its
+  // vault toast (claimToast(…, true)).
+  if (claim) return claimToast(claim, s);
+  const stake = find("StakeSettled");
+  if (stake)
+    return stakeSettledToast(
+      stake,
+      s,
+      r.addresses.Seasons,
+      wallet,
+      (s.v.objections || []).find((o: any) => o.id === stake.id)?.pleaId,
+    );
+  const returned = find("Settled");
+  if (returned) return escrowReturnedToast(returned, s, wallet);
+  const expired = find("PleaExpired");
+  if (expired)
+    return pleaExpiredToast(
+      expired.id,
+      s,
+      s.pleas.find((x) => x.id === expired.id) ??
+        (await readPlea(r, expired.id).catch(() => undefined)),
+      await blockTime(r, receipt.blockNumber).catch(() => undefined),
+    );
+  if (fn === "rebalance")
+    return rebalanceToast(s, find("WallDeployed"), find("WallSettled"));
+  if (fn === "flushToWall")
+    return flushToast(s, find("LeftoverToWall")?.amount, find("BonusBurned")?.amount);
   const nameSet = find("NameSet");
   if (nameSet)
     return {
@@ -855,9 +877,6 @@ async function receiptToast(
         : "Display name cleared.",
     };
   if (fn === "setName") return { text: "Display name saved." };
-  if (fn === "flushToWall") return { text: "Leftovers sent to the buy wall." };
-  if (fn === "settle")
-    return { text: "Escrow or stake settled. Check the updated balance." };
   return { text: "Transaction confirmed." };
 }
 

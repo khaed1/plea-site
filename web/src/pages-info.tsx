@@ -31,6 +31,7 @@ import {
   potOf,
   smallAmount,
   verifyClaim,
+  claimState,
   cashback,
   con,
   courtCounts,
@@ -63,6 +64,7 @@ import {
   Countdown,
 } from "./components";
 import { WalletBalances } from "./pages-trade";
+import { claimToast } from "./toast-text";
 export function Home() {
   const { r, s, now } = useApp(),
     symbol = s?.constants.symbol || "PLEA",
@@ -585,15 +587,28 @@ function VaultClaim({
     [entry?.index],
     !!entry && !!s,
   );
-  const tx = useTx();
+  const tx = useTx(),
+    state = entry ? claimState(status) : undefined;
   return (
     <div className="stack stack--sm">
-      <Costs
-        rows={[
-          ["Vault", <AddressView address={vault} label="vault" shortDisplay />],
-          ["Claimable", entry ? tokenAmount(BigInt(entry.amount), s) : "—"],
-        ]}
-      />
+      {/* claim.html's "Delegated vault already claimed" band is the notice alone. */}
+      {state !== "claimed" && (
+        <Costs
+          rows={[
+            ["Vault", <AddressView address={vault} label="vault" shortDisplay />],
+            [
+              "Claimable",
+              !entry
+                ? "—"
+                : state === "unknown"
+                  ? "Can’t read yet"
+                  : state === "checking"
+                    ? "Checking chain…"
+                    : tokenAmount(BigInt(entry.amount), s),
+            ],
+          ]}
+        />
+      )}
       {entry && status.data ? (
         <Notice
           icon="seal-check"
@@ -619,14 +634,37 @@ function VaultClaim({
           primary={false}
           describedBy={`vault-note-${vault}`}
           onRun={() =>
-            tx.send("PleaDistributor", "claim", [
-              BigInt(entry.index),
-              entry.account,
-              BigInt(entry.amount),
-              entry.proof,
-            ])
+            tx.send(
+              "PleaDistributor",
+              "claim",
+              [
+                BigInt(entry.index),
+                entry.account,
+                BigInt(entry.amount),
+                entry.proof,
+              ],
+              undefined,
+              {
+                // Only a claim from this panel is called a vault claim (claim.html:242).
+                toast: () =>
+                  claimToast(
+                    {
+                      index: BigInt(entry.index),
+                      account: entry.account,
+                      amount: BigInt(entry.amount),
+                    },
+                    s!,
+                    true,
+                  ),
+              },
+            )
           }
           disabled={!tx.ready || !open || status.data !== false}
+          reason={
+            state === "unknown"
+              ? "Can’t read whether this vault’s PLEA was already claimed: the public RPC did not answer. The site tries again with the next refresh."
+              : undefined
+          }
         />
       ) : (
         <p className="small">
@@ -886,15 +924,16 @@ export function Claim() {
                     </Notice>
                   ) : entry ? (
                     <>
+                      {/* While isClaimed cannot be read, the allocation is not called claimable. */}
                       <Notice
                         title={
-                          status.loading
-                            ? "Checking chain…"
-                            : status.data
-                              ? "Already claimed"
+                          claimState(status) === "unknown"
+                            ? `Can’t read yet whether claim #${entry.index} (${tokenAmount(BigInt(entry.amount), s)}) was claimed.`
+                            : claimState(status) === "checking"
+                              ? "Checking chain…"
                               : `${tokenAmount(BigInt(entry.amount), s)} claimable (claim #${entry.index})`
                         }
-                        kind={status.data ? "info" : "ok"}
+                        kind={claimState(status) === "claimable" ? "ok" : "info"}
                       >
                         <AddressView address={target} label="recipient" />
                         {status.data && <ClaimReceipt index={entry.index} />}
@@ -920,9 +959,11 @@ export function Claim() {
                           status.data === undefined
                         }
                         reason={
-                          status.data
-                            ? "The allocation has already been claimed."
-                            : "Gas only. PLEA lands on the listed account."
+                          claimState(status) === "unknown"
+                            ? "Can’t read whether this allocation was claimed. Use Try again above."
+                            : status.data
+                              ? "The allocation has already been claimed."
+                              : "Gas only. PLEA lands on the listed account."
                         }
                       />
                     </>
@@ -1153,7 +1194,7 @@ function ClaimReceipt({ index, amount }: { index: string; amount?: string }) {
       {date.data ? (
         <>
           {" "}
-          on <span className="nowrap">{clock(date.data.timestamp)}</span>
+          on <span className="nowrap">{utc(date.data.timestamp)}</span>
         </>
       ) : (
         ""
@@ -1182,7 +1223,7 @@ function RootDate({ open }: { open: boolean }) {
           {date.data ? (
             <>
               , on{" "}
-              <span className="nowrap">{clock(date.data.timestamp, true)}</span>
+              <span className="nowrap">{utc(date.data.timestamp, true)}</span>
             </>
           ) : (
             ""
