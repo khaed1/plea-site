@@ -726,7 +726,9 @@ async function receiptToast(
     };
   if (delivered)
     return deliveredToast(
-      await getPlea(r, delivered.id, s.logs),
+      // The snapshot's plea has what the toast needs; reading it again can fail (r2D-N2).
+      s.pleas.find((x) => x.id === delivered.id) ??
+        (await getPlea(r, delivered.id, s.logs)),
       s,
       delivered,
       await blockTime(r, receipt.blockNumber).catch(() => undefined),
@@ -752,7 +754,9 @@ async function receiptToast(
     // The title is the receipt's own SellExecuted; the body needs reads, and a failing one leaves
     // out only what it would have told (r2D-N2). The next plea is the sale's block time + COOLDOWN.
     const time = await blockTime(r, receipt.blockNumber).catch(() => undefined),
-      p = await getPlea(r, sale.id, s.logs).catch(() => undefined),
+      p =
+        s.pleas.find((x) => x.id === sale.id) ??
+        (await getPlea(r, sale.id, s.logs).catch(() => undefined)),
       body = [
         p ? recordHint(p, s, time ?? s.timestamp, "your", false) : "",
         time === undefined
