@@ -1,4 +1,4 @@
-import { con, read, readPlea, type Plea, type Snapshot } from "./chain";
+import { clock, con, read, readPlea, type Plea, type Snapshot } from "./chain";
 import type { Runtime } from "./config";
 import {
   LETTERBOX,
@@ -114,10 +114,13 @@ export async function letterPrecheck(
   s: Snapshot,
   wallet: `0x${string}`,
 ) {
-  const [held, escrow, last] = await Promise.all([
+  const [held, escrow, last, executed, denied, lapsed] = await Promise.all([
     read(r, "PLEA", "balanceOf", [wallet]),
     returnedEscrow(r, s, wallet, s.timestamp),
     read(r, "CabalGate", "lastPleaOf", [wallet]),
+    read(r, "CabalGate", "lastExecutedAt", [wallet]),
+    read(r, "CabalGate", "lastDeniedAt", [wallet]),
+    read(r, "CabalGate", "lastLapsedAt", [wallet]),
   ]);
   const balance = BigInt(held) + escrow.returned;
   let target = BigInt(last || 0n),
@@ -155,6 +158,26 @@ export async function letterPrecheck(
       ).amount,
     };
   }
+  // A plain letter pleads through CabalGate._requireCanPlead: its cooldown runs from the last sale,
+  // denial or lapse (a lapse not yet cleared counts from its verdict, as _clearStale sets it).
+  const newest = target === BigInt(last || 0n) ? original : undefined,
+    lapsedAt =
+      newest &&
+      Number(newest.status) === 2 &&
+      s.timestamp >
+        Number(newest.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW"))
+        ? Number(newest.verdictAt)
+        : 0,
+    cooldownUntil = letterCooldown(
+      [executed, denied, lapsed, lapsedAt].map(Number),
+      Number(con(s, "CabalGate.COOLDOWN")),
+    );
+  const appealWhy = appealClosedWhy(
+    target,
+    original,
+    s.timestamp,
+    Number(con(s, "CabalGate.COOLDOWN")),
+  );
   return {
     held: BigInt(held),
     returned: escrow.returned,
@@ -162,14 +185,34 @@ export async function letterPrecheck(
     blocked: escrow.blocked,
     balance,
     appeal,
+    cooldownUntil,
+    appealWhy,
     // The gate would take this appeal (denied, not itself an appeal, not appealed, within the
     // cooldown): only then is the fee rule the one that decides it.
-    appealable:
-      !!original &&
-      Number(original.status) === 3 &&
-      !original.isAppeal &&
-      !original.appealed &&
-      s.timestamp <=
-        Number(original.verdictAt) + Number(con(s, "CabalGate.COOLDOWN")),
+    appealable: !appealWhy,
   };
+}
+/** When a wallet's next plea is possible: COOLDOWN after its last sale, denial or lapse (0: none). */
+export function letterCooldown(times: number[], cooldown: number) {
+  const at = Math.max(0, ...times);
+  return at ? at + cooldown : 0;
+}
+/** Why CabalGate._appeal would refuse an APPEAL letter for plea `id` now (Letterbox._appeal checks
+ * its fees first, so a fee error would hide this): "" when it would take it. */
+export function appealClosedWhy(
+  id: bigint,
+  original: any,
+  now: number,
+  cooldown: number,
+) {
+  if (!id || !original) return "You have no plea to appeal.";
+  if (Number(original.status) !== 3)
+    return `Your latest plea, #${id}, was not denied: only a denied plea can be appealed.`;
+  if (original.isAppeal)
+    return `Plea #${id} is itself an appeal: no further appeal.`;
+  if (original.appealed) return `Plea #${id} has already been appealed.`;
+  const end = Number(original.verdictAt) + cooldown;
+  if (now > end)
+    return `The appeal window for plea #${id} closed at ${clock(end)}.`;
+  return "";
 }

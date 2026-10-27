@@ -5,6 +5,7 @@ import {
   idList,
   noVerdict,
   objectionCase,
+  pointsHeld,
   pleaState,
   sharePercent,
   short,
@@ -79,7 +80,7 @@ export function shareSentence(
     earns = [2, 4, 5].includes(p.status) && !p.excluded && !p.standing?.[1],
     points =
       earns && p.points
-        ? `+${p.points} points${p.standing?.[0] ? " held" : ""}`
+        ? `+${p.points} points${pointsHeld(p, s, now) ? " held" : ""}`
         : "",
     rank =
       earns && extra.rank !== undefined && extra.rank >= 0

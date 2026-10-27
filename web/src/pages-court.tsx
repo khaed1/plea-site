@@ -38,6 +38,7 @@ import {
   pleaState,
   read,
   recordFrom,
+  pointsHeld,
   recordHint,
   rulingWait,
   idList,
@@ -762,7 +763,7 @@ export function PleaPage({ id }: { id: string }) {
     seasonClosed === true;
   const closedMessage = `Season ${String((recordSeason ?? 0n) + 1n)} is closed; these points were not recorded.`;
   const held =
-    !missedSeason && !p.excluded && !p.standing?.[1] && !!p.standing?.[0];
+    !missedSeason && !p.excluded && !p.standing?.[1] && pointsHeld(p, s, now);
   const settled = p.escrow && !p.escrow[1];
   const recordAt = recordFrom(p, s, now),
     cs = caseState(p, s, now);
@@ -1430,7 +1431,7 @@ export function ObjectionForm({ p }: { p: Plea }) {
       <p>
         {p.standing?.[1] || p.excluded
           ? "No points"
-          : `+${p.points || 0} points${p.standing?.[0] ? " held" : ""}`}
+          : `+${p.points || 0} points${pointsHeld(p, s!, now) ? " held" : ""}`}
       </p>
       {closed ? (
         <Notice title={caseClosedText(closed)}>
@@ -2019,7 +2020,7 @@ function SaleSummary({
                       ? "none"
                       : missedSeason
                         ? "not recorded; season closed"
-                        : `+${p.points}${p.standing?.[0] ? " held" : ""}${p.seat ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000}, seat)` : ""}`,
+                        : `+${p.points}${pointsHeld(p, s!, now) ? " held" : ""}${p.seat ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000}, seat)` : ""}`,
                   ],
                   ...(delivered
                     ? ([
@@ -2064,7 +2065,7 @@ function SaleSummary({
                         ? "none"
                         : missedSeason
                           ? "not recorded; season closed"
-                          : `+${p.points}${p.standing?.[0] ? " held" : ""}`,
+                          : `+${p.points}${pointsHeld(p, s!, now) ? " held" : ""}`,
                     ],
                   ]
                 : [

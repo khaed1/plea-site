@@ -1,4 +1,4 @@
-import { potFor, LETTERBOX } from "./models";
+import { potFor, carriedRollover, LETTERBOX } from "./models";
 import { resetHealth } from "./config";
 import { getAddress } from "viem";
 import { Fragment, useState } from "react";
@@ -13,6 +13,7 @@ import {
   val,
   seasonState,
   tokenAmount,
+  smallAmount,
   clock,
   span,
   short,
@@ -24,9 +25,11 @@ import {
   multiplierText,
   seatBracket,
   judgesRow,
+  pointsHeld,
 } from "./chain";
 import {
   closingCopy,
+  flushCopy,
   noPleaText,
   projection as projectionText,
   roundingNote,
@@ -101,24 +104,49 @@ export function Seasons() {
             )}
           </div>
           <SeasonView season={state.displayed} />
-          {val(s, "Seasons.finished") && (
-            <Panel level={2} title="No more seasons">
-              <p>
-                The Cabal is dead and every season is closed. Send the remaining
-                prize assets to the buy wall; leftover PLEA bonuses are burned.
-              </p>
-              <TxButton
-                connectText="Connect in the top bar to send leftovers to the buy wall."
-                name="Seasons"
-                fn="flushToWall"
-                label="Send leftovers to the buy wall"
-              />
-            </Panel>
-          )}
+          {val(s, "Seasons.finished") && <Leftovers />}
         </>
       )}
       <PastSeasons />
     </>
+  );
+}
+/** After the death and the last close: flushToWall while Seasons still holds something, then
+ * what it sent (flushCopy). */
+function Leftovers() {
+  const { r, s } = useApp(),
+    pleaLeft = useRead(
+      () => chainRead(r, "PLEA", "balanceOf", [r.addresses.Seasons]),
+      [],
+      !!s,
+    ),
+    log = (n: string) =>
+      s!.logs.find(
+        (l) =>
+          l.eventName === n &&
+          (n !== "BonusBurned" ||
+            BigInt(l.args.season) === BigInt(val(s, "Seasons.nextToClose"))),
+      )?.args.amount,
+    copy = flushCopy({
+      pot: BigInt(val(s, "Seasons.pot") || 0n),
+      pleaLeft: pleaLeft.data === undefined ? undefined : BigInt(pleaLeft.data),
+      last: BigInt(s!.v.displayedSeason),
+      bonusSeasons: BigInt(con(s, "Seasons.BONUS_SEASONS")),
+      flushed: { toWall: log("LeftoverToWall"), burned: log("BonusBurned") },
+      s,
+    });
+  return (
+    <Panel level={2} title="No more seasons">
+      <p className="small">{copy.text}</p>
+      {copy.offer && (
+        <TxButton
+          connectText="Connect in the top bar to send leftovers to the buy wall."
+          name="Seasons"
+          fn="flushToWall"
+          label="Send leftovers to the buy wall"
+        />
+      )}
+    </Panel>
   );
 }
 function WaitingSeason({ season }: { season: bigint }) {
@@ -228,8 +256,49 @@ function SeasonView({
     !known,
   );
   const data = known || query.data;
+  // A season after nextToClose takes in what the earlier waiting seasons roll over at their closes,
+  // which come first: estimated from their boards as they stand (carriedRollover).
+  const next = BigInt(val(s, "Seasons.nextToClose")),
+    minPoints = Number(con(s, "Seasons.MIN_POINTS")),
+    carry = useRead(
+      async () => {
+        const waiting = await Promise.all(
+          Array.from({ length: Number(season - next) }, async (_, i) => {
+            const j = next + BigInt(i);
+            const [fees, top] = await Promise.all([
+              chainRead(r, "Seasons", "seasonFees", [j]),
+              chainRead(r, "Seasons", "topOf", [j]),
+            ]);
+            const entries = (top as any[]).filter(
+              (e) => !/^0x0{40}$/i.test(e.wallet),
+            );
+            const excluded = await Promise.all(
+              entries.map((e) =>
+                chainRead(r, "Seasons", "excluded", [e.wallet]),
+              ),
+            );
+            return {
+              fees: BigInt(fees),
+              paidBps: entries.flatMap((e, k) =>
+                !excluded[k] && Number(e.points) >= minPoints
+                  ? [BigInt(s!.v.shares[k])]
+                  : [],
+              ),
+            };
+          }),
+        );
+        return carriedRollover(BigInt(val(s, "Seasons.rollover")), waiting);
+      },
+      [String(season), String(next)],
+      !!s && season > next,
+    );
   return data ? (
-    <SeasonBody season={season} ended={ended} data={data} />
+    <SeasonBody
+      season={season}
+      ended={ended}
+      data={data}
+      carry={season > next && !data.closed ? carry : undefined}
+    />
   ) : (
     <div aria-busy="true">
       <p className="loading-label">Reading season {String(season + 1n)}…</p>
@@ -241,16 +310,38 @@ function SeasonBody({
   season,
   ended,
   data,
+  carry,
 }: {
   season: bigint;
   ended: boolean;
   data: any;
+  carry?: { data?: bigint; error: string; loading: boolean };
 }) {
   const { r, s, now, refresh } = useApp(),
     { address } = useAccount(),
     bounds = data.bounds,
-    pot = BigInt(data.pot),
+    // A closed season shows what its close took in and paid (SeasonClosedOut, PrizePaid), as Past
+    // seasons does: closeSeason deleted its seasonFees and moved the rollover on.
+    closedLog = data.closed
+      ? s!.logs.find(
+          (l) =>
+            l.eventName === "SeasonClosedOut" && BigInt(l.args.season) === season,
+        )
+      : undefined,
+    carried = carry?.data === undefined ? 0n : BigInt(carry.data),
+    pot = data.closed
+      ? BigInt(closedLog?.args.pot ?? 0n)
+      : BigInt(data.pot) + carried,
     top = data.top.filter((e: any) => !/^0x0{40}$/i.test(e.wallet));
+  const paidTo = (wallet: string, kind = "PrizePaid") =>
+    BigInt(
+      s!.logs.find(
+        (l) =>
+          l.eventName === kind &&
+          BigInt(l.args.season) === season &&
+          equal(l.args.wallet, wallet),
+      )?.args.amount ?? 0n,
+    );
   const last =
       !!val(s, "CabalGate.diedAt") && season === BigInt(s!.v.displayedSeason),
     level = ended ? 3 : 2;
@@ -473,10 +564,38 @@ function SeasonBody({
           className="md-span-4 lg-span-4"
         >
           <p className="stat__value">
-            <span className="nowrap">{tokenAmount(pot, s, true)}</span>
+            <span className="nowrap">
+              {data.closed && !closedLog ? "—" : tokenAmount(pot, s, true)}
+            </span>
           </p>
           <Costs
-            rows={[
+            rows={
+              data.closed
+                ? closedLog
+                  ? [
+                      ["Season prize pot", tokenAmount(pot, s, true)],
+                      [
+                        `Paid to ${plural(
+                          s!.logs.filter(
+                            (l) =>
+                              l.eventName === "PrizePaid" &&
+                              BigInt(l.args.season) === season,
+                          ).length,
+                          "wallet",
+                        )}`,
+                        tokenAmount(closedLog.args.paid, s, true),
+                      ],
+                      [
+                        last ? "Left for the buy wall" : `Rolled over to season ${season + 2n}`,
+                        tokenAmount(
+                          BigInt(closedLog.args.pot) - BigInt(closedLog.args.paid),
+                          s,
+                          true,
+                        ),
+                      ],
+                    ]
+                  : [["Season prize pot", "Shows once the history is read"]]
+                : [
               // The parts come from logs: with incomplete history only the chain's total shows (r2S-N1).
               ...(s!.historyError
                 ? []
@@ -507,17 +626,36 @@ function SeasonBody({
                     ] as [string, string],
                   ]
                 : []),
-              ["Total", tokenAmount(pot, s, true), "total"],
+              // Earlier waiting seasons close first and roll their unpaid part in (carriedRollover).
+              ...(carry
+                ? [
+                    [
+                      `From season ${season}’s close, estimated`,
+                      carry.data !== undefined
+                        ? tokenAmount(carried, s, true)
+                        : carry.error
+                          ? "Can’t read yet"
+                          : "Reading…",
+                    ] as [string, string],
+                  ]
+                : []),
+              [
+                carry ? "Total, estimated" : "Total",
+                tokenAmount(pot, s, true),
+                "total",
+              ],
             ]}
           />
-          {s!.historyError && (
+          {s!.historyError && !data.closed && (
             <p className="small">
               The parts of the pot show once the history is read.
             </p>
           )}
-          {season > BigInt(val(s, "Seasons.nextToClose")) && (
+          {carry && (
             <p className="small">
-              Plus what season {String(season)} rolls over at its close.
+              Season {String(season)} closes first and rolls over what its
+              leaderboard leaves unpaid; the estimate counts the leaderboards
+              as they stand.
             </p>
           )}
         </Panel>
@@ -583,18 +721,27 @@ function SeasonBody({
                 </div>
                 {rank >= 0 && (
                   <div className="stat">
-                    <span className="stat__label">Prize now</span>
+                    <span className="stat__label">
+                      {data.closed ? "Prize" : "Prize now"}
+                    </span>
                     <span className="stat__value">
-                      {tokenAmount(
-                        qualifies ? (pot * share) / 10000n : 0n,
+                      {smallAmount(
+                        !qualifies
+                          ? 0n
+                          : data.closed
+                            ? paidTo(address)
+                            : (pot * share) / 10000n,
                         s,
-                        true,
                       )}
                     </span>
                     <span className="stat__note">
                       +{" "}
                       {tokenAmount(
-                        qualifies ? (bonus * share) / 10000n : 0n,
+                        !qualifies
+                          ? 0n
+                          : data.closed
+                            ? paidTo(address, "BonusPaid")
+                            : (bonus * share) / 10000n,
                         s,
                       )}
                     </span>
@@ -646,7 +793,7 @@ function SeasonBody({
                         recorded.
                       </p>
                     ) : (
-                      p.standing?.[0] && (
+                      pointsHeld(p, s!, now) && (
                         <>
                           <Notice
                             title={`Plea #${p.id}’s +${p.points} points are held until ${clock(until)}.`}
@@ -670,9 +817,9 @@ function SeasonBody({
                         label="Record my points"
                         srLabel={` for plea #${p.id}`}
                         connectText="Connect in the top bar to record points."
-                        disabled={!!p.standing?.[0] || data.closed}
+                        disabled={pointsHeld(p, s!, now) || data.closed}
                         reason={
-                          p.standing?.[0]
+                          pointsHeld(p, s!, now)
                             ? `Record your +${p.points} points after ${clock(until)}, when objections on plea #${p.id} close. Nothing records them by itself: anyone can press Record my points.`
                             : `Objections on plea #${p.id} closed. Anyone can record a plea’s points; nothing records them by itself.`
                         }
@@ -708,7 +855,12 @@ function SeasonBody({
           )}
         </Panel>
         {!ended && (
-          <Panel level={2} title="The seat multiplier" id="seat">
+          // seasons.html:147: the heading, then one stack--lg for the panel's body.
+          <section className="panel" id="seat" aria-labelledby="seat-title">
+            <h2 className="card__title" id="seat-title">
+              The seat multiplier
+            </h2>
+            <div className="stack stack--lg">
             <p>
               Hold an IMD seat NFT when your plea is recorded and its points are
               the judges’ score <span className="nowrap">× {mult}</span>,
@@ -757,7 +909,8 @@ function SeasonBody({
                 title={`Seat held: every recorded plea earns × ${mult}.`}
               />
             )}
-          </Panel>
+            </div>
+          </section>
         )}
       </div>
       <section className="section">
@@ -829,7 +982,9 @@ function SeasonBody({
                   : undefined
               }
             >
-              {bounds[3] || last
+              {data.closed
+                ? `No plea was recorded in season ${season + 1n}.`
+                : bounds[3] || last
                 ? `No plea is recorded in season ${season + 1n}. Approved pleas of season ${season + 1n} can be recorded until it closes; the close records any that nobody recorded.`
                 : `Season ${season + 1n} has begun. The first approved plea to be recorded takes rank 1${season ? `; its season prize pot starts with what season ${season} rolled over` : ""}. The gavel is polished and waiting.`}
             </Empty>
@@ -898,11 +1053,21 @@ function SeasonBody({
                         {qualified ? (
                           <>
                             <span className="nowrap">
-                              {tokenAmount((pot * bps) / 10000n, s, true)}
+                              {smallAmount(
+                                data.closed
+                                  ? paidTo(e.wallet)
+                                  : (pot * bps) / 10000n,
+                                s,
+                              )}
                             </span>{" "}
                             +{" "}
                             <span className="nowrap">
-                              {tokenAmount((bonus * bps) / 10000n, s)}
+                              {tokenAmount(
+                                data.closed
+                                  ? paidTo(e.wallet, "BonusPaid")
+                                  : (bonus * bps) / 10000n,
+                                s,
+                              )}
                             </span>
                           </>
                         ) : (
@@ -930,9 +1095,15 @@ function SeasonBody({
           </p>
         </div>
         <div className="split split--even split--stretch form-actions-top">
+          {/* A closed season's pot panel above shows what the close paid. */}
+          {!data.closed && (
           <Panel
             level={ended ? 4 : 3}
-            title="If the season ended now"
+            title={
+              ended || bounds[3] || last
+                ? "What the close pays"
+                : "If the season ended now"
+            }
             className="panel--sunken"
           >
             {query.error ? (
@@ -963,6 +1134,7 @@ function SeasonBody({
               </>
             )}
           </Panel>
+          )}
           <Panel level={ended ? 4 : 3} title="Closing the season">
             {data.closed ? (
               <p>Season {String(season + 1n)} is closed.</p>
@@ -992,16 +1164,21 @@ function SeasonBody({
                     season !== nextToClose ||
                     !query.data
                   }
-                  reason={
+                  // A reason no wallet can change is shown to every viewer, before the connect
+                  // text (round-2 C11).
+                  lockedReason={
                     now < closeAt
                       ? `Anyone can close it from ${clock(closeAt)} (${span(grace, "adj")} grace).`
                       : season !== nextToClose
                         ? "Close the oldest season first."
-                        : query.error
-                          ? "Can’t read the leaderboard, so the pleas the close records are not known. Use Try again above."
-                          : !query.data
-                            ? "Reading the leaderboard from Seasons…"
-                            : undefined
+                        : undefined
+                  }
+                  reason={
+                    query.error
+                      ? "Can’t read the leaderboard, so the pleas the close records are not known. Use Try again above."
+                      : !query.data
+                        ? "Reading the leaderboard from Seasons…"
+                        : undefined
                   }
                 />
               </>
@@ -1191,12 +1368,11 @@ function PastSeasons() {
                             Number(e.points) >= minPoints ? (
                               <>
                                 <span className="nowrap">
-                                  {tokenAmount(
+                                  {smallAmount(
                                     prizes.find((p) =>
                                       equal(p.args.wallet, e.wallet),
                                     )?.args.amount || 0n,
                                     s,
-                                    true,
                                   )}
                                 </span>{" "}
                                 <span className="nowrap">

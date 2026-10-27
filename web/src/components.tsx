@@ -19,6 +19,7 @@ import {
   noVerdict,
   caseState,
   recordHint,
+  pointsHeld,
   clock,
   words,
   span,
@@ -1138,7 +1139,7 @@ export function PleaFoot({
               "not recorded before the season closed"
             ) : (
               <>
-                <b>+{p.points}</b> points{p.standing?.[0] ? " held" : ""}
+                <b>+{p.points}</b> points{pointsHeld(p, s!, now) ? " held" : ""}
                 {p.seat
                   ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000})`
                   : ""}
@@ -1163,7 +1164,7 @@ export function PleaFoot({
         {earns && (p.points || 0) > 0
           ? missedSeason
             ? "not recorded before the season closed"
-            : `+${p.points} points${p.standing?.[0] ? " held" : ""}${hero && p.seat ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000})` : ""}`
+            : `+${p.points} points${pointsHeld(p, s!, now) ? " held" : ""}${hero && p.seat ? ` (${Math.min(p.score, Number(p.standing?.[2] ?? p.score))} × ${Number(con(s, "Seasons.SEAT_MULTIPLIER_BPS")) / 10000})` : ""}`
           : "no points"}
       </span>
       {p.status === 2 && state !== "LAPSED" && (

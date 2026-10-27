@@ -24,6 +24,7 @@ import {
   potOf,
   clock,
   timeLeft,
+  escrowWaiting,
   heldTime,
   short,
   signedPercent,
@@ -31,7 +32,8 @@ import {
   type Plea,
 } from "./chain";
 import { seasonPrize, seasonsFoot } from "./season-text";
-import { pendingState, factParts } from "./models";
+import { pendingState, factParts, LETTERBOX } from "./models";
+import { returnedEscrow } from "./appeal";
 import {
   Action,
   AddressView,
@@ -96,6 +98,8 @@ export function Profile({ target }: { target?: string }) {
           read(r, "CabalGate", "lastLapsedAt", [wallet]),
           read(r, "Seasons", "excluded", [wallet]),
         ]);
+        // An escrow that settle can return now (a denied, lapsed or unanswered letter plea).
+        const escrow = await returnedEscrow(r, s!, wallet!, now);
         const pendingPlea = pending
             ? await getPlea(r, pending, s?.logs)
             : undefined,
@@ -200,6 +204,7 @@ export function Profile({ target }: { target?: string }) {
           }),
         );
         return {
+          escrow,
           plea,
           pair,
           basis,
@@ -359,7 +364,10 @@ export function Profile({ target }: { target?: string }) {
                   [
                     s?.constants.pairSymbol,
                     tokenAmount(data.pair, s, true),
-                    `For buys and the ${tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true)} oracle fee`,
+                    // After the death there is no plea, so no oracle fee to pay.
+                    val(s, "CabalGate.diedAt")
+                      ? "For buys on the Buy page"
+                      : `For buys and the ${tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true)} oracle fee`,
                   ],
                   // Cashback is summed from logs: hidden while history is incomplete (r2S-N1).
                   s!.historyError
@@ -418,6 +426,26 @@ export function Profile({ target }: { target?: string }) {
               </p>
             </Notice>
           )}
+          {data.escrow.returned > 0n &&
+            (() => {
+              const e = escrowWaiting(
+                {
+                  id: data.escrow.id,
+                  amount: data.escrow.returned,
+                  tip: LETTERBOX.TIP,
+                },
+                s!,
+                mine,
+              );
+              return (
+                <Notice title={e.title}>
+                  <p>{e.body}</p>
+                  <a className="btn btn--sm" href={`#/p/${data.escrow.id}`}>
+                    Open plea #{String(data.escrow.id)}
+                  </a>
+                </Notice>
+              );
+            })()}
           {mine && derived.open && data.pendingPlea?.status === 2 && (
             <Notice
               title={`Plea #${data.pendingPlea.id} is open: sell by ${clock(Number(data.pendingPlea.verdictAt) + Number(con(s, "CabalGate.EXECUTE_WINDOW")))}.`}
@@ -443,9 +471,11 @@ export function Profile({ target }: { target?: string }) {
           <div className="split form-actions-top">
             <Panel level={2} title={mine ? "Your buy record" : "Buy record"}>
               <p className="small text-2">
-                {mine
-                  ? "The hook records every buy you make. Your next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."
-                  : "The hook records every buy this wallet makes. Its next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."}
+                {val(s, "CabalGate.diedAt")
+                  ? `The hook records every buy ${mine ? "you make" : "this wallet makes"}. Pleas are closed, so no plea is scored on it any more; the Buy page shows the spot price.`
+                  : mine
+                    ? "The hook records every buy you make. Your next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."
+                    : "The hook records every buy this wallet makes. Its next plea’s facts come from it, at the hook’s hourly price; the Buy page shows the spot price."}
               </p>
               <Costs
                 rows={[
@@ -769,6 +799,7 @@ export function Profile({ target }: { target?: string }) {
                             season: season.displayed,
                             rank: k ? k.rank : -1,
                             qualifies: !!k?.qualifies && !k.closed,
+                            closed: !!season.current?.closed,
                             closeFrom: clock(
                               Number(season.current.bounds[2]) +
                                 Number(con(s, "Seasons.CLOSE_GRACE")),

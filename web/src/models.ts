@@ -49,6 +49,24 @@ export function potFor(
 ) {
   return fees + (season === nextToClose ? rollover : 0n);
 }
+/** What the seasons before a later one roll into it. Seasons close in order (nextToClose), and
+ * closeSeason takes in seasonFees + rollover, pays each qualifying rank its share of that, rounded
+ * down on its own, and rolls the rest over (Seasons.closeSeason). `waiting` lists the seasons from
+ * nextToClose up to the one before, oldest first, with their seasonFees and the share bps of the
+ * ranks their boards would pay as they stand; `rollover` is Seasons.rollover now. */
+export function carriedRollover(
+  rollover: bigint,
+  waiting: { fees: bigint; paidBps: bigint[] }[],
+) {
+  let carry = rollover;
+  for (const w of waiting) {
+    const amountIn = w.fees + carry;
+    carry =
+      amountIn -
+      w.paidBps.reduce((n, bps) => n + (amountIn * bps) / 10000n, 0n);
+  }
+  return carry;
+}
 export function clampAppeal(
   original: bigint,
   balance: bigint,

@@ -13,6 +13,7 @@ import {
   objectionCase,
   objectionLine,
   voidWords,
+  pointsHeld,
   objectionStale,
   clock,
   soldFor,
@@ -236,7 +237,7 @@ export function ShareCard({ p }: { p?: Plea }) {
                       <b>{earnsPoints ? `+${p.points || 0}` : "No"}</b>
                       <span>
                         {earnsPoints
-                          ? `points${p.standing?.[0] ? " held" : ""}`
+                          ? `points${pointsHeld(p, s!, now) ? " held" : ""}`
                           : "points"}
                       </span>
                     </div>

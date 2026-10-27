@@ -8,6 +8,7 @@ import {
   pct,
   caseState,
   recordFrom,
+  pointsHeld,
   rulingWait,
   noVerdict,
   feeInPleaText,
@@ -444,7 +445,7 @@ export function PleaTimeline({
           ? `Closed${caseState(p, s!, now).closed!.startsWith("at ") ? " " : ": "}${caseState(p, s!, now).closed}${recordFrom(p, s!, now)?.objection ? `. Points held until ${clock(recordFrom(p, s!, now)!.until)}, when ${rulingWait(recordFrom(p, s!, now)!.objections)}` : ""}`
           : `Points held until ${clock(recordFrom(p, s!, now)?.until ?? objection)}${recordFrom(p, s!, now)?.objection ? `, when ${rulingWait(recordFrom(p, s!, now)!.objections)}` : " or the panel rules"}`,
         "megaphone-simple",
-        p.standing?.[0] && missedSeason === undefined ? "is-now" : "is-done",
+        pointsHeld(p, s!, now) && missedSeason === undefined ? "is-now" : "is-done",
       ],
       [
         missedSeason !== undefined
@@ -458,7 +459,7 @@ export function PleaTimeline({
         "trophy",
         p.recorded || missedSeason !== undefined
           ? "is-done"
-          : p.standing?.[0]
+          : pointsHeld(p, s!, now)
             ? "is-later"
             : "is-now",
       ],

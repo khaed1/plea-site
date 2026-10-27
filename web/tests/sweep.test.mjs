@@ -316,3 +316,129 @@ test("sweep P19 and R5: claim dates carry the day; an unread isClaimed is never 
   assert.equal(claimState({ loading: true }), "checking");
   assert.equal(claimState({ error: "The public RPC did not answer." }), "unknown");
 });
+
+const seasonText = await load("season-text");
+const appeal = await load("appeal");
+
+test("sweep R3: points are no longer held once the page clock passes the window and the last live objection", () => {
+  const s = snap(),
+    o = { id: 1n, pleaId: 7n, ruling: 1, filedAt: BigInt(V + 75), objector: "0xb1" },
+    p = plea({ status: 4, objections: [o], standing: [true, false, 255] });
+  // Filed 75 s after the verdict: held until filedAt + PENDING_EXPIRY, past the window.
+  assert.equal(chain.recordFrom(p, s, V + 600).until, V + 75 + 1200);
+  assert.equal(chain.pointsHeld(p, s, V + 75 + 1200), true);
+  // Stale by the page clock, with the snapshot's standing() still read as held: recordable now.
+  assert.equal(chain.recordFrom(p, s, V + 75 + 1201), undefined);
+  assert.equal(chain.pointsHeld(p, s, V + 75 + 1201), false);
+  assert.equal(chain.recordHint(p, s, V + 75 + 1201), "Record your +44 points now.");
+  // No objection: the window alone, inclusive of its last second (Tribunal.standing: <=).
+  const q = plea({ status: 4 });
+  assert.equal(chain.pointsHeld(q, s, V + 1200), true);
+  assert.equal(chain.pointsHeld(q, s, V + 1201), false);
+});
+
+test("sweep P2: a later waiting season's pot carries what the earlier closes roll over", () => {
+  // Season 1 (fees 1.23, nobody qualifies) closes first and rolls everything into season 2.
+  const s1 = { fees: 123n * 10n ** 16n, paidBps: [] };
+  assert.equal(models.carriedRollover(0n, [s1]), 123n * 10n ** 16n);
+  // The run-9 numbers: season 1 0.3708 unpaid, season 2's own 0.0562: amountIn 0.4270, and
+  // rank 1's 4.50% of it is 0.0192 (PrizePaid); the rest rolls into season 3.
+  const fees1 = 3708n * 10n ** 14n,
+    fees2 = 562n * 10n ** 14n,
+    carried = models.carriedRollover(0n, [{ fees: fees1, paidBps: [] }]);
+  const amountIn = fees2 + carried;
+  assert.equal(amountIn, 4270n * 10n ** 14n);
+  assert.equal((amountIn * 450n) / 10000n, 19215n * 10n ** 12n);
+  // Two waiting seasons ahead, each paying a share rounded down on its own.
+  const two = models.carriedRollover(10n ** 18n, [
+    { fees: 0n, paidBps: [450n, 400n] },
+    { fees: 10n ** 18n, paidBps: [450n] },
+  ]);
+  const first = 10n ** 18n - (10n ** 18n * 450n) / 10000n - (10n ** 18n * 400n) / 10000n;
+  assert.equal(two, first + 10n ** 18n - ((first + 10n ** 18n) * 450n) / 10000n);
+});
+
+test("sweep P4: the flush is offered only while Seasons holds something", () => {
+  const s = snap(),
+    base = { last: 8n, bonusSeasons: 6n, s };
+  const offer = seasonText.flushCopy({ ...base, pot: 14583n * 10n ** 14n, pleaLeft: 0n });
+  assert.equal(offer.offer, true);
+  assert.match(offer.text, /^What is left in Seasons goes to the buy wall/);
+  const early = seasonText.flushCopy({ ...base, last: 1n, pot: 0n, pleaLeft: 40000000n * E });
+  assert.equal(early.offer, true);
+  assert.match(early.text, /Season 2 was the last, so the 40,000,000 PLEA of seasons 3 to 6 is burned\.$/);
+  const done = seasonText.flushCopy({
+    ...base,
+    pot: 0n,
+    pleaLeft: 0n,
+    flushed: { toWall: 14583n * 10n ** 14n },
+  });
+  assert.equal(done.offer, false);
+  assert.equal(
+    done.text,
+    "The leftovers went to the buy wall: 1.45 imdTEST now backs it. Nothing is left in Seasons.",
+  );
+  assert.equal(
+    seasonText.flushCopy({ ...base, pot: 0n, pleaLeft: 0n }).text,
+    "The leftovers went to the buy wall. Nothing is left in Seasons.",
+  );
+  assert.equal(seasonText.flushCopy({ ...base, pot: 0n }).offer, false);
+});
+
+test("sweep R8, R9: a prize under a cent is '< 0.01'; the seasons foot after the last close", () => {
+  const s = snap();
+  assert.deepEqual(
+    seasonText.seasonPrize({ closed: true, points: 70, imd: 9n * 10n ** 14n, bonus: 450000n * E }, 60, s),
+    { value: "< 0.01 imdTEST", note: "+ 450,000 PLEA" },
+  );
+  assert.equal(
+    seasonText.seasonPrize({ closed: true, points: 70, imd: 72n * 10n ** 15n, bonus: 0n }, 60, s).value,
+    "0.07 imdTEST",
+  );
+  assert.equal(
+    seasonText.seasonsFoot({ season: 8n, rank: 0, qualifies: false, closeFrom: "08:42 UTC", closed: true }),
+    "Prizes were rounded down and paid at each season’s close.",
+  );
+  assert.match(
+    seasonText.seasonsFoot({ season: 1n, rank: 0, qualifies: true, closeFrom: "19:11 UTC" }),
+    /paid at the close, from 19:11 UTC\.$/,
+  );
+});
+
+test("sweep R11, R21: a letter's cooldown and a closed appeal window are known before sending", () => {
+  assert.equal(appeal.letterCooldown([0, 0, 0, 0], 14400), 0);
+  assert.equal(appeal.letterCooldown([V, V + 60, 0, 0], 14400), V + 60 + 14400);
+  const denied = { status: 3, isAppeal: false, appealed: false, verdictAt: BigInt(V) };
+  assert.equal(appeal.appealClosedWhy(16n, denied, V + 14400, 14400), "");
+  assert.equal(
+    appeal.appealClosedWhy(16n, denied, V + 14401, 14400),
+    `The appeal window for plea #16 closed at ${clock(V + 14400)}.`,
+  );
+  assert.equal(
+    appeal.appealClosedWhy(16n, { ...denied, appealed: true }, V + 60, 14400),
+    "Plea #16 has already been appealed.",
+  );
+  assert.equal(
+    appeal.appealClosedWhy(16n, { ...denied, isAppeal: true }, V + 60, 14400),
+    "Plea #16 is itself an appeal: no further appeal.",
+  );
+  assert.match(appeal.appealClosedWhy(16n, { ...denied, status: 4 }, V + 60, 14400), /was not denied/);
+  assert.equal(appeal.appealClosedWhy(0n, undefined, V, 14400), "You have no plea to appeal.");
+});
+
+test("sweep P3: an open escrow is named on Letters and Profile, before and after the death", () => {
+  const alive = snap(),
+    dead = snap({ v: { "CabalGate.cabalAlive": false, "CabalGate.diedAt": BigInt(V) } }),
+    e = { id: 7n, amount: 500000n * E, tip: 25n * 10n ** 16n };
+  const mineDead = chain.escrowWaiting(e, dead, true);
+  assert.equal(mineDead.title, "Plea #7’s escrow still holds 500,000 PLEA.");
+  assert.equal(
+    mineDead.body,
+    "Return escrow and tip on plea #7 sends it back to you with the 0.25 imdTEST tip.",
+  );
+  assert.match(chain.escrowWaiting(e, alive, true).body, /your next letter also returns it first\.$/);
+  assert.equal(
+    chain.escrowWaiting(e, dead, false).title,
+    "Plea #7’s escrow still holds this wallet’s 500,000 PLEA.",
+  );
+});

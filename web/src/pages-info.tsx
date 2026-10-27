@@ -32,6 +32,7 @@ import {
   smallAmount,
   verifyClaim,
   claimState,
+  escrowWaiting,
   cashback,
   con,
   courtCounts,
@@ -239,7 +240,7 @@ export function Home() {
 }
 
 export function Letters() {
-  const { r, s, toast } = useApp();
+  const { r, s, toast, now } = useApp();
   const { address } = useAccount();
   const [text, setText] = useState("");
   const tx = useTx(text);
@@ -289,7 +290,12 @@ export function Letters() {
     shortOf =
       data?.blocked && ["plea", "appeal"].includes(result.kind)
         ? `${data.blocked} A new letter waits until it ends.`
-        : result.kind === "plea" &&
+        : // CabalGate._requireCanPlead's cooldown, as Plead shows it; an appeal has none.
+          result.kind === "plea" && data && data.cooldownUntil > now
+          ? `A new plea waits for your ${span(Number(con(s, "CabalGate.COOLDOWN")), "adj")} cooldown: next plea from ${clock(data.cooldownUntil)}.`
+          : result.kind === "appeal" && data?.appealWhy
+            ? data.appealWhy
+            : result.kind === "plea" &&
             limit &&
             data &&
             (!limit.possible || data.balance < limit.minimum)
@@ -316,7 +322,16 @@ export function Letters() {
   useEffect(() => {
     setCopied(false);
   }, [text]);
-  if (val(s, "CabalGate.diedAt"))
+  if (val(s, "CabalGate.diedAt")) {
+    // letters.html:350's dead band, and the writer's own open escrow, which only settle returns now.
+    const waiting =
+      data && data.returned > 0n
+        ? escrowWaiting(
+            { id: data.escrowId, amount: data.returned, tip: LETTERBOX.TIP },
+            s!,
+            true,
+          )
+        : undefined;
     return (
       <>
         <Title title="Plead by letter" />
@@ -325,11 +340,21 @@ export function Letters() {
           title="The Letterbox is closed"
           action={{ href: "#/buy", label: "Sell on the Buy page" }}
         >
-          The Cabal is dead. Pleas and appeals are closed; PLEA trades freely
-          forever.
+          A new letter is refused (<code>CabalNotWatching</code>). PLEA still
+          waiting in a letter comes back through settle. The mail room has gone
+          home.
         </Empty>
+        {waiting && (
+          <Notice title={waiting.title}>
+            <p>{waiting.body}</p>
+            <a className="btn btn--sm" href={`#/p/${data!.escrowId}`}>
+              Open plea #{String(data!.escrowId)}
+            </a>
+          </Notice>
+        )}
       </>
     );
+  }
   return (
     <>
       <div className="split">

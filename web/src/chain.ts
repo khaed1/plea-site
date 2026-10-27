@@ -1121,6 +1121,24 @@ export function missingTxText(time: number | bigint, historyError?: string) {
     ? `${clock(time)} · the link shows once the history is read`
     : "No transaction yet";
 }
+/** A writer's open Letterbox escrow that settle can return now (Letterbox._settle: denied, no
+ * verdict, lapsed): the PLEA and the tip go back to the writer, whoever calls it. After the death no
+ * new letter settles it first, so only settle brings it back (letters.html:350). */
+export function escrowWaiting(
+  o: { id: bigint; amount: bigint; tip: bigint },
+  s: Snapshot,
+  mine: boolean,
+) {
+  const dead = !!val(s, "CabalGate.diedAt"),
+    held = tokenAmount(o.amount, s),
+    tip = tokenAmount(o.tip, s, true);
+  return {
+    title: `Plea #${o.id}’s escrow ${dead ? "still " : ""}holds ${mine ? "" : "this wallet’s "}${held}.`,
+    body: mine
+      ? `Return escrow and tip on plea #${o.id} sends it back to you with the ${tip} tip${dead ? "" : "; your next letter also returns it first"}.`
+      : `Anyone can return it to the writer, with the ${tip} tip: Return escrow and tip on plea #${o.id}.`,
+  };
+}
 /** Plead's notice body (plead.html): "Sell by 08:06 UTC. Next plea …", or the pending line. */
 export function openPleaNotice(p: any, s: Snapshot, now: number) {
   const parts = openPleaParts(p, s, now);
@@ -1209,10 +1227,17 @@ export function recordFrom(p: Plea, s: Snapshot, now: number) {
       undefined,
     ),
     pending = last ? Number(last.filedAt) + expiry : 0;
+  // By the page clock nothing holds them any more (the window closed and the last objection went
+  // stale) though the snapshot's standing() was read before: recordable now, not "after" a past
+  // time with a 00:00 countdown until the next chain read.
+  if (now > Math.max(pending, window)) return undefined;
   return pending > window
     ? { until: pending, objection: last, objections: cs.pending }
     : { until: window, objection: undefined, objections: [] };
 }
+/** Whether a plea's points are held now, by the page clock (recordFrom). */
+export const pointsHeld = (p: Plea, s: Snapshot, now: number) =>
+  !!recordFrom(p, s, now);
 /** "objection #2 is ruled or expires", "objections #1 and #2 are ruled or expire". */
 export const rulingWait = (objections: { id: bigint }[]) =>
   objections.length > 1

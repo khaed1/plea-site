@@ -1,6 +1,6 @@
 // Copy builders for #/seasons and the profile's seasons table, kept pure so the tests can check them.
 // Every rule number comes in from the chain constants (Seasons.TOP, MIN_POINTS, the shares, the pot).
-import { tokenAmount, type Snapshot } from "./chain";
+import { smallAmount, tokenAmount, type Snapshot } from "./chain";
 
 /** "Closing the season", per state: not yet (the mockup's main copy), ready (now ≥ end + CLOSE_GRACE
  * and this season is nextToClose: the band "Close season 2 after the grace"), and the last season
@@ -118,7 +118,8 @@ export function seasonPrize(
     return { value: "not read", note: "history incomplete" };
   if (!k.imd && !k.bonus) return { value: "no prize" };
   return {
-    value: tokenAmount(k.imd, s, true),
+    // A prize under a cent reads "< 0.01", as cashback and claims do, never "0.00" when paid.
+    value: smallAmount(k.imd, s),
     note: k.bonus ? `+ ${tokenAmount(k.bonus, s)}` : undefined,
   };
 }
@@ -130,6 +131,44 @@ export function seasonsFoot(o: {
   rank: number;
   qualifies: boolean;
   closeFrom: string;
+  /** The displayed season is closed: with it every season is (the last one, after the death). */
+  closed?: boolean;
 }) {
+  if (o.closed)
+    return "Prizes were rounded down and paid at each season’s close.";
   return `${o.season !== undefined && o.rank >= 0 && o.qualifies ? `Season ${o.season + 1n}’s prize is rank ${o.rank + 1}’s share if it ended now. ` : ""}Prizes are rounded down and paid at the close, from ${o.closeFrom}.`;
+}
+
+/** The "No more seasons" panel (seasons.html:369-381). Seasons.flushToWall sends pot() to the buy
+ * wall and burns the PLEA Seasons still holds (the bonus of the first BONUS_SEASONS seasons that
+ * never ran); with nothing left it does nothing, so the button is offered only while pot() or
+ * PLEA.balanceOf(Seasons) is above zero. `pleaLeft` undefined: not read yet. `flushed`: the
+ * LeftoverToWall and BonusBurned amounts of the flush, when history has them. */
+export function flushCopy(o: {
+  pot: bigint;
+  pleaLeft?: bigint;
+  last: bigint;
+  bonusSeasons: bigint;
+  flushed?: { toWall?: bigint; burned?: bigint };
+  s: Snapshot | undefined;
+}): { offer: boolean; text: string } {
+  if (o.pot > 0n || (o.pleaLeft ?? 0n) > 0n) {
+    const never =
+      o.pleaLeft && o.last + 1n < o.bonusSeasons
+        ? ` Season ${o.last + 1n} was the last, so the ${tokenAmount(o.pleaLeft, o.s)} of seasons ${o.last + 2n} to ${o.bonusSeasons} is burned.`
+        : "";
+    return {
+      offer: true,
+      text: `What is left in Seasons goes to the buy wall, and the PLEA bonus of any of the first ${o.bonusSeasons} seasons that never ran is burned, in one call that anyone can make.${never}`,
+    };
+  }
+  if (o.pleaLeft === undefined) return { offer: false, text: "Reading what is left in Seasons…" };
+  const f = o.flushed;
+  return {
+    offer: false,
+    text:
+      f && (f.toWall || f.burned)
+        ? `The leftovers went to the buy wall: ${f.toWall ? `${tokenAmount(f.toWall, o.s, true)} now backs it` : "no prize assets were left"}${f.burned ? ` and the unused ${tokenAmount(f.burned, o.s)} bonus was burned` : ""}. Nothing is left in Seasons.`
+        : "The leftovers went to the buy wall. Nothing is left in Seasons.",
+  };
 }
