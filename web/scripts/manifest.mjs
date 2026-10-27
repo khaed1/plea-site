@@ -1,13 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { loadNetwork } from "./network.mjs";
 const root = new URL("../../dist/", import.meta.url),
-  handoff = JSON.parse(
-    fs.readFileSync(new URL("../deployment-input.json", import.meta.url)),
-  ),
-  net = JSON.parse(
-    fs.readFileSync(new URL("../network-input.json", import.meta.url)),
-  );
+  { handoff, net, site } = loadNetwork();
 const files = [];
 function walk(p = "") {
   for (const f of fs.readdirSync(new URL(p, root), { withFileTypes: true })) {
@@ -39,6 +35,7 @@ const m = {
   network: net.network,
   walletAddChain: net.walletAddChain,
   ...(handoff.poolKey ? { poolKey: handoff.poolKey } : {}),
+  site,
 };
 if (files.length > 128) throw Error("Too many assets");
 fs.writeFileSync(
