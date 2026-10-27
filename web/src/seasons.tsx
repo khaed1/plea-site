@@ -596,7 +596,7 @@ function SeasonBody({
                           ).length,
                           "wallet",
                         )}`,
-                        tokenAmount(closedLog.args.paid, s, true),
+                        smallAmount(BigInt(closedLog.args.paid), s),
                       ],
                       [
                         last ? "Left for the buy wall" : `Rolled over to season ${season + 2n}`,
@@ -1130,7 +1130,7 @@ function SeasonBody({
                   rows={[
                     [
                       `Paid to ${plural(qualifiesRows.length, "wallet")}`,
-                      `${pct(shares)} · ${tokenAmount(paid, s, true)}`,
+                      `${pct(shares)} · ${smallAmount(paid, s)}`,
                     ],
                     [
                       last
@@ -1326,7 +1326,7 @@ function PastSeasons() {
                         ["Season prize pot", tokenAmount(l.args.pot, s, true)],
                         [
                           `Paid to ${plural(prizes.length, "wallet")}`,
-                          tokenAmount(l.args.paid, s, true),
+                          smallAmount(BigInt(l.args.paid), s),
                         ],
                         [
                           val(s, "CabalGate.diedAt") &&
