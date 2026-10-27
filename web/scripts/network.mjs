@@ -47,10 +47,12 @@ export function siteFor(site, handoff) {
   return { ...site, eventStart, expected };
 }
 
-/** index.html's title and link-preview tags for the deployment. */
-export function htmlMeta(site) {
+/** index.html's title, link-preview tags and first paint ("Loading the Sepolia deployment…") for the
+ * deployment on `network` (network.json's `network` block). */
+export function htmlMeta(site, network) {
   const m = site.meta, esc = (s) => String(s).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   return {
+    chain: esc(network.name),
     title: esc(m.title),
     description: esc(m.description),
     ogTitle: esc(m.ogTitle),
