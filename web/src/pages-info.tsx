@@ -422,14 +422,15 @@ export function Letters() {
               <p>
                 Open{" "}
                 <a
-                  href={site().letterMessagePage!}
+                  href={site().letterMessagePage!.url}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  {site().letterMessagePage!.replace(/^https?:\/\//, "")}
+                  {site().letterMessagePage!.url.replace(/^https?:\/\//, "")}
                 </a>{" "}
-                ({site().chain} only) and connect your wallet. The message goes
-                out as the transaction’s data: a raw letter.
+                ({site().letterMessagePage!.network} only) and connect your
+                wallet. The message goes out as the transaction’s data: a raw
+                letter.
               </p>
               <Costs
                 rows={[

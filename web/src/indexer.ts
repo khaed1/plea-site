@@ -104,3 +104,45 @@ export async function indexerLogs(
   // Only blocks the indexer has fully indexed count; later ones are left to the RPC scan.
   return { logs: logs.filter((l) => l.blockNumber <= syncedTo), syncedTo: syncedTo < from ? from - 1n : syncedTo };
 }
+
+/** After the indexer fails (refused, an error status, a timeout), the history leaves it alone for a
+ * while and reads logs only: 1 minute after the first failure, doubling to 15 minutes, until it answers
+ * again. A down indexer then costs one failed request (and the browser's one console line) per back-off
+ * instead of one per poll, and a hanging one a single timeout. The back-off is kept per indexer URL in
+ * this browser (localStorage, when it can be used), so reloading the page does not ask a down indexer
+ * again before the back-off ends. */
+export type IndexerBackoff = { until: number; wait: number };
+const BACKOFF_KEY = "plea-indexer-backoff",
+  FIRST_WAIT = 60_000,
+  LONGEST_WAIT = 15 * 60_000;
+const backoffs = new Map<string, IndexerBackoff>();
+function storedBackoff(url: string): IndexerBackoff | undefined {
+  if (backoffs.has(url)) return backoffs.get(url);
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(BACKOFF_KEY) || "null");
+    if (saved?.url === url && Number.isFinite(saved.until) && Number.isFinite(saved.wait))
+      return { until: saved.until, wait: saved.wait };
+  } catch {}
+  return undefined;
+}
+/** The back-off after one more failure. */
+export function nextBackoff(previous: IndexerBackoff | undefined, now: number): IndexerBackoff {
+  const wait = previous ? Math.min(LONGEST_WAIT, Math.max(FIRST_WAIT, previous.wait * 2)) : FIRST_WAIT;
+  return { until: now + wait, wait };
+}
+/** Whether the history may ask the indexer at `now`. */
+export function indexerDue(url: string, now = Date.now()) {
+  const b = storedBackoff(url);
+  return !b || now >= b.until;
+}
+/** Records whether the indexer answered: a success clears the back-off, a failure extends it. */
+export function noteIndexer(url: string, ok: boolean, now = Date.now()) {
+  const b = ok ? undefined : nextBackoff(storedBackoff(url), now);
+  if (b) backoffs.set(url, b);
+  else backoffs.delete(url);
+  try {
+    if (b) globalThis.localStorage?.setItem(BACKOFF_KEY, JSON.stringify({ url, ...b }));
+    else if (JSON.parse(globalThis.localStorage?.getItem(BACKOFF_KEY) || "null")?.url === url)
+      globalThis.localStorage?.removeItem(BACKOFF_KEY);
+  } catch {}
+}

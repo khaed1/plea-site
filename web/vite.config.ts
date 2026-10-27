@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import { loadNetwork, htmlMeta } from "./scripts/network.mjs";
 // PLEA_NETWORK picks the deployment at build time (scripts/network.mjs): its title and link previews go
 // into index.html here; its chain, contracts and site settings into dist/imd-deployment.json (manifest.mjs).
-const { site } = loadNetwork();
+const { site, net } = loadNetwork();
 const meta: Record<string, string> = htmlMeta(site);
 const keys: Record<string, string> = {
   PLEA_TITLE: meta.title,
@@ -17,6 +17,8 @@ const keys: Record<string, string> = {
 export default defineConfig({
   base: "./",
   build: { outDir: "../dist", emptyOutDir: true, chunkSizeWarningLimit: 1200 },
+  // The first paint, before dist/imd-deployment.json has loaded, names the build's chain (main.tsx).
+  define: { __PLEA_CHAIN__: JSON.stringify(net.network.name) },
   plugins: [
     {
       name: "plea-network-meta",

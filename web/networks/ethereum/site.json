@@ -25,7 +25,10 @@
     "name": "identity.md seat",
     "note": null
   },
-  "letterMessagePage": "https://etherscan.io/idm",
+  "letterMessagePage": {
+    "url": "https://etherscan.io/idm",
+    "network": "Ethereum mainnet"
+  },
   "indexer": null,
   "logRanges": {
     "default": 50000,

@@ -8,11 +8,14 @@ import { Icon } from "./components";
 import "./design/tokens.css";
 import "./design/components.css";
 import "./site.css";
+/** The build's chain ("Sepolia", "Ethereum"): the network is chosen at build time (vite.config.ts), so
+ * the first paint can name it before the deployment's settings have loaded. */
+declare const __PLEA_CHAIN__: string;
 const root = createRoot(document.getElementById("root")!);
 root.render(
   <main className="page main">
     <h1>PLEA</h1>
-    <p>Loading the deployment…</p>
+    <p>{`Loading the ${__PLEA_CHAIN__} deployment…`}</p>
   </main>,
 );
 // A failed load (one static file, or offline) tries again by itself: when the browser is back

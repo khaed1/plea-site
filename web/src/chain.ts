@@ -11,7 +11,7 @@ import {
 } from "viem";
 import { erc20Abi, intakeAbi, type Runtime } from "./config";
 import { site } from "./site";
-import { indexerLogs } from "./indexer";
+import { indexerDue, indexerLogs, noteIndexer } from "./indexer";
 export type Plea = {
   id: bigint;
   seller: Address;
@@ -113,18 +113,19 @@ const historyAddresses = (r: Runtime) =>
     .filter(([n]) => n !== "PairToken")
     .map(([, a]) => a);
 /** History from `from` to `to`: the deployment's indexer as far as it has indexed, then chunked
- * eth_getLogs from where it stopped; without an indexer (or when it fails), chunked logs only. */
+ * eth_getLogs from where it stopped; without an indexer (or when it fails), chunked logs only. An
+ * indexer that failed is left alone until its back-off ends (indexer.ts noteIndexer). */
 export async function readHistory(r: Runtime, from: bigint, to: bigint) {
   const url = site().indexer?.graphql;
-  if (url && to >= from)
+  const indexed =
+    url && to >= from && indexerDue(url)
+      ? await indexerLogs(url, r.chain.id, historyAddresses(r), from, to).then(
+          (x) => (noteIndexer(url, true), x),
+          () => noteIndexer(url, false),
+        )
+      : undefined;
+  if (indexed)
     try {
-      const indexed = await indexerLogs(
-        url,
-        r.chain.id,
-        historyAddresses(r),
-        from,
-        to,
-      );
       const rest =
         indexed.syncedTo < to
           ? await scanLogs(r, indexed.syncedTo + 1n, to)

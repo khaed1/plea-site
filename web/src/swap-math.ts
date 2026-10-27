@@ -65,23 +65,34 @@ export function estimateHookOutput({
       lo: sqrtAtTick(b.tickLower),
       hi: sqrtAtTick(b.tickUpper),
     }));
-  for (let steps = 0; steps < 6 && remaining > 0n; steps++) {
+  const boundaries = ranges.flatMap((b) => [b.lo, b.hi]);
+  // Every pass either uses up the input or moves the price to a band edge strictly further in the
+  // swap's direction, so the walk ends within one pass per edge.
+  for (let steps = 0; steps <= boundaries.length && remaining > 0n; steps++) {
     const active = ranges.filter((b) =>
       zeroForOne
         ? current > b.lo && current <= b.hi
         : current >= b.lo && current < b.hi,
     );
     const liquidity = active.reduce((n, b) => n + b.liquidity, 0n);
-    if (liquidity === 0n)
-      throw Error("Not enough active pool liquidity for this quote.");
-    const boundaries = ranges.flatMap((b) => [b.lo, b.hi]);
-    const boundary = zeroForOne
-      ? boundaries
-          .filter((b) => b < current)
-          .reduce((x, b) => (b > x ? b : x), 0n)
-      : boundaries
-          .filter((b) => b > current)
-          .reduce((x, b) => (b < x ? b : x), 2n ** 160n - 1n);
+    const ahead = boundaries.filter((b) =>
+      zeroForOne ? b < current : b > current,
+    );
+    if (!ahead.length)
+      throw Error(
+        out > 0n
+          ? "This amount crosses the pool’s available liquidity."
+          : "Not enough active pool liquidity for this quote.",
+      );
+    const boundary = ahead.reduce((x, b) =>
+      zeroForOne ? (b > x ? b : x) : b < x ? b : x,
+    );
+    if (liquidity === 0n) {
+      // A price between bands (PleaHook seeds a PLEA-first pool 1 below its band's lower edge):
+      // like the pool, the swap crosses the empty range to the next band edge at no cost.
+      current = boundary;
+      continue;
+    }
     const required = zeroForOne
       ? ceil(liquidity * Q96 * (current - boundary), current * boundary)
       : ceil(liquidity * (boundary - current), Q96);

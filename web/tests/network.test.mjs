@@ -85,7 +85,7 @@ test("PLEA_DEPLOYMENT: an Ethereum fork's deployment fills the first block and t
   assert.equal(n.site.cashback.simdDecimals, 24);
   assert.equal(n.site.seat.address, "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d");
   assert.equal(n.site.seat.name, "identity.md seat");
-  assert.equal(n.site.letterMessagePage, "https://etherscan.io/idm");
+  assert.deepEqual(n.site.letterMessagePage, { url: "https://etherscan.io/idm", network: "Ethereum mainnet" }, "the mockup's '(Ethereum mainnet only)'");
   assert.equal(n.net.walletAddChain, null, "Ethereum is switched to, never added");
   assert.equal(n.net.network.rpcUrls.at(-1), "https://mainnet.gateway.tenderly.co", "Tenderly last (429 on bursts)");
   assert.equal(n.site.logRanges["https://rpc.flashbots.net"], 0, "Flashbots answers old ranges with []");
@@ -391,6 +391,107 @@ test("quotes follow the pool key: a pool with PLEA as currency0 (Ethereum) quote
     b = m.bandImd(mirror(wall), Q192 / m.sqrtAtTick(120000), true);
   assert.ok(a > 0n);
   assert.ok((a > b ? a - b : b - a) * 10n ** 9n <= a, `${a} vs ${b}`);
+});
+
+test("quotes cross an empty range: a PLEA-first pool seeded 1 below its band quotes the opening buy", async () => {
+  const m = await import("../src/swap-math.ts");
+  // The Ethereum fork right after PleaLaunch.seed (twonet-eth seeded.hex): PleaHook seeds a pool with
+  // PLEA as currency0 at getSqrtPriceAtTick(lower) - 1, below its only band; the wall is still empty.
+  const market = { tickLower: -111720, tickUpper: 887220, liquidity: 3075854108766911801813458n },
+    wall = { tickLower: 0, tickUpper: 0, liquidity: 0n },
+    seeded = m.sqrtAtTick(market.tickLower) - 1n,
+    fees = { inputBps: 225n + 7000n, outputBps: 25n },
+    buy = { amount: 2n * 10n ** 18n, zeroForOne: m.swapZeroForOne(false, true), ...fees };
+  assert.equal(seeded, 297188430358616436973918922n);
+  const q = m.estimateHookOutput({ ...buy, sqrt: seeded, bands: [market, wall] });
+  // About 82,300 PLEA for the 2 IMD opening buy at the launch window's start (the fork's real
+  // opening buy, later in the window, got 82,508 gross).
+  assert.equal(q.out / 10n ** 18n, 82306n);
+  assert.equal(q.gross / 10n ** 18n, 82513n);
+  assert.ok(q.next > m.sqrtAtTick(market.tickLower), "the price ends inside the band");
+  // Crossing the empty range costs nothing: the same quote as from the band's own edge.
+  assert.deepEqual(m.estimateHookOutput({ ...buy, sqrt: seeded + 1n, bands: [market, wall] }), q);
+  // And it is the mirror of Sepolia's seed (imdTEST first, at the band's upper edge).
+  const mirror = { tickLower: -market.tickUpper, tickUpper: -market.tickLower, liquidity: market.liquidity };
+  const sepolia = m.estimateHookOutput({ ...fees, amount: buy.amount, zeroForOne: m.swapZeroForOne(false, false), sqrt: m.sqrtAtTick(mirror.tickUpper), bands: [mirror, wall] });
+  const diff = sepolia.out > q.out ? sepolia.out - q.out : q.out - sepolia.out;
+  assert.ok(diff * 10n ** 9n <= q.out, `${sepolia.out} vs ${q.out}`);
+  // A sale from the seed price has nothing below it to sell into.
+  assert.throws(
+    () => m.estimateHookOutput({ amount: 10n ** 21n, zeroForOne: m.swapZeroForOne(true, true), sqrt: seeded, bands: [market, wall], inputBps: 25n, outputBps: 225n }),
+    /Not enough active pool liquidity/,
+  );
+  // An empty range between two bands, in the middle of a walk, is crossed at no cost too: the quote is
+  // the first band's whole PLEA plus the second band's quote for what is left.
+  const L = 10n ** 24n,
+    Q = 2n ** 96n,
+    a = { tickLower: -1000, tickUpper: -100, liquidity: L },
+    b = { tickLower: 100, tickUpper: 1000, liquidity: L },
+    start = m.sqrtAtTick(-500),
+    aHi = m.sqrtAtTick(-100),
+    needA = (L * (aHi - start) + Q - 1n) / Q,
+    outA = (L * Q * (aHi - start)) / (start * aHi),
+    rest = 10n ** 18n,
+    noFees = { zeroForOne: false, inputBps: 0n, outputBps: 0n };
+  const across = m.estimateHookOutput({ ...noFees, amount: needA + rest, sqrt: start, bands: [a, b] });
+  const second = m.estimateHookOutput({ ...noFees, amount: rest, sqrt: m.sqrtAtTick(100), bands: [b] });
+  assert.equal(across.out, outA + second.out);
+  assert.equal(across.next, second.next);
+  // Past the last band edge the amount is too large: an error, never a partial quote.
+  assert.throws(() => m.estimateHookOutput({ ...noFees, amount: 10n ** 30n, sqrt: start, bands: [a, b] }), /crosses the pool’s available liquidity/);
+});
+
+test("a down indexer is left alone for a while: one failed request, then logs only until the back-off ends", async () => {
+  const ix = await import("../src/indexer.ts");
+  const url = "http://backoff.invalid/graphql";
+  assert.equal(ix.indexerDue(url, 0), true);
+  ix.noteIndexer(url, false, 1000);
+  assert.equal(ix.indexerDue(url, 1000 + 59_999), false, "1 minute after the first failure");
+  assert.equal(ix.indexerDue(url, 1000 + 60_000), true);
+  ix.noteIndexer(url, false, 100_000);
+  assert.equal(ix.indexerDue(url, 100_000 + 119_999), false, "then 2 minutes");
+  assert.equal(ix.indexerDue("http://other.invalid/graphql", 100_000), true, "per indexer URL");
+  let b;
+  for (let i = 0; i < 10; i++) b = ix.nextBackoff(b, 0);
+  assert.equal(b.wait, 15 * 60_000, "at most 15 minutes");
+  ix.noteIndexer(url, true, 300_000);
+  assert.equal(ix.indexerDue(url, 300_000), true, "an answer clears it");
+
+  // Through readHistory: the failed attempt falls back to logs, the next reads skip the indexer.
+  const chain = await load("chain");
+  const m = manifestFor("ethereum");
+  site.setSite({ ...m, site: { ...m.site, indexer: { graphql: "http://down.invalid/graphql" } } });
+  const original = globalThis.fetch,
+    logCalls = [];
+  let fetches = 0;
+  const r = {
+    chain: { id: 1 },
+    addresses: { CabalGate: "0x8b21219cd72938e25e0d37a1aa55599fdb23823a", PairToken: "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7" },
+    abis: { CabalGate: [] },
+    client: {
+      async getLogs({ fromBlock, toBlock }) {
+        logCalls.push([fromBlock, toBlock]);
+        return [];
+      },
+    },
+  };
+  try {
+    globalThis.fetch = async () => {
+      fetches++;
+      throw new TypeError("Failed to fetch");
+    };
+    const first = await chain.readHistory(r, 26278701n, 26300000n);
+    assert.equal(first.error, undefined);
+    assert.equal(first.covered, 26300000n);
+    assert.equal(fetches, 1);
+    const poll = await chain.readHistory(r, 26300001n, 26300010n);
+    assert.equal(poll.covered, 26300010n);
+    assert.equal(fetches, 1, "the next poll does not ask the down indexer again");
+    assert.deepEqual(logCalls, [[26278701n, 26300000n], [26300001n, 26300010n]]);
+  } finally {
+    globalThis.fetch = original;
+    useNetwork("sepolia-run9");
+  }
 });
 
 test("sweep nits: Seasons' loading h1 has a skeleton number until the season is read; Share keeps the plea's number", async () => {

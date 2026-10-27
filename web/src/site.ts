@@ -34,8 +34,9 @@ export type SiteSettings = {
   cashback: { stacker: Address; simd: Address | null; simdDecimals: number };
   /** The seat NFT Seasons reads; `note` qualifies it on the Contracts page ("a test NFT on Sepolia"). */
   seat: { address: Address; name: string; note: string | null };
-  /** Etherscan's message page for raw letters, where the network has one. */
-  letterMessagePage: string | null;
+  /** Etherscan's message page for raw letters, where the network has one, and the network it sends
+   * on in the Letters card's words ("etherscan.io/idm (Ethereum mainnet only)"). */
+  letterMessagePage: { url: string; network: string } | null;
   indexer: { graphql: string } | null;
   /** eth_getLogs block ranges: `default` for the scan, and per RPC URL (0: never ask it for logs). */
   logRanges: Record<string, number>;
