@@ -242,6 +242,15 @@ test("sweep P10: a settled stake says where it went", () => {
     "0x7A3F00000000000000000000000000000000C21E",
   );
   assert.equal(plain(mine.text), "Objection #4 settled: 0.35 imdTEST returned to you.");
+  const named = toasts.stakeSettledToast(
+    { id: 1n, to: "0xa5767636363F20aB6024Ce58a19f6C2034d2E440", amount: 35n * 10n ** 16n },
+    s,
+    SEASONS,
+    "0x3EF81b875d7666C3ba942653CF0e4A89471551c4",
+    1n,
+    "lynx_judge",
+  );
+  assert.equal(plain(named.text), "Objection #1 settled: 0.35 imdTEST returned to lynx_judge.");
   const escrow = toasts.escrowReturnedToast(
     { id: 7n, writer: "0x7a3f00000000000000000000000000000000c21e", amount: 500000n * E, tip: 25n * 10n ** 16n },
     s,

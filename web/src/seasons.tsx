@@ -206,6 +206,9 @@ function WaitingSeason({ season }: { season: bigint }) {
     [season, address],
     !!s,
   );
+  // The pot as the details show it: its fees and, estimated, what the earlier closes roll in.
+  const carry = useCarry(season),
+    estimated = season > BigInt(val(s, "Seasons.nextToClose"));
   return (
     <details
       className="panel waiting-season"
@@ -213,7 +216,14 @@ function WaitingSeason({ season }: { season: bigint }) {
     >
       <summary>
         Season {String(season + 1n)} ended · Awaiting close · pot{" "}
-        {tokenAmount(info.data?.fees, s, true)}
+        {tokenAmount(
+          info.data?.fees === undefined
+            ? undefined
+            : BigInt(info.data.fees) + BigInt(carry.data ?? 0n),
+          s,
+          true,
+        )}
+        {estimated ? ", estimated" : ""}
         {info.data?.own.length
           ? ` · your plea ${info.data.own.map((l) => `#${l.id}`).join(", ")} to record`
           : ""}
@@ -223,6 +233,44 @@ function WaitingSeason({ season }: { season: bigint }) {
   );
 }
 
+/** What the waiting seasons before `season` roll into it at their closes, which come first
+ * (Seasons.nextToClose): estimated from their boards as they stand (carriedRollover). Not read for
+ * nextToClose itself, whose rollover is Seasons.rollover. */
+function useCarry(season: bigint) {
+  const { r, s } = useApp(),
+    next = BigInt(val(s, "Seasons.nextToClose") ?? 0n),
+    minPoints = Number(con(s, "Seasons.MIN_POINTS"));
+  return useRead(
+    async () => {
+      const waiting = await Promise.all(
+        Array.from({ length: Number(season - next) }, async (_, i) => {
+          const j = next + BigInt(i);
+          const [fees, top] = await Promise.all([
+            chainRead(r, "Seasons", "seasonFees", [j]),
+            chainRead(r, "Seasons", "topOf", [j]),
+          ]);
+          const entries = (top as any[]).filter(
+            (e) => !/^0x0{40}$/i.test(e.wallet),
+          );
+          const excluded = await Promise.all(
+            entries.map((e) => chainRead(r, "Seasons", "excluded", [e.wallet])),
+          );
+          return {
+            fees: BigInt(fees),
+            paidBps: entries.flatMap((e, k) =>
+              !excluded[k] && Number(e.points) >= minPoints
+                ? [BigInt(s!.v.shares[k])]
+                : [],
+            ),
+          };
+        }),
+      );
+      return carriedRollover(BigInt(val(s, "Seasons.rollover")), waiting);
+    },
+    [String(season), String(next)],
+    !!s && season > next,
+  );
+}
 function SeasonView({
   season,
   ended = false,
@@ -256,42 +304,8 @@ function SeasonView({
     !known,
   );
   const data = known || query.data;
-  // A season after nextToClose takes in what the earlier waiting seasons roll over at their closes,
-  // which come first: estimated from their boards as they stand (carriedRollover).
   const next = BigInt(val(s, "Seasons.nextToClose")),
-    minPoints = Number(con(s, "Seasons.MIN_POINTS")),
-    carry = useRead(
-      async () => {
-        const waiting = await Promise.all(
-          Array.from({ length: Number(season - next) }, async (_, i) => {
-            const j = next + BigInt(i);
-            const [fees, top] = await Promise.all([
-              chainRead(r, "Seasons", "seasonFees", [j]),
-              chainRead(r, "Seasons", "topOf", [j]),
-            ]);
-            const entries = (top as any[]).filter(
-              (e) => !/^0x0{40}$/i.test(e.wallet),
-            );
-            const excluded = await Promise.all(
-              entries.map((e) =>
-                chainRead(r, "Seasons", "excluded", [e.wallet]),
-              ),
-            );
-            return {
-              fees: BigInt(fees),
-              paidBps: entries.flatMap((e, k) =>
-                !excluded[k] && Number(e.points) >= minPoints
-                  ? [BigInt(s!.v.shares[k])]
-                  : [],
-              ),
-            };
-          }),
-        );
-        return carriedRollover(BigInt(val(s, "Seasons.rollover")), waiting);
-      },
-      [String(season), String(next)],
-      !!s && season > next,
-    );
+    carry = useCarry(season);
   return data ? (
     <SeasonBody
       season={season}

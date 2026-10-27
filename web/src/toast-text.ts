@@ -315,6 +315,7 @@ export function stakeSettledToast(
   seasons: string,
   wallet?: string,
   pleaId?: bigint,
+  name?: string,
 ): Toast {
   const amount = tokenAmount(BigInt(args.amount), s, true),
     link =
@@ -332,7 +333,7 @@ export function stakeSettledToast(
         kind: "ok",
         text: [
           `Objection #${args.id} settled: ${amount} returned to `,
-          who(args.to, wallet),
+          who(args.to, wallet, name),
           ".",
         ],
         ...link,

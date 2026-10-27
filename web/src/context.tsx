@@ -861,6 +861,8 @@ async function receiptToast(
       r.addresses.Seasons,
       wallet,
       (s.v.objections || []).find((o: any) => o.id === stake.id)?.pleaId,
+      // "<name or 0x…>" (review-2 C5); without the read, the address.
+      await read(r, "Letterbox", "nameOf", [stake.to]).catch(() => ""),
     );
   const returned = find("Settled");
   if (returned) return escrowReturnedToast(returned, s, wallet);
