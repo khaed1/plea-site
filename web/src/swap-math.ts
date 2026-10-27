@@ -6,6 +6,9 @@
 const Q96 = 2n ** 96n;
 const ceil = (a: bigint, b: bigint) => (a + b - 1n) / b;
 /** Exact Uniswap v4 TickMath Q128.128 products, uint256 inversion, Q64.96 round up. */
+/** The pool cannot fill this amount at any price: no approval or trade can help, only a smaller amount. */
+export const LIQUIDITY_SHORT = "This amount crosses the pool’s available liquidity.";
+export const NO_LIQUIDITY = "Not enough active pool liquidity for this quote.";
 export function sqrtAtTick(tick: number): bigint {
   if (!Number.isInteger(tick) || Math.abs(tick) > 887272)
     throw Error("Tick is outside the pool's range.");
@@ -78,12 +81,7 @@ export function estimateHookOutput({
     const ahead = boundaries.filter((b) =>
       zeroForOne ? b < current : b > current,
     );
-    if (!ahead.length)
-      throw Error(
-        out > 0n
-          ? "This amount crosses the pool’s available liquidity."
-          : "Not enough active pool liquidity for this quote.",
-      );
+    if (!ahead.length) throw Error(out > 0n ? LIQUIDITY_SHORT : NO_LIQUIDITY);
     const boundary = ahead.reduce((x, b) =>
       zeroForOne ? (b > x ? b : x) : b < x ? b : x,
     );
@@ -109,8 +107,7 @@ export function estimateHookOutput({
     current = next;
     remaining -= used;
   }
-  if (remaining > 0n)
-    throw Error("This amount crosses the pool’s available liquidity.");
+  if (remaining > 0n) throw Error(LIQUIDITY_SHORT);
   return { out: out - (out * outputBps) / 10000n, gross: out, next: current };
 }
 

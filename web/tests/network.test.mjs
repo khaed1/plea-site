@@ -403,14 +403,17 @@ test("quotes cross an empty range: a PLEA-first pool seeded 1 below its band quo
   const market = { tickLower: -111720, tickUpper: 887220, liquidity: 3075854108766911801813458n },
     wall = { tickLower: 0, tickUpper: 0, liquidity: 0n },
     seeded = m.sqrtAtTick(market.tickLower) - 1n,
-    fees = { inputBps: 225n + 7000n, outputBps: 25n },
+    // A buy pays IMD_FEE_BPS (200) plus the launch window's extra (7,000 at its start) on the IMD in, and
+    // PLEA_BURN_BPS (25) on the PLEA out (PleaHook.beforeSwap/afterSwap, mainnet 21bb640).
+    fees = { inputBps: 200n + 7000n, outputBps: 25n },
     buy = { amount: 2n * 10n ** 18n, zeroForOne: m.swapZeroForOne(false, true), ...fees };
   assert.equal(seeded, 297188430358616436973918922n);
   const q = m.estimateHookOutput({ ...buy, sqrt: seeded, bands: [market, wall] });
-  // About 82,300 PLEA for the 2 IMD opening buy at the launch window's start (the fork's real
-  // opening buy, later in the window, got 82,508 gross).
-  assert.equal(q.out / 10n ** 18n, 82306n);
-  assert.equal(q.gross / 10n ** 18n, 82513n);
+  // 82,426 PLEA for the 2 IMD opening buy at the launch window's start: what the owner's real opening
+  // buy through the Universal Router received on the Ethereum fork, one block after the seed
+  // (web/scripts/ethereum-fork-trade.mjs: 82,426.35 PLEA).
+  assert.equal(q.out / 10n ** 18n, 82426n);
+  assert.equal(q.gross / 10n ** 18n, 82632n);
   assert.ok(q.next > m.sqrtAtTick(market.tickLower), "the price ends inside the band");
   // Crossing the empty range costs nothing: the same quote as from the band's own edge.
   assert.deepEqual(m.estimateHookOutput({ ...buy, sqrt: seeded + 1n, bands: [market, wall] }), q);
@@ -421,7 +424,7 @@ test("quotes cross an empty range: a PLEA-first pool seeded 1 below its band quo
   assert.ok(diff * 10n ** 9n <= q.out, `${sepolia.out} vs ${q.out}`);
   // A sale from the seed price has nothing below it to sell into.
   assert.throws(
-    () => m.estimateHookOutput({ amount: 10n ** 21n, zeroForOne: m.swapZeroForOne(true, true), sqrt: seeded, bands: [market, wall], inputBps: 25n, outputBps: 225n }),
+    () => m.estimateHookOutput({ amount: 10n ** 21n, zeroForOne: m.swapZeroForOne(true, true), sqrt: seeded, bands: [market, wall], inputBps: 25n, outputBps: 200n }),
     /Not enough active pool liquidity/,
   );
   // An empty range between two bands, in the middle of a walk, is crossed at no cost too: the quote is

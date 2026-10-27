@@ -22,6 +22,8 @@ import {
   pleaIsZero,
   swapZeroForOne,
   unpackDelta,
+  LIQUIDITY_SHORT,
+  NO_LIQUIDITY,
 } from "./swap-math";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
@@ -355,7 +357,11 @@ export function Buy() {
       ? `Enter how much ${unit} to ${selling ? "sell" : "pay"}, or press Max. The quote and the fees show once there is an amount.`
       : available !== undefined && raw > available
         ? `You have ${tokenAmount(available, s, !selling)}. Lower the amount or press Max.`
-        : capError;
+        : capError ||
+          // The pool cannot fill this amount at any price: no approval can help, so none is offered.
+          (quote.error === LIQUIDITY_SHORT || quote.error === NO_LIQUIDITY
+            ? `${quote.error} ${selling ? "Sell less PLEA" : `Pay less ${pair}`}.`
+            : "");
   const reason = tradeDone
     ? ""
     : amountReason ||
