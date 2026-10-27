@@ -392,3 +392,18 @@ test("quotes follow the pool key: a pool with PLEA as currency0 (Ethereum) quote
   assert.ok(a > 0n);
   assert.ok((a > b ? a - b : b - a) * 10n ** 9n <= a, `${a} vs ${b}`);
 });
+
+test("sweep nits: Seasons' loading h1 has a skeleton number until the season is read; Share keeps the plea's number", async () => {
+  const { loadingTitle } = await load("loading-text");
+  // Loading band, nothing read yet: "Season …", never "Seasons" (the loaded page says "Season N").
+  assert.equal(loadingTitle("seasons", undefined, undefined, undefined, true), "Season …");
+  assert.equal(loadingTitle("seasons", undefined, undefined, { "Seasons.SEASON": 18000n }, true), "Season …");
+  // The reads are in: the loaded page's own title.
+  const c = { "CabalGate.startedAt": 1792587948n, "CabalGate.diedAt": 0n, "Seasons.currentSeason": [true, 1n, 0n], "Seasons.SEASON": 18000n };
+  assert.equal(loadingTitle("seasons", undefined, undefined, c, true), "Season 2");
+  // Trading not open: "Seasons", as the loaded page's empty state.
+  assert.equal(loadingTitle("seasons", undefined, undefined, { ...c, "CabalGate.startedAt": 0n }, true), "Seasons");
+  // A failed first read keeps the page's name.
+  assert.equal(loadingTitle("seasons"), "Seasons");
+  assert.equal(loadingTitle("share", "7"), "Share plea #7");
+});

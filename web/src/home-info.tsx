@@ -409,7 +409,9 @@ export function ContractsPanel() {
           flush
           meta={
             x.contracts.launch ||
-            (x.sourceCommit ? `Source commit ${x.sourceCommit.slice(0, 7)}` : x.name)
+            (x.sourceCommit
+              ? `Launch commit ${/^[0-9a-f]{40}$/i.test(x.sourceCommit) ? x.sourceCommit.slice(0, 7) : x.sourceCommit}`
+              : x.name)
           }
         >
           <dl className="addr-list">

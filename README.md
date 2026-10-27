@@ -20,3 +20,16 @@ npm --prefix web run verify-export  # rebuilds and fails if dist/ differs from t
 ```
 
 The build is reproducible: a clean `npm ci` + build gives the same bytes on any machine with these versions (it reproduced IMD's own run 9 export byte for byte).
+
+## Networks
+
+One source builds either deployment, chosen at build time with `PLEA_NETWORK`: `sepolia-run9` (the default, run 9 on Sepolia) or `ethereum`. Each has `web/networks/<key>/site.json` (Sepolia keeps its chain and contracts in `web/network-input.json` and `web/deployment-input.json`; Ethereum in `web/networks/ethereum/network.json` and `deployment.json`). The build copies the site settings into `dist/imd-deployment.json` (`site`), and the app reads every network-specific value from there at load (`web/src/site.ts`): the words (chain, strip, footer, explorer), the swap router (PoolSwapTest on Sepolia; Uniswap's Universal Router with Permit2 on Ethereum), cashback (plain on Sepolia; staked as sIMD on Ethereum), the seat NFT, the first block of history, the indexer, the RPCs' log ranges and the source links. The JavaScript is the same for both builds; `index.html`'s meta and the manifest differ.
+
+```sh
+PLEA_NETWORK=ethereum npm --prefix web run build   # refuses until the launch's addresses are in networks/ethereum/deployment.json ([after launch])
+# a test build against an Ethereum fork (never commit it):
+node web/scripts/fork-deployment.mjs <base.json> <out.json>
+PLEA_NETWORK=ethereum PLEA_DEPLOYMENT=<out.json> npm --prefix web run build
+```
+
+A testnet build fails if its pages, scripts or settings name the main network ("mainnet", "chain id 1"). The committed `dist/` is the default build.

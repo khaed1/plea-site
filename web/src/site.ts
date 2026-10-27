@@ -155,6 +155,6 @@ export function sellGateWarning(x = site()) {
     ? undefined
     : {
         title: "Wallets and token scanners will likely call PLEA unsellable.",
-        body: "Honeypot checks, Blockaid in MetaMask, GoPlus and honeypot.is test a token by simulating a plain sell. While the Cabal lives a plain sell reverts: selling needs an approved plea, so their simulation fails and they warn. That is this rule, not a trap. Once the Cabal dies, PLEA sells like any token.",
+        body: "Honeypot checks, Blockaid in MetaMask, GoPlus and honeypot.is test a token by simulating a plain sell. While the Cabal lives a plain sell reverts: selling needs an approved plea, so their simulation fails and they warn. That is the plea rule at work, not a trap. Once the Cabal dies, PLEA sells like any token.",
       };
 }

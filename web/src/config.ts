@@ -21,7 +21,7 @@ import {
 import { createConfig } from "wagmi";
 import { injected } from "wagmi/connectors";
 import expectedAbi from "./abi-hashes.json";
-import { setSite, site, type Site } from "./site";
+import { setSite, type Site } from "./site";
 /** The ABI hashes of the contracts the deployment file does not list (Letterbox, Tribunal, PleaHook).
  * Every network setting (the first block, the oracle API, the swap router, the expected addresses…)
  * comes from the deployment's site block: `site()` (site.ts). */
