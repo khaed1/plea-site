@@ -1,5 +1,6 @@
 import { requestUuid } from "./oracle-id";
-import { APP, type Runtime } from "./config";
+import { type Runtime } from "./config";
+import { site } from "./site";
 import { read, type Plea } from "./chain";
 export type OracleData = {
   id: string;
@@ -36,7 +37,7 @@ export async function oracleRequest(
     id = event ? requestUuid(event.args.oracleRequestId) : undefined;
   const get = async (id: string) => {
     const response = await fetch(
-      `${APP.oracleApi}/oracle/requests/${encodeURIComponent(id)}`,
+      `${site().oracleApi}/oracle/requests/${encodeURIComponent(id)}`,
       { signal: AbortSignal.timeout(10000) },
     );
     if (!response.ok) throw Error("Oracle request unavailable");
@@ -49,7 +50,7 @@ export async function oracleRequest(
     "question",
     [objection?.id ?? p.id],
   );
-  const list = await fetch(`${APP.oracleApi}/oracle/requests`, {
+  const list = await fetch(`${site().oracleApi}/oracle/requests`, {
     signal: AbortSignal.timeout(10000),
   });
   if (!list.ok) throw Error("Oracle list unavailable");

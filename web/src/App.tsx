@@ -1,3 +1,4 @@
+import { site, cantReach } from "./site";
 import { PageHeading, PageLoading } from "./page-loading";
 import { PageBoundary } from "./page-boundary";
 import { resetHealth } from "./config";
@@ -200,9 +201,11 @@ export default function App() {
         </nav>
         <div className="status-strip">
           <div className="page">
-            <span className="status-item test-run">
-              <b>Sepolia test run 9 · test tokens, no value</b>
-            </span>
+            {site().strip && (
+              <span className="status-item test-run">
+                <b>{site().strip}</b>
+              </span>
+            )}
             <span className="status-item">
               {s?.v["PleaHook.seeded"] && (
                 <span
@@ -213,9 +216,7 @@ export default function App() {
               <b>
                 {!s
                   ? error
-                    ? error === NO_ANSWER
-                      ? "Can’t reach Sepolia"
-                      : "Can’t read Sepolia"
+                    ? cantReach(error !== NO_ANSWER)
                     : "Reading the Cabal…"
                   : !s.v["PleaHook.seeded"]
                     ? "Trading not open yet"
@@ -348,8 +349,8 @@ export default function App() {
           <p className="fine">
             PLEA is a meme token on Uniswap v4. Buying is open; selling needs a
             plea while the Cabal lives. Not financial advice, and not an
-            official IMD page. Sepolia test tokens have no value. Inspired by
-            CabalCoin by TokenWorks (2025).
+            official IMD page. {site().footer} Inspired by CabalCoin by
+            TokenWorks (2025).
           </p>
           <nav aria-label="Footer">
             <ul>
@@ -374,7 +375,7 @@ export default function App() {
               </li>
               <li>
                 <a
-                  href="https://github.com/khaed1/plea"
+                  href={site().source.repo}
                   target="_blank"
                   rel="noreferrer"
                 >

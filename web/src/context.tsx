@@ -1,3 +1,4 @@
+import { switchText } from "./site";
 import {
   Fragment,
   createContext,
@@ -36,6 +37,7 @@ import {
   clock,
   recordHint,
   readPlea,
+  holdEnds,
   type Snapshot,
 } from "./chain";
 import { explainReadError } from "./rpc-health";
@@ -322,7 +324,11 @@ export function DataProvider({
             failures.current ||
             previous.current.historyError ||
             scan?.logs.length ||
-            Date.now() - lastSnapshot.current >= 60000
+            Date.now() - lastSnapshot.current >= 60000 ||
+            // A new block passed a points hold: Record unlocks with it.
+            holdEnds(previous.current).some(
+              (t) => Number(block.timestamp) > t,
+            )
           )
             await refresh();
         } catch (e) {
@@ -557,7 +563,7 @@ export function useTx(resetKey?: string) {
       if (!connector || !address)
         throw Error("Connect in the top bar to send this transaction.");
       if (!verified || chainId !== r.chain.id)
-        throw Error("Switch to Sepolia in the top bar before sending.");
+        throw Error(`${switchText()} in the top bar before sending.`);
       const provider = await connector.getProvider();
       const wallet = createWalletClient({
         account: address,
@@ -823,7 +829,7 @@ async function receiptToast(
       body: `${plural(prizes.length, "wallet")} paid ${smallAmount(BigInt(closed.paid), s)} + ${tokenAmount(
         bonuses.reduce((n, e) => n + BigInt(e.args.amount), 0n),
         s,
-      )}. ${tokenAmount(BigInt(closed.pot) - BigInt(closed.paid), s, true)} ${val(s, "CabalGate.diedAt") && BigInt(closed.season) === BigInt(s.v.displayedSeason) ? "is left for the buy wall" : `rolls over to season ${Number(closed.season) + 2}`}; ${tokenAmount(burned, s)} burned.`,
+      )}. ${smallAmount(BigInt(closed.pot) - BigInt(closed.paid), s)} ${val(s, "CabalGate.diedAt") && BigInt(closed.season) === BigInt(s.v.displayedSeason) ? "is left for the buy wall" : `rolls over to season ${Number(closed.season) + 2}`}; ${tokenAmount(burned, s)} burned.`,
     };
   }
   if (recorded) {
@@ -866,7 +872,13 @@ async function receiptToast(
       await read(r, "Letterbox", "nameOf", [stake.to]).catch(() => ""),
     );
   const returned = find("Settled");
-  if (returned) return escrowReturnedToast(returned, s, wallet);
+  if (returned)
+    return escrowReturnedToast(
+      returned,
+      s,
+      wallet,
+      await read(r, "Letterbox", "nameOf", [returned.writer]).catch(() => ""),
+    );
   const expired = find("PleaExpired");
   if (expired)
     return pleaExpiredToast(

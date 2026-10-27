@@ -1,3 +1,4 @@
+import { soFar } from "./site";
 import { potFor, carriedRollover, LETTERBOX } from "./models";
 import { resetHealth } from "./config";
 import { getAddress } from "viem";
@@ -26,6 +27,7 @@ import {
   seatBracket,
   judgesRow,
   pointsHeld,
+  nameOf,
 } from "./chain";
 import {
   closingCopy,
@@ -366,6 +368,19 @@ function SeasonBody({
         : 0n,
     grace = Number(con(s, "Seasons.CLOSE_GRACE")),
     closeAt = Number(bounds[2]) + grace;
+  // Who closed a closed season, and when: the Ends panel says so, as Past seasons does.
+  const closer = useRead(
+    async () => {
+      const [time, tx] = await Promise.all([
+        blockTime(r, closedLog!.blockNumber),
+        r.client.getTransaction({ hash: closedLog!.transactionHash }),
+      ]);
+      const name = await nameOf(r, tx.from).catch(() => "");
+      return { time, from: tx.from, name };
+    },
+    [closedLog?.transactionHash],
+    !!closedLog,
+  );
   const query = useRead(
     async () => {
       const rows = await Promise.all(
@@ -568,7 +583,32 @@ function SeasonBody({
               ["Started", clock(bounds[1])],
               ["Length", span(Number(con(s, "Seasons.SEASON")))],
               ["Grace after the end", span(grace)],
-              ["Anyone can close it", `from ${clock(closeAt)}`],
+              data.closed
+                ? [
+                    "Closed",
+                    closer.data ? (
+                      <>
+                        <a
+                          href={`${r.network.explorer}/tx/${closedLog!.transactionHash}`}
+                        >
+                          {clock(closer.data.time)}
+                        </a>{" "}
+                        by{" "}
+                        <span className={closer.data.name ? "nowrap" : "mono nowrap"}>
+                          {closer.data.name || short(getAddress(closer.data.from))}
+                        </span>
+                      </>
+                    ) : closedLog ? (
+                      closer.error ? (
+                        "Closed"
+                      ) : (
+                        "Reading…"
+                      )
+                    ) : (
+                      "Closed; the closing transaction shows once the history is read"
+                    ),
+                  ]
+                : ["Anyone can close it", `from ${clock(closeAt)}`],
             ]}
           />
         </Panel>
@@ -579,7 +619,11 @@ function SeasonBody({
         >
           <p className="stat__value">
             <span className="nowrap">
-              {data.closed && !closedLog ? "—" : tokenAmount(pot, s, true)}
+              {data.closed && !closedLog
+                ? "—"
+                : data.closed
+                  ? smallAmount(pot, s)
+                  : tokenAmount(pot, s, true)}
             </span>
           </p>
           <Costs
@@ -600,13 +644,12 @@ function SeasonBody({
                       ],
                       [
                         last ? "Left for the buy wall" : `Rolled over to season ${season + 2n}`,
-                        tokenAmount(
+                        smallAmount(
                           BigInt(closedLog.args.pot) - BigInt(closedLog.args.paid),
                           s,
-                          true,
                         ),
                       ],
-                      ["Total, at the close", tokenAmount(pot, s, true), "total"],
+                      ["Total, at the close", smallAmount(pot, s), "total"],
                     ]
                   : [["What the close paid", "Shows once the history is read"]]
                 : [
@@ -689,7 +732,7 @@ function SeasonBody({
                   `top ${con(s, "Seasons.TOP")}, ${minPoints}+ points`,
                 ],
                 [
-                  "Shares, as for the imdTEST",
+                  `Shares, as for the ${s?.constants.pairSymbol}`,
                   `${pct(s!.v.shares[0])} to ${pct(s!.v.shares.at(-1))}`,
                 ],
                 ["Unpaid shares", "burned at the close"],
@@ -868,8 +911,9 @@ function SeasonBody({
             </>
           )}
         </Panel>
-        {!ended && (
-          // seasons.html:147: the heading, then one stack--lg for the panel's body.
+        {!ended && !data.closed && (
+          // seasons.html:147: the heading, then one stack--lg for the panel's body. A closed
+          // season takes no more points, so the seat no longer matters to it (sweep nit).
           <section className="panel" id="seat" aria-labelledby="seat-title">
             <h2 className="card__title" id="seat-title">
               The seat multiplier
@@ -1254,7 +1298,7 @@ function PastSeasons() {
         <h2>Past seasons</h2>
       </div>
       {!closedCount ? (
-        <p>No seasons have closed in this test run.</p>
+        <p>No seasons have closed{soFar()}.</p>
       ) : details.error && !details.data ? (
         <p className="small" role="status">
           Can’t read the past seasons right now. The site tries again with the
@@ -1323,7 +1367,8 @@ function PastSeasons() {
                     <p className="label">Season prize pot and bonus</p>
                     <Costs
                       rows={[
-                        ["Season prize pot", tokenAmount(l.args.pot, s, true)],
+                        // Under a cent reads "< 0.01", as the prize paid from it does (sweep nit).
+                        ["Season prize pot", smallAmount(BigInt(l.args.pot), s)],
                         [
                           `Paid to ${plural(prizes.length, "wallet")}`,
                           smallAmount(BigInt(l.args.paid), s),
@@ -1333,10 +1378,9 @@ function PastSeasons() {
                           k === BigInt(s!.v.displayedSeason)
                             ? "Left for the buy wall"
                             : `Rolled over to season ${Number(k) + 2}`,
-                          tokenAmount(
+                          smallAmount(
                             BigInt(l.args.pot) - BigInt(l.args.paid),
                             s,
-                            true,
                           ),
                         ],
                         [

@@ -6,8 +6,8 @@
     "rpcUrls": [
       "https://ethereum-rpc.publicnode.com",
       "https://rpc.mevblocker.io",
-      "https://mainnet.gateway.tenderly.co",
-      "https://rpc.flashbots.net"
+      "https://rpc.flashbots.net",
+      "https://mainnet.gateway.tenderly.co"
     ],
     "explorer": "https://etherscan.io",
     "nativeCurrency": {

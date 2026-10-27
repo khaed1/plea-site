@@ -1,3 +1,4 @@
+import { site, switchText } from "./site";
 import { useSaleQuote } from "./sale";
 import {
   useId,
@@ -296,7 +297,7 @@ export function TradingGate({ onSeed }: { onSeed?: () => void } = {}) {
     return (
       <p className="loading-label">
         <Icon name="hourglass" />
-        Reading trading status from Sepolia…
+        Reading trading status from {site().chain}…
       </p>
     );
   if (s.v["PleaHook.seeded"]) return null;
@@ -565,7 +566,7 @@ export function TextBox({
           <p>
             {result.reads.replace(
               /\bIMD\b/g,
-              s?.constants.pairSymbol || "imdTEST",
+              s?.constants.pairSymbol || site().pairSymbol,
             )}
           </p>
         </Notice>
@@ -666,7 +667,7 @@ export function Action({
   sub,
   connectText,
   walletLabel = "Confirm in your wallet…",
-  pendingLabel = "Waiting for Sepolia…",
+  pendingLabel = `Waiting for ${site().chain}…`,
   block = false,
   small = false,
   describedBy,
@@ -702,7 +703,7 @@ export function Action({
     (!address
       ? connectText
       : chainId !== r.chain.id
-        ? "Switch to Sepolia in the top bar."
+        ? `${switchText()} in the top bar.`
         : reason ||
           (disabled && !busy && !done && !describedBy
             ? "Waiting for the required chain state."
@@ -722,7 +723,11 @@ export function Action({
         }
         aria-busy={busy}
         aria-describedby={
-          describedBy || (unavailable || error ? `${id}-note` : undefined)
+          // The caller's own note and this button's reason or error, both when both show
+          // (VaultClaim's vault note and its unknown-state reason: sweep nit).
+          [describedBy, unavailable || error ? `${id}-note` : undefined]
+            .filter(Boolean)
+            .join(" ") || undefined
         }
         onClick={() => {
           if (!(
@@ -784,7 +789,7 @@ export function Action({
                 ? "View transaction"
                 : "View the failed transaction"
               : (confirmed ?? done)
-                ? "Confirmed on Sepolia"
+                ? `Confirmed on ${site().chain}`
                 : "View pending transaction"}
           </a>
         </p>

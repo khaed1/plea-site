@@ -1,3 +1,4 @@
+import { site } from "./site";
 /** Toast and transaction-outcome copy, kept free of React so the unit tests can check it. The
  * texts follow components.html and the page mockups' toasts; every number comes from the chain
  * snapshot, a receipt's events or a contract constant (r2D-N9). */
@@ -345,12 +346,14 @@ export function escrowReturnedToast(
   args: { id: bigint; writer: string; amount: bigint; tip: bigint },
   s: Snapshot,
   wallet?: string,
+  /** The writer's display name (Letterbox.nameOf), as the record and stake toasts name theirs. */
+  name?: string,
 ): Toast {
   return {
     kind: "ok",
     text: [
       `Plea #${args.id}’s escrow returned: ${tokenAmount(BigInt(args.amount), s)}${BigInt(args.tip) ? ` and the ${tokenAmount(BigInt(args.tip), s, true)} tip` : ""} to `,
-      who(args.writer, wallet),
+      who(args.writer, wallet, name),
       ".",
     ],
     body: `The ${tokenAmount(BigInt(con(s, "CabalGate.ORACLE_FEE")), s, true)} oracle fee is spent.`,
@@ -451,12 +454,12 @@ export function unconfirmedText(final: boolean): ErrorMessage {
   return final
     ? {
         title: "Sent, but no receipt yet.",
-        body: `Sepolia has not confirmed this transaction in ${span(RECEIPT_GIVE_UP / 1000)}. It may have been dropped or may still go through: check View transaction before you send it again.`,
+        body: `${site().chain} has not confirmed this transaction in ${span(RECEIPT_GIVE_UP / 1000)}. It may have been dropped or may still go through: check View transaction before you send it again.`,
         sent: true,
       }
     : {
         title: "Sent. Waiting for the receipt.",
-        body: `No receipt after ${span(RECEIPT_WAIT / 1000)}: Sepolia or its RPC is slow. The site keeps waiting; do not send it again.`,
+        body: `No receipt after ${span(RECEIPT_WAIT / 1000)}: ${site().chain} or its RPC is slow. The site keeps waiting; do not send it again.`,
         sent: true,
       };
 }

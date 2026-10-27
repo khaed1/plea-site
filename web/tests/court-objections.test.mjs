@@ -159,6 +159,7 @@ test("r2D-N5/r2C-N3: points can be recorded when the window closes or the last l
     until: V + 1200,
     objection: undefined,
     objections: [],
+    nextBlock: false,
   });
   assert.equal(
     recordHint(plea(), s, V + 100),

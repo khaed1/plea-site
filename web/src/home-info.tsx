@@ -20,7 +20,13 @@ import {
   FactCells,
   Countdown,
 } from "./components";
-import { APP } from "./config";
+import {
+  site,
+  cashbackWords,
+  routerRow,
+  sellGateWarning,
+  sourceLink,
+} from "./site";
 import { LETTERBOX } from "./models";
 const NUMBER_WORDS = [
   "zero",
@@ -70,7 +76,7 @@ export function HowItWorks() {
           {[
             [
               "Buy",
-              `Open to anyone. Every trade pays a ${(n("PleaHook.IMD_FEE_BPS") + n("PleaHook.PLEA_BURN_BPS")) / 100}% fee, and ${n("PleaHook.CASHBACK_BPS") / 100}% comes back to you as cashback in ${pair} (${tokenAmount((100n * 10n ** 18n * BigInt(c("PleaHook.CASHBACK_BPS") || 0)) / (10000n + BigInt(c("PleaHook.IMD_FEE_BPS") || 0)), s, true)} on a 100 ${pair} buy).`,
+              `Open to anyone. Every trade pays a ${(n("PleaHook.IMD_FEE_BPS") + n("PleaHook.PLEA_BURN_BPS")) / 100}% fee, and ${cashbackWords(String(pair)).step(`${n("PleaHook.CASHBACK_BPS") / 100}%`, `${tokenAmount((100n * 10n ** 18n * BigInt(c("PleaHook.CASHBACK_BPS") || 0)) / (10000n + BigInt(c("PleaHook.IMD_FEE_BPS") || 0)), s, true)} on a 100 ${pair} buy`)}.`,
             ],
             [
               "Plead",
@@ -91,6 +97,11 @@ export function HowItWorks() {
             </li>
           ))}
         </ol>
+        {!dead && sellGateWarning() && (
+          <Notice title={sellGateWarning()!.title}>
+            <p>{sellGateWarning()!.body}</p>
+          </Notice>
+        )}
         <div className="stack stack--md">
           <h3>Your need</h3>
           <div className="split">
@@ -269,7 +280,7 @@ export function HowItWorks() {
             </h3>
             <p>
               Plead without the site: send your plea as text to the Letterbox
-              from Sepolia Etherscan. It pleads{" "}
+              from {site().explorerName}. It pleads{" "}
               {Number(LETTERBOX.LETTER_SHARE_BPS) / 100}% of your PLEA and pays
               its fees in PLEA. If approved, anyone can sell it for you within{" "}
               {t("CabalGate.EXECUTE_WINDOW")} and earns the{" "}
@@ -347,7 +358,7 @@ export function HowItWorks() {
             )}
             <a
               className="link-btn"
-              href="https://github.com/khaed1/plea/blob/testnet9/src/CabalGate.sol"
+              href={sourceLink("src/CabalGate.sol")}
             >
               Read the rule in the code <Icon name="arrow-square-out" />
             </a>
@@ -369,26 +380,37 @@ export function ContractsPanel() {
       PleaDistributor: "the 12% claim list",
       PleaLaunch: "the launch and the seed",
     };
-  const partners = [
+  const x = site(),
+    router = routerRow(x);
+  const partners: [string | undefined, string | undefined, string?][] = [
     [s?.constants.pairSymbol, r.addresses.PairToken],
     ["imd/acc Stacker", val(s, "PleaHook.stacker")],
-    ["identity.md seat NFT", val(s, "Seasons.seat")],
+    ...(x.cashback.simd
+      ? ([["sIMD (staked IMD)", x.cashback.simd, "the vault your cashback is staked in"]] as [string, string, string][])
+      : []),
+    ["identity.md seat NFT", val(s, "Seasons.seat"), x.seat.note || undefined],
     ["Uniswap v4 PoolManager", r.network.uniswapV4.poolManager],
-    ["Uniswap v4 PoolSwapTest", APP.swapRouter],
+    [router.name, x.trade.router, router.note],
+    ...(x.trade.kind === "universalRouter"
+      ? ([["Permit2", x.trade.permit2, "holds your approval for the router, for 30 minutes"]] as [string, string, string][])
+      : []),
     ["IMD Intake v2", val(s, "CabalGate.intake")],
-    ["delegate.xyz registry", APP.delegateRegistry],
+    ["delegate.xyz registry", x.delegateRegistry],
   ];
   return (
     <section className="section" id="contracts">
       <div className="section__head">
         <h2>Contracts</h2>
-        <p className="meta">Sepolia</p>
+        <p className="meta">{x.contracts.meta}</p>
       </div>
       <div className="stack stack--lg">
         <Panel
           title="PLEA’s contracts"
           flush
-          meta="Sepolia test run 9 · launch #2234"
+          meta={
+            x.contracts.launch ||
+            (x.sourceCommit ? `Source commit ${x.sourceCommit.slice(0, 7)}` : x.name)
+          }
         >
           <dl className="addr-list">
             {Object.entries(roles).map(([name, role]) => (
@@ -403,24 +425,29 @@ export function ContractsPanel() {
               </div>
             ))}
           </dl>
+          <p className="small">
+            <a
+              className="link-btn"
+              href={`${x.source.repo}/tree/${x.source.ref}/src`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Read the source on the {x.source.ref} branch{" "}
+              <Icon name="arrow-square-out" />
+            </a>
+          </p>
         </Panel>
         <Panel title="What PLEA works with" flush meta="Live today">
           <dl className="addr-list">
             {partners.map(
-              ([name, address]) =>
-                address && (
+              ([name, address, note]) =>
+                address &&
+                name && (
                   <div key={name}>
                     <dt>{name}</dt>
                     <dd>
                       <AddressView address={address} label={name} />
-                      {name === "Uniswap v4 PoolSwapTest" && (
-                        <span className="meta">
-                          · the swap router this test run trades through
-                        </span>
-                      )}
-                      {name === "identity.md seat NFT" && (
-                        <span className="meta">· a test NFT on Sepolia</span>
-                      )}
+                      {note && <span className="meta">· {note}</span>}
                     </dd>
                   </div>
                 ),

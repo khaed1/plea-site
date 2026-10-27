@@ -18,7 +18,8 @@ import {
   zeroAddress,
   type Address,
 } from "viem";
-import { APP, claimsAbi, registryAbi, resetHealth } from "./config";
+import { claimsAbi, registryAbi, resetHealth } from "./config";
+import { site } from "./site";
 import { useApp, useRead, useTx } from "./context";
 import {
   amount,
@@ -361,7 +362,7 @@ export function Letters() {
         <div className="stack">
           <Title title="Plead by letter">
             No site needed. Send your plea as a plain message to the Letterbox,
-            from Sepolia Etherscan or your wallet.
+            from {site().explorerName} or your wallet.
           </Title>
           <p className="meta">
             Same judges, same score, same need as a plea from the site. If the
@@ -378,7 +379,7 @@ export function Letters() {
             <p>Reading the Letterbox address…</p>
           )}
           <div className="cluster">
-            <span className="pill">Network: Sepolia</span>
+            <span className="pill">Network: {site().chain}</span>
             <span className="pill">Send 0 ETH</span>
           </div>
           <p className="small">
@@ -405,10 +406,40 @@ export function Letters() {
       </div>
       <section className="section">
         <div className="section__head">
-          <h2>Two ways to send it</h2>
-          <p className="meta">Both are the same letter</p>
+          <h2>
+            {site().letterMessagePage ? "Three ways" : "Two ways"} to send it
+          </h2>
+          <p className="meta">
+            {site().letterMessagePage
+              ? "All three are the same letter"
+              : "Both are the same letter"}
+          </p>
         </div>
-        <ol className="steps">
+        <ol className={`steps ${site().letterMessagePage ? "steps--3" : ""}`}>
+          {site().letterMessagePage && (
+            <li className="step">
+              <h3>Etherscan’s message page</h3>
+              <p>
+                Open{" "}
+                <a
+                  href={site().letterMessagePage!}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {site().letterMessagePage!.replace(/^https?:\/\//, "")}
+                </a>{" "}
+                ({site().chain} only) and connect your wallet. The message goes
+                out as the transaction’s data: a raw letter.
+              </p>
+              <Costs
+                rows={[
+                  ["Send To", "the Letterbox"],
+                  ["Message", "your letter"],
+                  ["Value", "0 ETH"],
+                ]}
+              />
+            </li>
+          )}
           <li className="step">
             <h3>Etherscan’s Write Contract</h3>
             <p>
@@ -732,7 +763,7 @@ export function Claim() {
     if (!isOpen) return;
     let active = true;
     setLoading(true);
-    fetch("./" + APP.claimsPath)
+    fetch("./" + site().claimsPath)
       .then((r) => {
         if (!r.ok)
           throw Error(
@@ -775,7 +806,7 @@ export function Claim() {
   const delegated = useRead(
     () =>
       r.client.readContract({
-        address: APP.delegateRegistry,
+        address: site().delegateRegistry,
         abi: registryAbi,
         functionName: "getIncomingDelegations",
         args: [address!],
@@ -1034,7 +1065,7 @@ export function Claim() {
             ) : delegated.error ? (
               <Notice kind="warn" title="Cannot read delegations">
                 <p>
-                  The Sepolia registry did not answer. You can still check and
+                  The {site().chain} registry did not answer. You can still check and
                   claim any vault address above.
                 </p>
               </Notice>
@@ -1083,7 +1114,7 @@ export function Claim() {
             <div className="stack stack--sm">
               <p className="label">Read from the delegate.xyz registry</p>
               <AddressView
-                address={APP.delegateRegistry}
+                address={site().delegateRegistry}
                 label="the delegate.xyz registry"
               />
             </div>
@@ -1156,7 +1187,7 @@ export function Claim() {
             <p className="label">The receipt</p>
             <p className="small">
               Each claim emits <code>Claimed(index, account, amount)</code>.
-              That event, on Sepolia Etherscan, is your receipt.
+              That event, on {site().explorerName}, is your receipt.
             </p>
           </div>
           <div className="stack stack--sm">

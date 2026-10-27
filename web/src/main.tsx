@@ -12,7 +12,7 @@ const root = createRoot(document.getElementById("root")!);
 root.render(
   <main className="page main">
     <h1>PLEA</h1>
-    <p>Loading the Sepolia deployment…</p>
+    <p>Loading the deployment…</p>
   </main>,
 );
 // A failed load (one static file, or offline) tries again by itself: when the browser is back

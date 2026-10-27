@@ -57,6 +57,8 @@ export function loadingTitle(
   id?: string,
   connected?: string,
   statics?: Record<string, any>,
+  /** The loading band (not a failed first read, whose heading stays the page's name). */
+  loading = false,
 ) {
   if (page === "p") return `Plea #${id}`;
   if ((page === "share" || page === "share-cards") && id && /^\d+$/.test(id))
@@ -64,6 +66,10 @@ export function loadingTitle(
   if (page === "seasons") {
     const k = loadingSeason(statics);
     if (k !== undefined && k !== null) return `Season ${k + 1n}`;
+    // Until CabalGate.startedAt and Seasons.currentSeason are read, the number is a skeleton: the
+    // loaded page is "Season N" once trading has opened, so "Seasons" here would flip (sweep nit).
+    if (k === undefined && !loading) return "Seasons";
+    if (k === undefined) return "Season …";
   }
   if (page === "profile") {
     const who = id || connected;

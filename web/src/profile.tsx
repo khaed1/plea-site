@@ -9,7 +9,8 @@ import {
   type Address,
 } from "viem";
 import { useApp, useRead, useTx } from "./context";
-import { claimsAbi, resetHealth } from "./config";
+import { claimsAbi, resetHealth, vaultAbi } from "./config";
+import { cashbackWords, site } from "./site";
 import {
   read,
   countedPleas,
@@ -225,6 +226,29 @@ export function Profile({ target }: { target?: string }) {
       [wallet],
       !!wallet && !!s,
     );
+  // The wallet's staked cashback on networks that stake it: sIMD shares and their IMD value now.
+  const vault = site().cashback.simd,
+    staked = useRead(
+      async () => {
+        const shares = (await r.client.readContract({
+          address: vault!,
+          abi: vaultAbi,
+          functionName: "balanceOf",
+          args: [wallet!],
+        })) as bigint;
+        const assets = shares
+          ? ((await r.client.readContract({
+              address: vault!,
+              abi: vaultAbi,
+              functionName: "convertToAssets",
+              args: [shares],
+            })) as bigint)
+          : 0n;
+        return { shares, assets };
+      },
+      [wallet, vault],
+      !!wallet && !!s && !!vault,
+    );
   useEffect(() => {
     if (info.data && !dirty) setName(info.data.current);
   }, [info.data, dirty]);
@@ -377,7 +401,7 @@ export function Profile({ target }: { target?: string }) {
                     : [
                         "Cashback earned",
                         smallAmount(cashback(s!.logs, wallet), s),
-                        "Paid in plain imdTEST in this test run",
+                        cashbackWords(String(s!.constants.pairSymbol)).profileNote,
                       ],
                   [
                     "Next plea",
@@ -514,17 +538,41 @@ export function Profile({ target }: { target?: string }) {
                         )
                       : "No buy record",
                   ],
+                  ...(vault
+                    ? ([
+                        [
+                          `Staked ${s?.constants.pairSymbol} (sIMD)`,
+                          staked.data
+                            ? simdText(staked.data.shares, staked.data.assets, s)
+                            : staked.error
+                              ? "Can’t read it now"
+                              : "Reading…",
+                        ],
+                      ] as [string, string][])
+                    : []),
                   [
                     `${s?.constants.pairSymbol} claims on the PoolManager`,
                     smallAmount(data.claimBalance, s),
                   ],
                 ]}
               />
+              {vault && (
+                <p className="small">
+                  Cashback is staked through imd/acc’s Stacker as sIMD, a
+                  vault share worth more {s?.constants.pairSymbol} as the vault
+                  earns; the value shown is today’s. See it or unstake on{" "}
+                  <a href="https://imdacc.fun" target="_blank" rel="noreferrer">
+                    imdacc.fun
+                  </a>
+                  .
+                </p>
+              )}
               <p className="small">
-                Paid on opening buys when the pool could not pay at once. They
-                are ERC-6909 balances on Uniswap v4’s PoolManager (id = the
-                imdTEST address), separate from the imdTEST balance; this site
-                cannot redeem them.
+                {vault ? "The claims are paid" : "Paid"} on opening buys when
+                the pool could not pay at once. They are ERC-6909 balances on
+                Uniswap v4’s PoolManager (id = the {s?.constants.pairSymbol}{" "}
+                address), separate from the {s?.constants.pairSymbol} balance;
+                this site cannot redeem them.
               </p>
               {mine && !val(s, "CabalGate.diedAt") && (
                 <>
@@ -913,4 +961,15 @@ function AddressLookup({
       </button>
     </div>
   );
+}
+
+/** "0.003065 sIMD, worth 0.02 IMD now": sIMD has 24 decimals; six are enough to see a cashback. */
+export function simdText(shares: bigint, assets: bigint, s: any) {
+  if (!shares) return "none";
+  const decimals = site().cashback.simdDecimals || 24;
+  const shown =
+    shares < 10n ** BigInt(decimals - 6)
+      ? "< 0.000001"
+      : amount(shares, decimals, 6).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  return `${shown} sIMD, worth ${smallAmount(assets, s)} now`;
 }

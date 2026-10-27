@@ -1,3 +1,4 @@
+import { fundsFix, gasText } from "./site.ts";
 import {
   BaseError,
   ContractFunctionRevertedError,
@@ -86,8 +87,9 @@ export const messages: Record<string, ErrorValue> = {
   SwapAmountCannotBeZero: "Enter an amount greater than zero.",
   ERC20InsufficientAllowance:
     "The token approval is too small. Approve the amount shown, then try again.",
-  ERC20InsufficientBalance:
-    "There are not enough tokens in your wallet. Lower the amount or add test tokens.",
+  get ERC20InsufficientBalance() {
+    return `There are not enough tokens in your wallet. ${fundsFix()}`;
+  },
   SafeERC20FailedOperation:
     "The token transfer failed. Check your balance and approval, then try again.",
   RebalanceNotNeeded:
@@ -194,10 +196,44 @@ export const messages: Record<string, ErrorValue> = {
   NotEnoughGas:
     "The swap needs more gas for cashback. Retry with a fresh estimate.",
   CabalIsWatching: "While the Cabal lives, sell through an approved plea.",
+  // Uniswap's Universal Router and Permit2 (the Buy page on Ethereum).
+  BalanceTooLow:
+    "The price moved past your slippage limit, so the router stopped the trade. Nothing was traded; refresh the quote or raise slippage.",
+  V4TooLittleReceived:
+    "The price moved past your slippage limit, so the router stopped the trade. Nothing was traded; refresh the quote or raise slippage.",
+  V4TooMuchRequested:
+    "The trade would cost more than its limit. Nothing was traded; refresh the quote.",
+  TransactionDeadlinePassed:
+    "The trade waited too long to be mined and its deadline passed. Nothing was traded; send it again.",
+  AllowanceExpired:
+    "Your Permit2 allowance for Uniswap’s router has expired. Renew it with the button, then trade. Nothing was traded.",
+  InsufficientAllowance:
+    "Your Permit2 allowance for Uniswap’s router is smaller than this trade. Renew it with the button, then trade. Nothing was traded.",
+  TransferFromFailed:
+    "Permit2 could not take the tokens: the approval to Permit2 is smaller than this trade, or the balance is. Approve the amount shown, then trade. Nothing was traded.",
+  DeltaNotPositive:
+    "The router could not settle this swap. Nothing was traded; refresh and try again.",
+  DeltaNotNegative:
+    "The router could not settle this swap. Nothing was traded; refresh and try again.",
+  InsufficientBalance:
+    "There is not enough in your wallet for this trade. Lower the amount or press Max.",
+  ExecutionFailed:
+    "Uniswap’s router stopped the trade. Nothing was traded; refresh the quote and try again.",
   TooEarly: "Trading is not open yet. Wait until the start time shown.",
 };
 const poolErrors = parseAbi([
   "error WrappedError(address target,bytes4 selector,bytes reason,bytes details)",
+  // Uniswap's Universal Router (Ethereum) and Permit2: ExecutionFailed wraps a command's own error.
+  "error ExecutionFailed(uint256 commandIndex,bytes message)",
+  "error BalanceTooLow()",
+  "error TransactionDeadlinePassed()",
+  "error V4TooLittleReceived(uint256 minAmountOutReceived,uint256 amountReceived)",
+  "error V4TooMuchRequested(uint256 maxAmountInRequested,uint256 amountRequested)",
+  "error DeltaNotPositive(address currency)",
+  "error DeltaNotNegative(address currency)",
+  "error InsufficientBalance()",
+  "error AllowanceExpired(uint256 deadline)",
+  "error InsufficientAllowance(uint256 amount)",
   "error PriceLimitAlreadyExceeded(uint160 sqrtPriceCurrentX96,uint160 sqrtPriceLimitX96)",
   "error PriceLimitOutOfBounds(uint160 sqrtPriceLimitX96)",
   "error HookCallFailed()",
@@ -219,6 +255,20 @@ export function decodeCustomError(
             decode(result.args?.[2], depth + 1) ||
             decode(result.args?.[3], depth + 1)
           );
+        if (result.errorName === "ExecutionFailed")
+          return (
+            decode(result.args?.[1], depth + 1) || {
+              name: "ExecutionFailed",
+              args: result.args,
+            }
+          );
+        // Permit2 moves tokens with solmate's SafeTransferLib: a refused transferFrom (the token's
+        // approval to Permit2 is too small, or the balance) reads TRANSFER_FROM_FAILED.
+        if (
+          result.errorName === "Error" &&
+          /^(TRANSFER_FROM_FAILED|STF)$/.test(String(result.args?.[0]))
+        )
+          return { name: "TransferFromFailed", args: result.args };
         return { name: result.errorName, args: result.args };
       } catch {}
   }
@@ -263,9 +313,7 @@ export function explainError(
         `The contract refused this action (${decoded.name}). Refresh its state before retrying.`,
     );
   if (/insufficient funds/i.test(e?.message || ""))
-    return wrap(
-      "You need Sepolia ETH for gas and enough tokens for this action. Add test funds and try again.",
-    );
+    return wrap(gasText());
   if (e?.constructor === Error) return wrap(e.message);
   return wrap(
     "The transaction could not be simulated. Refresh the chain data and try again. Nothing was sent.",

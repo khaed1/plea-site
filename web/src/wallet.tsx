@@ -1,3 +1,4 @@
+import { switchText, walletNote } from "./site";
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { short, read } from "./chain";
@@ -71,23 +72,27 @@ export function Wallet() {
     try {
       const p = (await connector?.getProvider()) as any;
       if (!p) throw Error("No wallet provider");
+      // A network every wallet knows (Ethereum) has no add-chain entry: switching is all there is.
+      const add = r.manifest.walletAddChain,
+        chainId = add?.chainId || `0x${r.chain.id.toString(16)}`;
       try {
         await p.request({
           method: "wallet_switchEthereumChain",
-          params: [{ chainId: r.manifest.walletAddChain.chainId }],
+          params: [{ chainId }],
         });
       } catch (e: any) {
         if (
-          e.code === 4902 ||
-          /unknown|unrecognized|not added|not configured/i.test(e.message)
+          add &&
+          (e.code === 4902 ||
+            /unknown|unrecognized|not added|not configured/i.test(e.message))
         ) {
           await p.request({
             method: "wallet_addEthereumChain",
-            params: [r.manifest.walletAddChain],
+            params: [add],
           });
           await p.request({
             method: "wallet_switchEthereumChain",
-            params: [{ chainId: r.manifest.walletAddChain.chainId }],
+            params: [{ chainId }],
           });
         } else throw e;
       }
@@ -126,7 +131,7 @@ export function Wallet() {
               ? "Switching…"
               : address
                 ? chainId !== r.chain.id
-                  ? "Switch to Sepolia"
+                  ? switchText()
                   : short(address)
                 : "Connect"}
           </span>
@@ -227,10 +232,7 @@ export function Wallet() {
               {error}
             </p>
           )}
-          <p className="small text-2">
-            Sepolia test tokens have no value. Connecting never sends a
-            transaction.
-          </p>
+          <p className="small text-2">{walletNote()}</p>
         </div>
       </dialog>
     </>

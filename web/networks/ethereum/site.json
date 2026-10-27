@@ -2,6 +2,7 @@
   "key": "ethereum",
   "name": "Ethereum",
   "strip": null,
+  "footer": "Any PLEA traded before launch day isn\u2019t ours.",
   "siteUrl": "https://plea.sites.imd.fun/",
   "eventStart": null,
   "oracleApi": "https://api.imd.fun",
@@ -21,13 +22,25 @@
   },
   "seat": {
     "address": "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d",
-    "name": "identity.md seat"
+    "name": "identity.md seat",
+    "note": null
   },
   "letterMessagePage": "https://etherscan.io/idm",
   "indexer": null,
   "logRanges": {
     "default": 50000,
-    "https://ethereum-rpc.publicnode.com": 5000
+    "https://ethereum-rpc.publicnode.com": 5000,
+    "https://rpc.flashbots.net": 0
+  },
+  "explorerName": "Etherscan",
+  "pairSymbol": "IMD",
+  "source": {
+    "repo": "https://github.com/khaed1/plea",
+    "ref": "mainnet"
+  },
+  "contracts": {
+    "meta": "Ethereum mainnet",
+    "launch": null
   },
   "meta": {
     "title": "Selling needs a plea \u00b7 PLEA",

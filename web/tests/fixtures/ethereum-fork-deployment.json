@@ -1,0 +1,45 @@
+{
+ "version": 1,
+ "launchId": "fork-test",
+ "chainId": 1,
+ "repoUrl": "local fork",
+ "sourceCommit": "fork-test",
+ "attestationHash": "0000000000000000000000000000000000000000000000000000000000000000",
+ "contracts": [
+  {
+   "name": "PLEA",
+   "address": "0x267f755d6bc38d145f4b4bf74130c5f638e41720",
+   "blockNumber": 26278701,
+   "abiHash": "e0a4eaf3d9d87e8246437072b3a3a432d800889afc87b7f410ca42d3624baf14"
+  },
+  {
+   "name": "CabalGate",
+   "address": "0x8b21219cd72938e25e0d37a1aa55599fdb23823a",
+   "blockNumber": 26278701,
+   "abiHash": "7fa2541974c4e8a0f9be33bbbee993214bfc3d091cd43321e97bec56e42e3588"
+  },
+  {
+   "name": "Seasons",
+   "address": "0xc40396f86aa925f47451548d976d2b7deb99ae29",
+   "blockNumber": 26278701,
+   "abiHash": "8bcb1b7d7e4669b9f696c7ada7d9e3afda16fd86195d0b36dcc407c06e40cc9f"
+  },
+  {
+   "name": "PleaDistributor",
+   "address": "0xdc746c51933b4881130e6db760149806f443dd9b",
+   "blockNumber": 26278701,
+   "abiHash": "d916070fae0d24172c3915e33b6948ce7597d83fea4b88c2bf5ba034820b4b7d"
+  },
+  {
+   "name": "PleaLaunch",
+   "address": "0xb17dc9c10ed9791b9f51adde85e2c9e0fa2716a4",
+   "blockNumber": 26278701,
+   "abiHash": "d9440de090267c9bf85c4b0c971b6ae9c492606fb334ed0b99221100d201def0"
+  }
+ ],
+ "test": {
+  "letterbox": "0xd880dF8ac733a5FDDF7F20D83b5426584b3FB647",
+  "tribunal": "0xC15a7a283EaAD3aA281c376B6bCfF5c67B1109B4",
+  "hook": "0xa2fA389268344712b1EF1E1046a74bf16952e8CC"
+ }
+}

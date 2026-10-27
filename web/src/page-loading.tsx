@@ -174,7 +174,7 @@ export function PageLoading({ page, id }: { page: string; id?: string }) {
     );
   return (
     <div className="page-loading stack stack--lg">
-      <Title title={loadingTitle(page, id, address, statics)} />
+      <Title title={loadingTitle(page, id, address, statics, true)} />
       {wall ? (
         <div className="stack stack--sm" aria-busy="true">
           {line}

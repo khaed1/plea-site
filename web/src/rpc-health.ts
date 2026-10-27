@@ -1,3 +1,4 @@
+import { cantReach } from "./site.ts";
 /** Classify causes, never the URL embedded in viem's formatted message. */
 export function rpcDetail(error: any) {
   const nodes: any[] = [],
@@ -19,6 +20,9 @@ export function rpcDetail(error: any) {
 }
 export const rangePattern =
   /limited to [\d,]+ blocks|query returned more than|too many results|response size|block range (is )?too (large|wide)|exceeds? (the )?max(imum)? block range/i;
+/** An RPC that serves recent blocks only (publicnode on Ethereum): try the next one. */
+export const archivePattern =
+  /archive requests require|requires? an? (personal|api) (token|key)|pruned history|history (is )?(pruned|unavailable)/i;
 export const headPattern =
   /beyond (current head|the latest) block|extends beyond current head block|retry later|header not found|unknown block/i;
 export function classifyRpc(error: any): "request" | "answer" | "transport" {
@@ -88,7 +92,7 @@ export function explainReadError(e: any) {
     : "The RPC answered, but with an error instead of the contract data. The site reads again by itself; your funds are not affected.";
 }
 /** The error box's title and the status strip's word for a read error (r2X-9): "Can’t reach
- * Sepolia" only when the RPC did not answer (`NO_ANSWER`); a read that came back with an error
+ * <chain>" only when the RPC did not answer (`NO_ANSWER`); a read that came back with an error
  * reached the chain, so the page says what it could not read. */
 export function readErrorTitle(page: string, error: string, id?: string) {
   const titles: Record<string, string> = {
@@ -101,9 +105,9 @@ export function readErrorTitle(page: string, error: string, id?: string) {
   return (
     titles[page] ||
     (error === NO_ANSWER
-      ? "Can’t reach Sepolia"
+      ? cantReach()
       : page === "p" || (page === "share" && id)
         ? "Can’t read this plea"
-        : "Can’t read Sepolia")
+        : cantReach(true))
   );
 }

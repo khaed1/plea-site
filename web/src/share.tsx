@@ -251,7 +251,10 @@ export function ShareCard({ p }: { p?: Plea }) {
                     {sold && soldFor(p, s!) !== undefined && (
                       <div>
                         <b>{amount(soldFor(p, s!), 18, 2)}</b>
-                        <span>{s?.constants.pairSymbol} to the writer</span>
+                        <span>
+                          {s?.constants.pairSymbol} to the{" "}
+                          {p.flags & 3 ? "writer" : "seller"}
+                        </span>
                       </div>
                     )}
                     {state === "DENIED" && (
@@ -419,7 +422,21 @@ export function Share({
   return (
     <div className="stack stack--lg share-workbench">
       {!embedded && (
-        <Title title={p ? `Share plea #${p.id}` : "Share PLEA"}>
+        <Title
+          title={
+            // The plea's number from the link while it is read, as the loading band says, so
+            // the h1 does not flip to "Share PLEA" and back (sweep nit).
+            p
+              ? `Share plea #${p.id}`
+              : id &&
+                  /^\d+$/.test(id) &&
+                  BigInt(id) > 0n &&
+                  !query.error &&
+                  (!s || BigInt(id) < s.v["CabalGate.nextId"])
+                ? `Share plea #${id}`
+                : "Share PLEA"
+          }
+        >
           A 1200 × 675 PNG, drawn here in your browser from the share-card
           component. Attach it to your post.
         </Title>

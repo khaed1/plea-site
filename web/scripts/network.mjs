@@ -27,7 +27,24 @@ export function loadNetwork(key = process.env.PLEA_NETWORK || "sepolia-run9", de
   for (const c of handoff.contracts)
     if (!/^0x[0-9a-fA-F]{40}$/.test(c.address || "") || !/^[0-9a-f]{64}$/.test(c.abiHash || ""))
       throw Error(`${c.name}: an address and an ABI hash are required.`);
-  return { key, net, handoff, site };
+  return { key, net, handoff, site: siteFor(site, handoff) };
+}
+
+/** site.json as the build ships it (the manifest's `site` block): `eventStart` null means the launch's
+ * deploy block (the deployment's first contract block), `expected` null takes a test deployment's
+ * Letterbox, Tribunal and hook (fork-deployment.mjs's `test`), else PleaLaunch's own (read at load). */
+export function siteFor(site, handoff) {
+  const blocks = handoff.contracts.map((c) => c.blockNumber).filter((n) => Number.isSafeInteger(n));
+  const eventStart = site.eventStart ?? (blocks.length ? Math.min(...blocks) : null);
+  if (!Number.isSafeInteger(eventStart))
+    throw Error(`No first block for ${site.key}'s history: set site.json eventStart or the contracts' blockNumber.`);
+  const t = handoff.test;
+  const expected =
+    site.expected ??
+    (t?.letterbox && t?.tribunal && t?.hook
+      ? { Letterbox: t.letterbox.toLowerCase(), Tribunal: t.tribunal.toLowerCase(), PleaHook: t.hook.toLowerCase() }
+      : null);
+  return { ...site, eventStart, expected };
 }
 
 /** index.html's title and link-preview tags for the deployment. */

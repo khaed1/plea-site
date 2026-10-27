@@ -1,3 +1,4 @@
+import { site, soFar } from "./site";
 import { useSaleQuote } from "./sale";
 import { Share } from "./share";
 import { LETTERBOX, Q96, deliverOut, factTerms } from "./models";
@@ -516,11 +517,11 @@ export function Appeal({ p }: { p: Plea }) {
               ]
             : [
                 [
-                  "Oracle fee, from your imdTEST",
+                  `Oracle fee, from your ${s?.constants.pairSymbol}`,
                   tokenAmount(con(s, "CabalGate.ORACLE_FEE"), s, true),
                 ],
                 [
-                  "To the buy wall, from your imdTEST",
+                  `To the buy wall, from your ${s?.constants.pairSymbol}`,
                   tokenAmount(con(s, "CabalGate.APPEAL_POOL_SHARE"), s, true),
                 ],
                 ["You pay", tokenAmount(fee, s, true, 2, "up")],
@@ -712,7 +713,7 @@ export function PleaPage({ id }: { id: string }) {
     return (
       <div className="stack">
         <Title title={`Plea #${id}`} />
-        <p>Reading the plea from Sepolia…</p>
+        <p>Reading the plea from {site().chain}…</p>
       </div>
     );
   if (!p)
@@ -784,7 +785,9 @@ export function PleaPage({ id }: { id: string }) {
       <p className="lead">
         {rich(pleaLead(p, s, { state, canSell, mine: !!mine, missedSeason }))}{" "}
         {held
-          ? recordAt?.objection
+          ? recordAt?.nextBlock
+            ? `The +${p.points} points are free from ${clock(recordAt.until)}; record them once the next block is mined.`
+            : recordAt?.objection
             ? `The +${p.points} points are held until ${rulingWait(recordAt.objections)}; record them after ${clock(recordAt.until)}.`
             : `The +${p.points} points are held while objections are open; record them after ${clock(recordAt?.until ?? objectionUntil)}.`
           : p.recorded
@@ -836,7 +839,7 @@ export function PleaPage({ id }: { id: string }) {
                 </p>
                 <a
                   className="link-btn"
-                  href={`${APP.oracleApi}/oracle/requests/${encodeURIComponent(oracle.data.id)}`}
+                  href={`${site().oracleApi}/oracle/requests/${encodeURIComponent(oracle.data.id)}`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -929,17 +932,23 @@ export function PleaPage({ id }: { id: string }) {
                     <Costs
                       rows={[
                         ["Sells", tokenAmount(p.amount, s)],
+                        // A failed or zero quote says so, as the button does ("no quote"): a
+                        // thinned pool's 0 never reads as still loading (sweep nit).
                         [
                           "You get about",
                           saleQuote.data
                             ? tokenAmount(net, s, true)
-                            : "Reading the pool…",
+                            : saleQuote.error || saleQuote.data === 0n
+                              ? "No quote"
+                              : "Reading the pool…",
                         ],
                         [
                           "At least, with 1% slippage",
                           saleQuote.data
                             ? tokenAmount(minOut, s, true)
-                            : "Reading the pool…",
+                            : saleQuote.error || saleQuote.data === 0n
+                              ? "No quote"
+                              : "Reading the pool…",
                         ],
                       ]}
                     />
@@ -1024,7 +1033,7 @@ export function PleaPage({ id }: { id: string }) {
                   rounded down. The judges’ score and need stay the same.
                 </p>
               )}
-              {held && recordAt && (
+              {held && recordAt && !recordAt.nextBlock && (
                 <Countdown
                   until={recordAt.until}
                   label={
@@ -1311,7 +1320,7 @@ export function PleaPage({ id }: { id: string }) {
     </div>
   );
 }
-import { APP, resetHealth } from "./config";
+import { resetHealth } from "./config";
 export function ObjectionForm({ p }: { p: Plea }) {
   const { r, s, now } = useApp(),
     { address } = useAccount(),
@@ -1679,7 +1688,7 @@ export function Objections() {
                   tokenAmount(con(s, "Tribunal.STAKE"), s, true),
                 ],
                 [
-                  "An objection, from your imdTEST",
+                  `An objection, from your ${s?.constants.pairSymbol}`,
                   tokenAmount(
                     BigInt(con(s, "Tribunal.ORACLE_FEE")) +
                       BigInt(con(s, "Tribunal.STAKE")),
@@ -1814,7 +1823,7 @@ export function Objections() {
           </div>
         ) : (
           <Empty icon="scales" title="No rulings yet">
-            The Tribunal has not ruled on an objection in this test run.
+            The Tribunal has not ruled on an objection{soFar()}.
           </Empty>
         )}
       </section>

@@ -9,7 +9,9 @@ import {
   type Address,
   type Abi,
 } from "viem";
-import { APP, erc20Abi, intakeAbi, type Runtime } from "./config";
+import { erc20Abi, intakeAbi, type Runtime } from "./config";
+import { site } from "./site";
+import { indexerLogs } from "./indexer";
 export type Plea = {
   id: bigint;
   seller: Address;
@@ -91,8 +93,10 @@ export async function readStatic(r: Runtime) {
   ]);
   return { ...c, symbol, decimals, pairSymbol, pairDecimals };
 }
-// Keep successful prefixes so a temporary outage never restarts a whole history scan.
-let logChunk = 10000n;
+// Keep successful prefixes so a temporary outage never restarts a whole history scan. The chunk
+// starts at the deployment's log range (10,000 blocks on Sepolia, 50,000 on Ethereum) and shrinks to
+// what an RPC says it takes.
+let logChunk = 0n;
 // A node may run a few blocks behind the head the site just read (sentio's log node is
 // often one block behind its own eth_getBlockByNumber). Blocks it has not reached are
 // not yet due: the scan stops at the last block it has, with no error, and the next read
@@ -103,7 +107,54 @@ export function nodeHead(text: string) {
   const named = text.match(/(?:latest|head) block (?:number )?(?:is )?#?(\d+)/i);
   return named ? BigInt(named[1]) : undefined;
 }
+/** The addresses whose events make PLEA's history (every contract but the pool currency). */
+const historyAddresses = (r: Runtime) =>
+  Object.entries(r.addresses)
+    .filter(([n]) => n !== "PairToken")
+    .map(([, a]) => a);
+/** History from `from` to `to`: the deployment's indexer as far as it has indexed, then chunked
+ * eth_getLogs from where it stopped; without an indexer (or when it fails), chunked logs only. */
+export async function readHistory(r: Runtime, from: bigint, to: bigint) {
+  const url = site().indexer?.graphql;
+  if (url && to >= from)
+    try {
+      const indexed = await indexerLogs(
+        url,
+        r.chain.id,
+        historyAddresses(r),
+        from,
+        to,
+      );
+      const rest =
+        indexed.syncedTo < to
+          ? await scanLogs(r, indexed.syncedTo + 1n, to)
+          : { logs: [], covered: to, lagged: false, error: undefined };
+      return { ...rest, logs: [...decodeLogs(r, indexed.logs), ...rest.logs] };
+    } catch {}
+  return scanLogs(r, from, to);
+}
+function decodeLogs(r: Runtime, logs: any[]) {
+  return logs.map((log) => {
+    const name = Object.keys(r.addresses).find(
+      (n) => r.addresses[n].toLowerCase() === log.address.toLowerCase(),
+    );
+    try {
+      return {
+        ...log,
+        ...decodeEventLog({
+          abi: r.abis[name!],
+          data: log.data,
+          topics: log.topics,
+        }),
+        contract: name,
+      };
+    } catch {
+      return { ...log, contract: name, eventName: "Unknown", args: {} };
+    }
+  });
+}
 export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
+  if (!logChunk) logChunk = BigInt(site().logRanges?.default || 10000);
   const logs: any[] = [];
   let covered = from - 1n,
     lagged = false,
@@ -111,9 +162,7 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
   async function chunk(a: bigint, b: bigint, step = 0): Promise<void> {
     try {
       const batch = await r.client.getLogs({
-        address: Object.entries(r.addresses)
-          .filter(([n]) => n !== "PairToken")
-          .map(([, a]) => a),
+        address: historyAddresses(r),
         fromBlock: a,
         toBlock: b,
       });
@@ -149,25 +198,7 @@ export async function scanLogs(r: Runtime, from: bigint, to: bigint) {
   } catch (e) {
     error = e;
   }
-  const decoded = logs.map((log) => {
-    const name = Object.keys(r.addresses).find(
-      (n) => r.addresses[n].toLowerCase() === log.address.toLowerCase(),
-    );
-    try {
-      return {
-        ...log,
-        ...decodeEventLog({
-          abi: r.abis[name!],
-          data: log.data,
-          topics: log.topics,
-        }),
-        contract: name,
-      };
-    } catch {
-      return { ...log, contract: name, eventName: "Unknown", args: {} };
-    }
-  });
-  return { logs: decoded, covered, lagged, error };
+  return { logs: decodeLogs(r, logs), covered, lagged, error };
 }
 /** `known`: objections already read from the Tribunal (the snapshot's newest ones). They join the
  * plea's Objected logs, so a plea read while history is incomplete still shows them (r2S-N1). */
@@ -350,9 +381,9 @@ export async function readSnapshot(
       read(r, "Seasons", "shareBps", [BigInt(i)]),
     ),
   );
-  const scan = await scanLogs(
+  const scan = await readHistory(
     r,
-    previous ? previous.block + 1n : APP.eventStart,
+    previous ? previous.block + 1n : BigInt(site().eventStart),
     block.number,
   );
   const logs = [...(previous?.logs || []), ...scan.logs];
@@ -1238,7 +1269,9 @@ export function caseState(p: Plea, s: Snapshot, now: number) {
 export function recordFrom(p: Plea, s: Snapshot, now: number) {
   if (!p.standing?.[0] || p.standing[1] || p.excluded || p.recorded)
     return undefined;
-  const cs = caseState(p, s, now),
+  // The hold as the chain sees it at the snapshot's block: an objection stale by the page clock
+  // may still be live for the next eth_call (sweep nit).
+  const cs = caseState(p, s, Math.min(now, s.timestamp)),
     expiry = Number(con(s, "Tribunal.PENDING_EXPIRY")),
     window = cs.rulings < cs.max ? cs.end : 0,
     last = cs.pending.reduce(
@@ -1246,13 +1279,24 @@ export function recordFrom(p: Plea, s: Snapshot, now: number) {
       undefined,
     ),
     pending = last ? Number(last.filedAt) + expiry : 0;
-  // By the page clock nothing holds them any more (the window closed and the last objection went
-  // stale) though the snapshot's standing() was read before: recordable now, not "after" a past
-  // time with a 00:00 countdown until the next chain read.
-  if (now > Math.max(pending, window)) return undefined;
+  // Recordable once a block passes the hold: Seasons.record's preflight (eth_call) runs at the
+  // latest block, so the page clock alone would offer Record a block early and fail with "Points
+  // are held" (sweep nit). Past the hold by the page clock but not yet by a block, the hold says it
+  // waits for the next block (`nextBlock`) instead of counting down from 00:00.
+  const until = Math.max(pending, window);
+  if (s.timestamp > until) return undefined;
+  const nextBlock = now > until;
   return pending > window
-    ? { until: pending, objection: last, objections: cs.pending }
-    : { until: window, objection: undefined, objections: [] };
+    ? { until: pending, objection: last, objections: cs.pending, nextBlock }
+    : { until: window, objection: undefined, objections: [], nextBlock };
+}
+/** The hold ends a snapshot waits for (recordFrom at its own block time). When a newer block passes
+ * one, the snapshot is read again, so Record unlocks with the chain and not a minute later. */
+export function holdEnds(s: Snapshot) {
+  return [...s.pleas, ...s.court.open].flatMap((p) => {
+    const f = recordFrom(p, s, s.timestamp);
+    return f ? [f.until] : [];
+  });
 }
 /** Whether a plea's points are held now, by the page clock (recordFrom). */
 export const pointsHeld = (p: Plea, s: Snapshot, now: number) =>
@@ -1279,9 +1323,11 @@ export function recordHint(
   )
     return "";
   const f = recordFrom(p, s, now);
-  return f
-    ? `Record ${who} +${p.points} points after ${clock(f.until)}${f.objection ? `, when ${rulingWait(f.objections)}` : why ? ", when objections close" : ""}.`
-    : `Record ${who} +${p.points} points now.`;
+  return f?.nextBlock
+    ? `Record ${who} +${p.points} points once the next block is mined: the hold ended at ${clock(f.until)}.`
+    : f
+      ? `Record ${who} +${p.points} points after ${clock(f.until)}${f.objection ? `, when ${rulingWait(f.objections)}` : why ? ", when objections close" : ""}.`
+      : `Record ${who} +${p.points} points now.`;
 }
 export const caseClosedText = (closed: string) =>
   closed.startsWith("at ")

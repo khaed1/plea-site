@@ -1,4 +1,5 @@
-import { APP, resetHealth } from "./config";
+import { resetHealth } from "./config";
+import { site } from "./site";
 import { LETTERBOX, Q96, feeDisplay, letterMinimum } from "./models";
 import { useAccount } from "wagmi";
 import { useState } from "react";
@@ -58,8 +59,8 @@ export function HomeDetails() {
         address: r.addresses.PLEA,
         abi: r.abis.PLEA,
         eventName: "Transfer",
-        fromBlock: APP.eventStart,
-        toBlock: APP.eventStart,
+        fromBlock: BigInt(site().eventStart),
+        toBlock: BigInt(site().eventStart),
       });
       return logs.filter((l: any) => /^0x0{40}$/i.test(l.args.from));
     },
@@ -342,7 +343,7 @@ export function LetterDetails() {
                 Reads as:{" "}
                 {window.PleaText.checkLetter(text).reads?.replace(
                   /\bIMD\b/g,
-                  s?.constants.pairSymbol || "imdTEST",
+                  s?.constants.pairSymbol || site().pairSymbol,
                 )}
               </p>
             </Panel>
@@ -430,7 +431,9 @@ export function PleaTimeline({
     steps.push([
       p.status === 4 ? "Sold" : "Sell window",
       p.status === 4
-        ? `${tokenAmount(soldFor(p, s!), s, true)} to the writer`
+        ? // "Writer" is the Letterbox's word: a letter or an auto-sell plea; a hand plea's
+          // seller sold it (sweep nit).
+          `${tokenAmount(soldFor(p, s!), s, true)} to the ${p.flags & 3 ? "writer" : "seller"}`
         : now > window
           ? `Closed at ${clock(window)}`
           : `Sell by ${clock(window)}`,

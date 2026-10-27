@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build && node scripts/manifest.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --import ./tests/site-setup.mjs --test tests/*.test.mjs",
     "verify-export": "npm run build && git -C .. diff --exit-code --stat -- dist && test -z \"$(git -C .. status --porcelain -- dist)\""
   },
   "dependencies": {

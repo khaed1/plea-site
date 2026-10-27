@@ -1,4 +1,4 @@
-import { clock, con, read, readPlea, type Plea, type Snapshot } from "./chain";
+import { clock, con, read, readPlea, tokenAmount, type Plea, type Snapshot } from "./chain";
 import type { Runtime } from "./config";
 import {
   LETTERBOX,
@@ -88,9 +88,9 @@ export async function appealPreview(
   const reason =
     escrow.blocked ||
     (autoBlock === "value"
-      ? "Auto-sell needs a sale worth at least 0.70 imdTEST. Untick auto-sell to appeal manually."
+      ? `Auto-sell needs a sale worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}. Untick auto-sell to appeal manually.`
       : autoBlock === "fee"
-        ? "The auto-sell fee exceeds this appeal’s balance or fee cap. Untick auto-sell to pay from your imdTEST."
+        ? `The auto-sell fee exceeds this appeal’s balance or fee cap. Untick auto-sell to pay from your ${s.constants.pairSymbol}.`
         : "");
   return {
     ...result,

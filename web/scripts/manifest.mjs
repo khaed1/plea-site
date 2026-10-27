@@ -51,3 +51,17 @@ for (const file of files.filter(p=>p.endsWith(".js"))) {
   if (/cbwsdk|cca-lite|@coinbase\/wallet-sdk|keyval-store/.test(text)) throw Error(`Coinbase SDK code in ${file}`);
 }
 console.log("D3: no Coinbase SDK markers in exported JavaScript");
+
+// A test network's build never names the main network: its pages, scripts and settings say "mainnet"
+// or "chain id 1" nowhere (the contracts' error name MintOnMainnet is one word, not the word).
+if (net.network.testnet) {
+  const texts = [
+    ...files.filter((p) => /\.(js|html|css|json)$/.test(p)).map((p) => [p, fs.readFileSync(new URL(p, root), "utf8")]),
+    ["imd-deployment.json", JSON.stringify(m)],
+  ];
+  for (const [file, text] of texts) {
+    const hit = text.match(/\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i);
+    if (hit) throw Error(`"${hit[0]}" in ${file}: the ${site.name} build must not name the main network.`);
+  }
+  console.log(`No "mainnet" or "chain id 1" in the ${site.name} build`);
+}

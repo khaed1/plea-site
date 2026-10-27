@@ -1,3 +1,4 @@
+import { site } from "./site";
 import { DisplayError } from "./errors";
 import {
   pendingState,
@@ -32,7 +33,15 @@ import {
   type Address,
 } from "viem";
 import { useApp, useRead, useTx, receiptEvents } from "./context";
-import { APP, erc20Abi, swapAbi, quoterAbi, resetHealth } from "./config";
+import { erc20Abi, swapAbi, resetHealth } from "./config";
+import { cashbackWords, sellGateWarning } from "./site";
+import {
+  encodeBuy,
+  encodeSell,
+  permit2Abi,
+  permit2Spendable,
+  universalRouterAbi,
+} from "./universal-router";
 import {
   amount,
   pct,
@@ -77,6 +86,8 @@ import {
   textCheck,
   Countdown,
 } from "./components";
+/** How long a Permit2 allowance for the router lasts, and a router trade's deadline: 30 minutes. */
+const PERMIT_LIFE = 1800;
 export function parseAmount(s: string, decimals = 18) {
   try {
     s = s.replaceAll(",", "");
@@ -216,6 +227,37 @@ export async function poolQuote(
     ),
   });
 }
+/** The line under the Buy button: which step this is, what it allows, and where the cashback goes. */
+export function tradeSteps(o: {
+  step: "token" | "permit2" | "trade";
+  stepNumber: number;
+  total: number;
+  universal: boolean;
+  selling: boolean;
+  amount: string;
+  cashback?: string;
+  claims?: boolean;
+  staked?: boolean;
+}) {
+  const nothing = `Nothing is ${o.selling ? "sold" : "bought"} yet.`,
+    head = `Step ${o.stepNumber} of ${o.total}:`;
+  if (o.step === "token")
+    return o.universal
+      ? `${head} lets Permit2 move exactly ${o.amount} from your wallet, for Uniswap’s router. ${nothing}`
+      : `${head} lets the ${o.selling ? "sale" : "buy"} spend exactly ${o.amount}. ${nothing}`;
+  if (o.step === "permit2")
+    return `${head} lets Uniswap’s Universal Router take exactly ${o.amount} through Permit2, for 30 minutes. ${nothing}`;
+  const cash = o.cashback
+    ? o.claims
+      ? `${o.cashback} cashback arrives as a claim on the PoolManager (see Profile), in the same transaction.`
+      : o.staked
+        ? `${o.cashback} cashback is staked for you in the same transaction.`
+        : `${o.cashback} cashback is paid to you in the same transaction.`
+    : "";
+  return [o.total > 1 ? `${head} the ${o.selling ? "sale" : "buy"}.` : "", cash]
+    .filter(Boolean)
+    .join(" ");
+}
 export function Buy() {
   const { r, s, now, toast } = useApp(),
     { address } = useAccount(),
@@ -230,7 +272,7 @@ export function Buy() {
   const tx = useTx(`${input}:${selling}:${slip}:${maxRaw}`),
     dead = !!val(s, "CabalGate.diedAt"),
     seeded = !!val(s, "PleaHook.seeded"),
-    pair = s?.constants.pairSymbol || "imdTEST",
+    pair = s?.constants.pairSymbol || site().pairSymbol,
     unit = selling ? "PLEA" : pair,
     raw = maxRaw ?? parseAmount(input);
   const inputToken = selling ? r.addresses.PLEA : r.addresses.PairToken,
@@ -266,18 +308,59 @@ export function Buy() {
     tradeDone && frozenQuote
       ? { ...liveQuote, data: frozenQuote, loading: false, error: "" }
       : liveQuote;
+  // On Ethereum the Universal Router takes the input through Permit2: the token approves Permit2
+  // (step 1), Permit2 allows the router for 30 minutes (step 2), then the trade. A step whose
+  // allowance already covers the amount (and, for Permit2, has not expired) is skipped. On
+  // Sepolia PoolSwapTest takes it directly: one approval, then the trade.
+  const trade = site().trade,
+    universal = trade.kind === "universalRouter",
+    spender = trade.kind === "universalRouter" ? trade.permit2 : trade.router;
   const allowance = useRead(
-    () =>
-      r.client.readContract({
-        address: inputToken,
-        abi: erc20Abi,
-        functionName: "allowance",
-        args: [address!, APP.swapRouter],
-      }),
+    async () => {
+      const [token, permit] = await Promise.all([
+        r.client.readContract({
+          address: inputToken,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [address!, spender],
+        }),
+        trade.kind === "universalRouter"
+          ? r.client.readContract({
+              address: trade.permit2,
+              abi: permit2Abi,
+              functionName: "allowance",
+              args: [address!, inputToken, trade.router],
+            })
+          : undefined,
+      ]);
+      return { token, permit };
+    },
     [address, inputToken, revision],
     !!address && !!s,
   );
-  const needsApproval = allowance.data !== undefined && allowance.data < raw;
+  // An allowance that expires within the minute is renewed rather than raced.
+  const step: "token" | "permit2" | "trade" | undefined =
+    allowance.data === undefined
+      ? undefined
+      : allowance.data.token < raw
+        ? "token"
+        : allowance.data.permit &&
+            permit2Spendable(allowance.data.permit as any, now + 60) < raw
+          ? "permit2"
+          : "trade";
+  const needsApproval = step === "token" || step === "permit2";
+  // "Step 2 of 3": the steps this amount needed when it was entered, so the count holds while
+  // the steps are done one by one.
+  const planKey = `${address}:${selling}:${raw}`,
+    [plan, setPlan] = useState<{ key: string; total: number }>();
+  const remaining =
+    step === "token" ? (universal ? 3 : 2) : step === "permit2" ? 2 : 1;
+  useEffect(() => {
+    if (step && plan?.key !== planKey && !tx.busy)
+      setPlan({ key: planKey, total: remaining });
+  }, [planKey, step]);
+  const total = plan?.key === planKey ? Math.max(plan.total, remaining) : remaining,
+    stepNumber = total - remaining + 1;
   const cap = con(s, "PleaHook.LAUNCH_MAX_BUY"),
     capError =
       !tradeDone &&
@@ -362,8 +445,20 @@ export function Buy() {
       : display && !selling
         ? display.pay
         : exactAmount(raw, 18, selling ? 0 : 2);
+  const permitMessage = {
+    title: "Your Permit2 allowance for the router ran out.",
+    body: `Press the button to allow the router again (it lasts 30 minutes), then ${selling ? "sell" : "buy"}. Nothing was ${selling ? "sold" : "bought"}.`,
+  };
+  const routerErrors: Record<string, { title: string; body: string }> = universal
+    ? {
+        BalanceTooLow: priceMessage,
+        V4TooLittleReceived: priceMessage,
+        AllowanceExpired: permitMessage,
+        InsufficientAllowance: permitMessage,
+      }
+    : {};
   async function buy() {
-    if (needsApproval) {
+    if (step === "token") {
       setApproved(true);
       if (
         await tx.send(
@@ -375,7 +470,7 @@ export function Buy() {
             data: encodeFunctionData({
               abi: erc20Abi,
               functionName: "approve",
-              args: [APP.swapRouter, raw],
+              args: [spender, raw],
             }),
           },
           {
@@ -394,13 +489,89 @@ export function Buy() {
         setRevision((n) => n + 1);
       return;
     }
+    if (step === "permit2" && trade.kind === "universalRouter") {
+      setApproved(true);
+      if (
+        await tx.send("", "approve", [], undefined, {
+          errors: swapErrors,
+          prepare: async () => {
+            if (launchActive && !selling) {
+              const q = await poolQuote(r, s!, raw, false);
+              if (q.gross > BigInt(cap)) throw new DisplayError(capMessage);
+            }
+            // Exactly this amount, for 30 minutes from the chain's clock.
+            const block = await r.client.getBlock();
+            return {
+              to: trade.permit2,
+              data: encodeFunctionData({
+                abi: permit2Abi,
+                functionName: "approve",
+                args: [
+                  inputToken,
+                  trade.router,
+                  raw,
+                  Number(block.timestamp) + PERMIT_LIFE,
+                ],
+              }),
+            };
+          },
+        })
+      )
+        setRevision((n) => n + 1);
+      return;
+    }
     setApproved(false);
     await tx.send("", "swap", [], undefined, {
-      errors: swapErrors,
+      errors: { ...swapErrors, ...routerErrors },
       prepare: async () => {
         const q = await poolQuote(r, s!, raw, selling),
-          key = val(s, "PleaHook.poolKey"),
-          zeroForOne = key.currency0.toLowerCase() === inputToken.toLowerCase(),
+          key = val(s, "PleaHook.poolKey");
+        if (trade.kind === "universalRouter") {
+          // The quote is the site's own walk of the pool (the v4 Quoter sees 0 PLEA while the
+          // Cabal lives); the router enforces the minimum: a balance check on the buyer's PLEA
+          // for a buy, the IMD it takes for a sale.
+          const minimum = (q.out * BigInt(10000 - slip)) / 10000n,
+            router = { address: trade.router, minHopPrice: trade.minHopPrice },
+            [block, held] = await Promise.all([
+              r.client.getBlock(),
+              selling
+                ? Promise.resolve(0n)
+                : read(r, "PLEA", "balanceOf", [address]),
+            ]);
+          const encoded = selling
+            ? encodeSell({
+                router,
+                key,
+                imd: r.addresses.PairToken,
+                seller: address!,
+                amountIn: raw,
+                minImdOut: minimum,
+              })
+            : encodeBuy({
+                router,
+                key,
+                imd: r.addresses.PairToken,
+                buyer: address!,
+                amountIn: raw,
+                minPleaOut: minimum,
+                pleaBalance: BigInt(held),
+              });
+          setFrozenQuote({ ...q, at: Date.now() });
+          return {
+            to: trade.router,
+            data: encodeFunctionData({
+              abi: universalRouterAbi,
+              functionName: "execute",
+              args: [
+                encoded.commands,
+                encoded.inputs,
+                block.timestamp + BigInt(PERMIT_LIFE),
+              ],
+            }),
+          };
+        }
+        const zeroForOne =
+            key.currency0.toLowerCase() === inputToken.toLowerCase(),
           hookData = encodeAbiParameters([{ type: "address" }], [address!]);
         const args = [
           key,
@@ -413,7 +584,7 @@ export function Buy() {
           hookData,
         ] as const;
         const simulation = await r.client.simulateContract({
-          address: APP.swapRouter,
+          address: trade.router,
           abi: swapAbi,
           functionName: "swap",
           args,
@@ -424,7 +595,7 @@ export function Buy() {
         if (spent < raw) throw new DisplayError(priceMessage);
         setFrozenQuote({ ...q, at: Date.now() });
         return {
-          to: APP.swapRouter,
+          to: trade.router,
           data: encodeFunctionData({
             abi: swapAbi,
             functionName: "swap",
@@ -662,7 +833,9 @@ export function Buy() {
                   ...((!selling
                     ? [
                         [
-                          `Back to you as cashback (${pct(con(s, "PleaHook.CASHBACK_BPS"))})`,
+                          cashbackWords(pair).row(
+                            pct(con(s, "PleaHook.CASHBACK_BPS")),
+                          ),
                           payout.data === "pool"
                             ? "none on this opening buy: the cashback, owner and prize shares join the pool"
                             : `${display.cash} ${pair}${payout.data === "claims" ? ", paid as a claim on the PoolManager (see Profile)" : ""}`,
@@ -758,18 +931,24 @@ export function Buy() {
             done={tx.done && !approved}
             confirmed={tx.done}
             label={
-              needsApproval
+              step === "token"
                 ? `Approve ${unit}`
-                : selling
-                  ? "Sell PLEA"
-                  : "Buy PLEA"
+                : step === "permit2"
+                  ? "Allow the router"
+                  : selling
+                    ? "Sell PLEA"
+                    : "Buy PLEA"
             }
             walletLabel={
-              needsApproval
-                ? `Approve ${unit} in your wallet…`
-                : selling
-                  ? "Confirm the sale in your wallet…"
-                  : "Confirm the buy in your wallet…"
+              step === "token"
+                ? universal
+                  ? `Approve ${unit} for Permit2 in your wallet…`
+                  : `Approve ${unit} in your wallet…`
+                : step === "permit2"
+                  ? "Confirm the Permit2 allowance in your wallet…"
+                  : selling
+                    ? "Confirm the sale in your wallet…"
+                    : "Confirm the buy in your wallet…"
             }
             connectText={`Connect in the top bar to ${selling ? "sell" : "buy"}.`}
             onRun={buy}
@@ -781,12 +960,25 @@ export function Buy() {
             raw > 0n &&
             seeded &&
             !tradeDone &&
-            (needsApproval || (!selling && payout.data !== "pool")) && (
+            (needsApproval ||
+              total > 1 ||
+              (!selling && payout.data !== "pool")) && (
               <p className="small">
-                {needsApproval
-                  ? `Step 1 of 2: lets the ${selling ? "sale" : "buy"} spend exactly ${exactAmount(raw, Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}. Nothing is ${selling ? "sold" : "bought"} yet.`
-                  : // The costs row's own figure: one rounding rule for both (sweep R12).
-                    `${display ? `${display.cash} ${pair}` : smallAmount(cashbackNow, s)} cashback is paid to you in the same transaction.`}
+                {tradeSteps({
+                  step: step || "trade",
+                  stepNumber,
+                  total,
+                  universal,
+                  selling,
+                  amount: `${exactAmount(raw, Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}`,
+                  // The costs row's own figure: one rounding rule for both (sweep R12).
+                  cashback:
+                    selling || payout.data === "pool"
+                      ? undefined
+                      : `${display ? `${display.cash} ${pair}` : smallAmount(cashbackNow, s)}`,
+                  claims: payout.data === "claims",
+                  staked: !!site().cashback.simd,
+                })}
               </p>
             )}
           {fill && <p role="status">{fill}</p>}
@@ -971,23 +1163,38 @@ export function Buy() {
                     ? smallAmount(cashback(s.logs, address), s)
                     : "Reading cashback…"}
                 </p>
-                <p className="small">
-                  Paid in the same transaction:{" "}
-                  {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
-                  {raw && seeded && !selling
-                    ? ` (${smallAmount(cashbackNow, s)} on this buy)`
-                    : ""}
-                  .{" "}
-                  {s?.logs.some(
-                    (e) =>
-                      e.eventName === "CashbackStacked" &&
-                      e.args.trader?.toLowerCase() === address.toLowerCase(),
-                  ) ? (
-                    <a href="https://imdacc.fun">Staked through imd/acc.</a>
-                  ) : (
-                    `In this test run it arrives as plain ${pair}, not staked.`
-                  )}
-                </p>
+                {site().cashback.simd ? (
+                  <p className="small">
+                    Paid as staked {pair} through imd/acc:{" "}
+                    {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
+                    {raw && seeded && !selling
+                      ? ` (${smallAmount(cashbackNow, s)} on this buy)`
+                      : ""}
+                    , in the same transaction. See it on{" "}
+                    <a href="https://imdacc.fun" target="_blank" rel="noreferrer">
+                      imdacc.fun
+                    </a>
+                    .
+                  </p>
+                ) : (
+                  <p className="small">
+                    Paid in the same transaction:{" "}
+                    {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
+                    {raw && seeded && !selling
+                      ? ` (${smallAmount(cashbackNow, s)} on this buy)`
+                      : ""}
+                    .{" "}
+                    {s?.logs.some(
+                      (e) =>
+                        e.eventName === "CashbackStacked" &&
+                        e.args.trader?.toLowerCase() === address.toLowerCase(),
+                    ) ? (
+                      <a href="https://imdacc.fun">Staked through imd/acc.</a>
+                    ) : (
+                      cashbackWords(pair).plainNote
+                    )}
+                  </p>
+                )}
               </>
             ) : (
               <p>Connect in the top bar to see your cashback.</p>
@@ -1001,6 +1208,11 @@ export function Buy() {
                 {span(Number(con(s, "CabalGate.DEADMAN") || 118800))} without a
                 verdict; then PLEA trades freely forever.
               </p>
+              {sellGateWarning() && (
+                <p>
+                  <b>{sellGateWarning()!.title}</b> {sellGateWarning()!.body}
+                </p>
+              )}
             </Notice>
           )}
         </div>
@@ -1066,7 +1278,7 @@ export function Plead() {
     fees = s?.v.fees,
     oracle = BigInt(con(s, "CabalGate.ORACLE_FEE") || 0n),
     feeCap = BigInt(fees?.[1] || 0n),
-    pair = s?.constants.pairSymbol || "imdTEST",
+    pair = s?.constants.pairSymbol || site().pairSymbol,
     // The manual plea pays the fixed oracle fee from the wallet's imdTEST (r2D-VN1).
     pairShort =
       balance.data && BigInt(balance.data.pair) < oracle

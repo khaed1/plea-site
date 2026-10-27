@@ -1,6 +1,8 @@
 import {
   NO_ANSWER,
+  archivePattern,
   classifyRpc,
+  rpcDetail,
   rpcFetch,
   registerHealthReset,
 } from "./rpc-health";
@@ -19,25 +21,22 @@ import {
 import { createConfig } from "wagmi";
 import { injected } from "wagmi/connectors";
 import expectedAbi from "./abi-hashes.json";
-export const APP = {
-  expectedAbi,
-  eventStart: 11948819n,
-  oracleApi: "https://api.imd.fun",
-  claimsPath: "claims.json",
-  expected: {
-    Letterbox: "0xbc335ae3dc12d4bf78f8e44a03f4fc62e3afd1d3",
-    Tribunal: "0xcd6aac81882a6ae51041e8094bca0feabd3fc566",
-    PleaHook: "0x07b4698506cf15b9a91805aa90010a47a04228cc",
-  },
-  swapRouter: "0x9b6b46e2c869aa39918db7f52f5557fe577b6eee" as Address,
-  delegateRegistry: "0x00000000000000447e69651d841bd8d104bed493" as Address,
-};
+import { setSite, site, type Site } from "./site";
+/** The ABI hashes of the contracts the deployment file does not list (Letterbox, Tribunal, PleaHook).
+ * Every network setting (the first block, the oracle API, the swap router, the expected addresses…)
+ * comes from the deployment's site block: `site()` (site.ts). */
+export const APP = { expectedAbi };
 export const erc20Abi = parseAbi([
   "function symbol() view returns(string)",
   "function decimals() view returns(uint8)",
   "function balanceOf(address) view returns(uint256)",
   "function allowance(address,address) view returns(uint256)",
   "function approve(address,uint256) returns(bool)",
+]);
+/** imd/acc's sIMD vault (ERC-4626, 24 decimals): the wallet's staked cashback. */
+export const vaultAbi = parseAbi([
+  "function balanceOf(address) view returns(uint256)",
+  "function convertToAssets(uint256) view returns(uint256)",
 ]);
 export const intakeAbi = parseAbi([
   "function requests(bytes32) view returns(address payer,address callbackTarget,bytes4 callbackSelector,bool completed)",
@@ -76,6 +75,7 @@ export async function loadConfig() {
   const n = manifest.network;
   if (n.chainId !== manifest.chainId)
     throw Error("Deployment and network disagree. Transactions are disabled.");
+  const siteSettings: Site = setSite(manifest);
   const chain = defineChain({
     id: manifest.chainId,
     name: n.name,
@@ -90,7 +90,13 @@ export async function loadConfig() {
       },
     },
   });
-  const transport = resilientTransport(n.rpcUrls);
+  const transport = resilientTransport(
+    n.rpcUrls,
+    undefined,
+    undefined,
+    undefined,
+    siteSettings.logRanges,
+  );
   const client = createPublicClient({
     chain,
     transport,
@@ -125,7 +131,16 @@ export async function loadConfig() {
     connectors: [injected()],
     transports: { [chain.id]: transport },
   });
-  return { manifest, network: n, chain, client, abis, addresses, walletConfig };
+  return {
+    manifest,
+    network: n,
+    site: siteSettings,
+    chain,
+    client,
+    abis,
+    addresses,
+    walletConfig,
+  };
 }
 export type Runtime = Awaited<ReturnType<typeof loadConfig>>;
 export async function discover(r: Runtime) {
@@ -141,11 +156,10 @@ export async function discover(r: Runtime) {
       abi: r.abis.PleaLaunch,
       functionName: method,
     })) as Address;
-    if (
-      address.toLowerCase() !== APP.expected[name as keyof typeof APP.expected]
-    )
+    const expected = r.site.expected?.[name as "Letterbox"];
+    if (expected && address.toLowerCase() !== expected.toLowerCase())
       throw Error(
-        `${name} differs from the run 9 address. Transactions are disabled.`,
+        `${name} differs from this deployment’s address. Transactions are disabled.`,
       );
     r.addresses[name] = address;
   }
@@ -164,8 +178,31 @@ export async function discover(r: Runtime) {
     String(pm).toLowerCase() !== r.network.uniswapV4.poolManager.toLowerCase()
   )
     throw Error("PoolManager differs from the network handoff.");
+  // The cashback Stacker and the seat NFT the site names must be the ones the contracts use.
+  const [stacker, seat] = await Promise.all([
+    r.client.readContract({
+      address: r.addresses.PleaHook,
+      abi: r.abis.PleaHook,
+      functionName: "stacker",
+    }),
+    r.client.readContract({
+      address: r.addresses.Seasons,
+      abi: r.abis.Seasons,
+      functionName: "seat",
+    }),
+  ]);
+  if (String(stacker).toLowerCase() !== r.site.cashback.stacker.toLowerCase())
+    throw Error("The cashback Stacker differs from this deployment’s.");
+  if (String(seat).toLowerCase() !== r.site.seat.address.toLowerCase())
+    throw Error("The seat NFT differs from this deployment’s.");
+  const trade = r.site.trade;
   await Promise.all(
-    [...Object.values(r.addresses), APP.swapRouter].map(async (a) => {
+    [
+      ...Object.values(r.addresses),
+      trade.router,
+      ...(trade.kind === "universalRouter" ? [trade.permit2] : []),
+      ...(r.site.cashback.simd ? [r.site.cashback.simd] : []),
+    ].map(async (a) => {
       const code = await r.client.getCode({ address: a });
       if (!code || code === "0x")
         throw Error(`A required contract has no code: ${a}`);
@@ -183,8 +220,15 @@ export function resilientTransport(
   timeout = 6000,
   cooldown = 60000,
   hedge = 2000,
+  /** eth_getLogs block ranges per URL and `default` (site.logRanges; 0: never ask it for logs). */
+  logRanges: Record<string, number> = {},
 ) {
   const endpoints = urls.map((url) => ({
+    url,
+    /** The widest eth_getLogs range this RPC answers (0: never ask it for logs). */
+    logRange: logRanges[url] ?? logRanges.default ?? Infinity,
+    /** Until when this RPC is not asked for logs (it refused an old range: publicnode's archive). */
+    logsDown: 0,
     transport: http(url, {
       timeout,
       retryCount: 0,
@@ -199,16 +243,37 @@ export function resilientTransport(
   registerHealthReset(() =>
     endpoints.forEach((e) => {
       e.down = 0;
+      e.logsDown = 0;
     }),
   );
   return custom(
     {
       async request(args: any) {
         let first: any, answer: any;
-        const healthy = endpoints.filter((e) => e.down <= Date.now());
+        const logs = args.method === "eth_getLogs";
+        // eth_getLogs goes only to the RPCs that answer its range: a wider range than any of them
+        // takes is refused here in the words scanLogs splits on ("limited to N blocks").
+        const width = logs ? logWidth(args.params?.[0]) : undefined;
+        const eligible = logs
+          ? endpoints.filter(
+              (e) => e.logRange > 0 && (width === undefined || width <= e.logRange),
+            )
+          : endpoints;
+        if (logs && !eligible.length)
+          throw Object.assign(
+            Error(
+              `eth_getLogs is limited to ${Math.max(...endpoints.map((e) => (Number.isFinite(e.logRange) ? e.logRange : 0)))} blocks on these RPCs.`,
+            ),
+            { code: -32005 },
+          );
+        const usable = logs
+          ? eligible.filter((e) => e.logsDown <= Date.now())
+          : eligible;
+        const pool = usable.length ? usable : eligible;
+        const healthy = pool.filter((e) => e.down <= Date.now());
         const candidates = healthy.length
           ? healthy
-          : [...endpoints].sort((a, b) => a.down - b.down);
+          : [...pool].sort((a, b) => a.down - b.down);
         const start = (endpoint: Endpoint): Promise<Outcome> =>
           (args.method === "eth_getLogs" ? endpoint.logs : endpoint.transport)
             .request(args)
@@ -249,6 +314,14 @@ export function resilientTransport(
             for (const slow of live.keys()) slow.down = Date.now() + cooldown;
             return outcome.value;
           }
+          // An RPC that keeps only recent history (publicnode: "Archive requests require a
+          // personal token") is no answer for an old range: the next one is asked, and this one
+          // is left out of log reads for a while.
+          if (archivePattern.test(rpcDetail(outcome.value).text)) {
+            if (logs) outcome.endpoint.logsDown = Date.now() + cooldown;
+            first ||= outcome.value;
+            continue;
+          }
           const kind = classifyRpc(outcome.value);
           if (kind === "request") throw outcome.value;
           first ||= outcome.value;
@@ -267,4 +340,13 @@ export function resilientTransport(
     },
     { retryCount: 0 },
   );
+}
+
+/** The block range of an eth_getLogs filter, or undefined (a blockHash filter, or "latest"). */
+export function logWidth(filter: any): number | undefined {
+  const n = (v: any) =>
+    typeof v === "string" && /^0x[0-9a-f]+$/i.test(v) ? Number(BigInt(v)) : undefined;
+  const from = n(filter?.fromBlock),
+    to = n(filter?.toBlock);
+  return from === undefined || to === undefined ? undefined : to - from + 1;
 }

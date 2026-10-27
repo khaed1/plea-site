@@ -2,7 +2,8 @@
   "key": "sepolia-run9",
   "name": "Sepolia test run 9",
   "strip": "Sepolia test run 9 \u00b7 test tokens, no value",
-  "siteUrl": "https://plea-run-9.sites.imd.fun/",
+  "footer": "Sepolia test tokens have no value.",
+  "siteUrl": "https://plea-test-run-9.sites.imd.fun/",
   "eventStart": 11948819,
   "oracleApi": "https://api.imd.fun",
   "claimsPath": "claims.json",
@@ -23,12 +24,23 @@
   },
   "seat": {
     "address": "0xa0443799c320e16c80801c9c1911f3571260287f",
-    "name": "IMD seat NFT (test)"
+    "name": "identity.md seat",
+    "note": "a test NFT on Sepolia"
   },
   "letterMessagePage": null,
   "indexer": null,
   "logRanges": {
     "default": 10000
+  },
+  "explorerName": "Sepolia Etherscan",
+  "pairSymbol": "imdTEST",
+  "source": {
+    "repo": "https://github.com/khaed1/plea",
+    "ref": "testnet9"
+  },
+  "contracts": {
+    "meta": "Sepolia",
+    "launch": "Sepolia test run 9 \u00b7 launch #2234"
   },
   "meta": {
     "title": "Selling needs a plea \u00b7 PLEA",

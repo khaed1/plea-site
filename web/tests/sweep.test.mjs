@@ -329,21 +329,35 @@ test("sweep P19 and R5: claim dates carry the day; an unread isClaimed is never 
 const seasonText = await load("season-text");
 const appeal = await load("appeal");
 
-test("sweep R3: points are no longer held once the page clock passes the window and the last live objection", () => {
+test("sweep R3 + nit: points stay held until a block passes the hold; past it by the page clock, the next block unlocks them", () => {
   const s = snap(),
     o = { id: 1n, pleaId: 7n, ruling: 1, filedAt: BigInt(V + 75), objector: "0xb1" },
     p = plea({ status: 4, objections: [o], standing: [true, false, 255] });
   // Filed 75 s after the verdict: held until filedAt + PENDING_EXPIRY, past the window.
   assert.equal(chain.recordFrom(p, s, V + 600).until, V + 75 + 1200);
+  assert.equal(chain.recordFrom(p, s, V + 600).nextBlock, false);
   assert.equal(chain.pointsHeld(p, s, V + 75 + 1200), true);
-  // Stale by the page clock, with the snapshot's standing() still read as held: recordable now.
-  assert.equal(chain.recordFrom(p, s, V + 75 + 1201), undefined);
-  assert.equal(chain.pointsHeld(p, s, V + 75 + 1201), false);
-  assert.equal(chain.recordHint(p, s, V + 75 + 1201), "Record your +44 points now.");
+  // Stale by the page clock, but the snapshot's block is older: Seasons.record's preflight runs at
+  // the latest block and would still say "Points are held", so the hold stays and says why.
+  const f = chain.recordFrom(p, s, V + 75 + 1201);
+  assert.equal(f.until, V + 75 + 1200);
+  assert.equal(f.nextBlock, true);
+  assert.equal(chain.pointsHeld(p, s, V + 75 + 1201), true);
+  assert.equal(
+    chain.recordHint(p, s, V + 75 + 1201),
+    `Record your +44 points once the next block is mined: the hold ended at ${chain.clock(V + 1275)}.`,
+  );
+  // A snapshot whose block passed the hold: recordable now, and the poll stops waiting for it.
+  const later = { ...s, timestamp: V + 75 + 1201 };
+  assert.deepEqual(chain.holdEnds({ ...s, pleas: [p], court: { ...s.court, open: [] } }), [V + 1275]);
+  assert.equal(chain.recordFrom(p, later, V + 75 + 1201), undefined);
+  assert.equal(chain.pointsHeld(p, later, V + 75 + 1201), false);
+  assert.equal(chain.recordHint(p, later, V + 75 + 1201), "Record your +44 points now.");
+  assert.deepEqual(chain.holdEnds({ ...later, pleas: [p], court: { ...s.court, open: [] } }), []);
   // No objection: the window alone, inclusive of its last second (Tribunal.standing: <=).
   const q = plea({ status: 4 });
-  assert.equal(chain.pointsHeld(q, s, V + 1200), true);
-  assert.equal(chain.pointsHeld(q, s, V + 1201), false);
+  assert.equal(chain.pointsHeld(q, { ...s, timestamp: V + 1200 }, V + 1200), true);
+  assert.equal(chain.pointsHeld(q, { ...s, timestamp: V + 1201 }, V + 1201), false);
 });
 
 test("sweep P2: a later waiting season's pot carries what the earlier closes roll over", () => {
