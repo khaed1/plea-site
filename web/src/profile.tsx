@@ -307,7 +307,9 @@ export function Profile({ target }: { target?: string }) {
       <AddressView address={wallet} label={data?.current || "profile"} />
       <p className="lead">
         {mine
-          ? "Your wallet as PLEA sees it: what you hold, the buy record your next plea is scored on, your name, your pleas and your seasons."
+          ? val(s, "CabalGate.diedAt")
+            ? "Your wallet as PLEA sees it: what you hold, your buy record, your name, your pleas and your seasons."
+            : "Your wallet as PLEA sees it: what you hold, the buy record your next plea is scored on, your name, your pleas and your seasons."
           : `${label}’s public PLEA holdings, pleas and seasons.`}
       </p>
       {mine && (

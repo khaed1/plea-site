@@ -587,7 +587,6 @@ function SeasonBody({
               data.closed
                 ? closedLog
                   ? [
-                      ["Season prize pot", tokenAmount(pot, s, true)],
                       [
                         `Paid to ${plural(
                           s!.logs.filter(
@@ -607,8 +606,9 @@ function SeasonBody({
                           true,
                         ),
                       ],
+                      ["Total, at the close", tokenAmount(pot, s, true), "total"],
                     ]
-                  : [["Season prize pot", "Shows once the history is read"]]
+                  : [["What the close paid", "Shows once the history is read"]]
                 : [
               // The parts come from logs: with incomplete history only the chain's total shows (r2S-N1).
               ...(s!.historyError
