@@ -33,8 +33,14 @@ export function Figure({
     </figure>
   );
 }
-/** The arrow between two boxes: down on a phone, across once the figure is wide. */
-export function Arrow() {
+/** The arrow between two boxes: down on a phone, across once the figure is wide (or always down). */
+export function Arrow({ down = false }: { down?: boolean }) {
+  if (down)
+    return (
+      <span className="dg-arrow" aria-hidden="true">
+        <Icon name="arrow-down" />
+      </span>
+    );
   return (
     <span className="dg-arrow" aria-hidden="true">
       <span className="dg-arrow__down">
