@@ -166,6 +166,12 @@ export function rateLine(route: PayRoute, pair: string, amountIn: bigint, quoted
   return `≈ ${rate(quoted)} ${pair} per ${route.symbol}, ${(bps / 100).toFixed(2)}% below the ${one ? "price" : "prices"} of ${pools.join(" and ")} (${rate(atPrice)} after ${one ? "its fee" : "their fees"}).`;
 }
 
+/** The price impact in what the buyer gets: "8.13% less IMD than at the pool’s price" (USDC's two pools:
+ * "pools’ prices"). Not "below the price", which reads like a discount: 8.13% less IMD is about 8.9%
+ * more paid for each IMD. */
+export const impactWords = (route: PayRoute, pair: string, bps: number) =>
+  `${(bps / 100).toFixed(2)}% less ${pair} than at the ${route.path.length > 1 ? "pools’ prices" : "pool’s price"}`;
+
 /** A currency's name in a route's words: ETH, the pool currency, or another route's symbol. */
 export function symbolOf(c: string, routes: PayRoute[], pair: string) {
   if (isNative(c)) return "ETH";
@@ -232,19 +238,45 @@ export async function quoteToImd(
 /** The gas limit a routed buy is sent with, which the wallet must cover at its max fee: the site sends
  * 1.3 × the estimate, and a routed buy estimates at about 1.7M gas (1,689,555 for ETH, 1,728,084 for
  * USDC on a fork of PLEA's deployment: PleaHook refuses a swap that reaches it with less than 1,400,000
- * gas left, so the estimate sits far above the 540,000 to 760,000 gas a buy uses). */
+ * gas left, so the estimate sits far above the 540,000 to 980,000 gas a buy used there). */
 export const ROUTE_GAS = 2_400_000n;
-/** The ETH a routed buy leaves for gas: ROUTE_GAS at twice the base fee plus the tip (what a wallet
- * usually allows as its max fee), so Max never spends what the wallet will ask to hold for gas. */
-export async function gasReserve(client: {
+/** The least tip a routed ETH buy is sent with: a wallet's own, not the RPCs'. On 2026-10-29 the RPCs'
+ * eth_maxPriorityFeePerGas read 9,800 wei (tenderly 0), while MetaMask's default ("Market", its gas
+ * API's medium) asked a 2 gwei tip and a 2.78 gwei max fee at a 0.55 gwei base fee. */
+export const WALLET_TIP = 2_000_000_000n;
+/** The fees a routed ETH buy is sent with (the base fee they were worked out at, for fitFees). */
+export type RouteFees = { baseFee: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
+/** The tip: the node's, at least WALLET_TIP; the max fee: twice the base fee plus the tip (room for
+ * the base fee to double before the buy is mined). The site sends both with a routed ETH buy, and a
+ * wallet uses the fees a site suggests (MetaMask marks them "Site suggested"), so the most it holds
+ * for gas is the gas limit at this max fee: what Max keeps (gasReserve). */
+export function routeFees(baseFee: bigint, nodeTip: bigint): RouteFees {
+  const tip = nodeTip > WALLET_TIP ? nodeTip : WALLET_TIP;
+  return { baseFee, maxFeePerGas: 2n * baseFee + tip, maxPriorityFeePerGas: tip };
+}
+/** routeFees at the latest block's base fee and the RPC's tip. */
+export async function readRouteFees(client: {
   getBlock: () => Promise<{ baseFeePerGas: bigint | null }>;
   estimateMaxPriorityFeePerGas: () => Promise<bigint>;
-}): Promise<bigint> {
+}): Promise<RouteFees> {
   const [block, tip] = await Promise.all([
     client.getBlock(),
-    client.estimateMaxPriorityFeePerGas().catch(() => 1_000_000_000n),
+    client.estimateMaxPriorityFeePerGas().catch(() => WALLET_TIP),
   ]);
-  return ROUTE_GAS * (2n * (block.baseFeePerGas ?? 0n) + tip);
+  return routeFees(block.baseFeePerGas ?? 0n, tip);
+}
+/** The ETH a routed buy leaves for gas: ROUTE_GAS at the max fee it is sent with, so Max never spends
+ * what the wallet will ask to hold for gas. */
+export const gasReserve = (fees: RouteFees) => ROUTE_GAS * fees.maxFeePerGas;
+/** The fees sent with a routed ETH buy that leaves `left` ETH beside its value: `fees` when `left`
+ * covers them at ROUTE_GAS (Max leaves exactly that); when it does not (the base fee rose since Max,
+ * or a typed amount leaves less), the max fee `left` covers at ROUTE_GAS, as long as that still pays
+ * the base fee and the tip, so the next block can take the buy. Undefined when even that is short: the
+ * ETH left cannot pay the chain's fee now for ROUTE_GAS. */
+export function fitFees(fees: RouteFees, left: bigint): RouteFees | undefined {
+  if (left >= gasReserve(fees)) return fees;
+  const most = left / ROUTE_GAS;
+  return most >= fees.baseFee + fees.maxPriorityFeePerGas ? { ...fees, maxFeePerGas: most } : undefined;
 }
 /** Max for native ETH: the balance less the gas reserve, rounded down to 0.0001 ETH so the field shows
  * exactly what is paid; 0 when the balance does not cover the gas. */

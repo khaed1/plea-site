@@ -20,20 +20,26 @@ import {
   buyPath,
   ethMax,
   impactBps,
+  impactWords,
   IMPACT_CONFIRM_BPS,
   perUnit,
   rateLine,
   feeWords,
+  fitFees,
   gasReserve,
   hopKey,
   poolId,
   quoteToImd,
   readHopFees,
+  readRouteFees,
+  ROUTE_GAS,
+  routeFees,
   routeLine,
   routeRefusal,
   routeToImd,
   slot0Slot,
   swapFee,
+  WALLET_TIP,
 } from "../src/pay.ts";
 
 const IMD = "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
@@ -210,14 +216,67 @@ test("quoteToImd: the Quoter's IMD for the route's hops; a refusal is a plain re
 
 test("ETH's Max leaves the gas: 2.4M gas (the limit the site sends) at twice the base fee plus the tip, rounded down to 0.0001 ETH", async () => {
   const gwei = 10n ** 9n;
-  const reserve = await gasReserve({ getBlock: async () => ({ baseFeePerGas: 2n * gwei }), estimateMaxPriorityFeePerGas: async () => gwei });
-  assert.equal(reserve, 2_400_000n * 5n * gwei); // 0.012 ETH
-  assert.equal(await gasReserve({ getBlock: async () => ({ baseFeePerGas: 0n }), estimateMaxPriorityFeePerGas: async () => { throw Error("no"); } }), 2_400_000n * gwei);
-  assert.equal(ethMax(2n * 10n ** 18n, reserve), 1_988n * 10n ** 15n);
-  assert.equal(ethMax(2n * 10n ** 18n + 123_456_789n, reserve), 1_988n * 10n ** 15n, "rounded down: the field shows what is paid");
+  const fees = await readRouteFees({ getBlock: async () => ({ baseFeePerGas: 2n * gwei }), estimateMaxPriorityFeePerGas: async () => 3n * gwei });
+  assert.deepEqual(fees, { baseFee: 2n * gwei, maxFeePerGas: 7n * gwei, maxPriorityFeePerGas: 3n * gwei });
+  const reserve = gasReserve(fees);
+  assert.equal(reserve, 2_400_000n * 7n * gwei); // 0.0168 ETH
+  // An RPC without eth_maxPriorityFeePerGas: the wallet's tip.
+  assert.deepEqual(await readRouteFees({ getBlock: async () => ({ baseFeePerGas: null }), estimateMaxPriorityFeePerGas: async () => { throw Error("no"); } }), { baseFee: 0n, maxFeePerGas: WALLET_TIP, maxPriorityFeePerGas: WALLET_TIP });
+  assert.equal(ethMax(2n * 10n ** 18n, reserve), 19_832n * 10n ** 14n);
+  assert.equal(ethMax(2n * 10n ** 18n + 123_456_789n, reserve), 19_832n * 10n ** 14n, "rounded down: the field shows what is paid");
   assert.equal(ethMax(10n ** 16n, 2_400_000n * 1_002_705_384n), 75n * 10n ** 14n, "the fork's 0.01 ETH wallet: Max 0.0075, 0.0024 kept");
   assert.equal(ethMax(reserve, reserve), 0n, "nothing to spend once the gas is kept");
   assert.equal(ethMax(reserve - 1n, reserve), 0n);
+});
+
+// PAY-2: the site sends no fees unless it brings them, and a wallet then picks its own. On 2026-10-29 the
+// RPCs' tip was 9,800 wei at a 0.534 gwei base fee, so the old reserve (2.4M x (2 x base + 9,800 wei))
+// kept 0.00257 ETH, while MetaMask's default (its gas API's medium: 2 gwei tip, 2.781 gwei max fee)
+// holds 0.00625 ETH at the site's gas limit (1.3 x 1,729,778): Max with ETH was refused.
+test("PAY-2: a routed ETH buy is sent with a wallet's tip (at least 2 gwei) and a max fee of twice the base fee plus it, fitted to the ETH it leaves", () => {
+  const base = 534_491_551n, nodeTip = 9_800n, limit = (1_729_778n * 130n + 99n) / 100n;
+  const metaMask = limit * 2_781_445_819n;
+  assert.ok(ROUTE_GAS * (2n * base + nodeTip) < metaMask, "the old reserve: less than MetaMask holds");
+  const fees = routeFees(base, nodeTip);
+  assert.equal(WALLET_TIP, 2_000_000_000n);
+  assert.deepEqual(fees, { baseFee: base, maxFeePerGas: 2n * base + WALLET_TIP, maxPriorityFeePerGas: WALLET_TIP });
+  assert.equal(gasReserve(fees), 7_365_559_444_800_000n); // 0.0073656 ETH
+  assert.ok(gasReserve(fees) >= metaMask, "covers MetaMask's own fee too, for a wallet that ignores the site's");
+  // A node tip above the wallet's is kept.
+  assert.equal(routeFees(base, 5n * 10n ** 9n).maxPriorityFeePerGas, 5n * 10n ** 9n);
+  assert.ok(limit <= ROUTE_GAS, "the gas limit the site sends fits the reserve");
+  // Max leaves the reserve: the fees go as they are, and the wallet holds at most what Max kept.
+  const balance = 5n * 10n ** 16n, paid = ethMax(balance, gasReserve(fees)), left = balance - paid;
+  assert.equal(fitFees(fees, left), fees);
+  assert.ok(limit * fees.maxFeePerGas <= left);
+  assert.equal(fitFees(fees, gasReserve(fees)), fees);
+  // The base fee rose since Max (three full blocks): the max fee is lowered to what is left, still
+  // above the new base fee plus the tip.
+  const later = routeFees((base * 1_423_828n) / 1_000_000n, nodeTip), fit = fitFees(later, gasReserve(fees));
+  assert.deepEqual(fit, { ...later, maxFeePerGas: fees.maxFeePerGas });
+  assert.ok(limit * fit.maxFeePerGas <= gasReserve(fees) && fit.maxFeePerGas >= later.baseFee + later.maxPriorityFeePerGas);
+  // A typed amount that leaves a little less than the reserve: the max fee it covers.
+  assert.deepEqual(fitFees(fees, gasReserve(fees) - 1n), { ...fees, maxFeePerGas: fees.maxFeePerGas - 1n });
+  // Down to the base fee plus the tip; below that nothing is sent (the page says too little ETH is left).
+  const least = ROUTE_GAS * (base + WALLET_TIP);
+  assert.deepEqual(fitFees(fees, least), { ...fees, maxFeePerGas: base + WALLET_TIP });
+  assert.equal(fitFees(fees, least - 1n), undefined);
+  assert.equal(fitFees(fees, -1n), undefined);
+  // The page sends them with a routed ETH buy only, from a fresh read of the fees and the balance.
+  const page = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(page, /native \? readRouteFees\(r\.client\) : undefined,\s*native \? r\.client\.getBalance\(\{ address: address! \}\) : undefined,/);
+  assert.match(page, /const fit = fees && eth !== undefined \? fitFees\(fees, eth - raw\) : undefined;\s*if \(native && !fit\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*throw new DisplayError\(\s*fundsMessage\(eth! - raw, fees \? gasReserve\(fees\) : undefined\),\s*\);/);
+  // The refusal rereads the fees (so Max keeps enough again), and the wallet's own refusal keeps its words.
+  assert.match(page, /readRouteFees\(r\.client\),\s*\[address, revision\],/);
+  assert.match(page, /\[NO_FUNDS\]: fundsMessage\(\)/);
+  assert.match(page, /\.\.\.\(fit && \{\s*maxFeePerGas: fit\.maxFeePerGas,\s*maxPriorityFeePerGas: fit\.maxPriorityFeePerGas,\s*\}\)/);
+  assert.match(page, /reserve = gasFees\.data \? gasReserve\(gasFees\.data\) : undefined/);
+  // useTx gives the fees to the wallet only: an eth_call with a max fee checks the balance against the
+  // node's whole gas cap (50M gas on geth).
+  const ctx = fs.readFileSync(new URL("../src/context.tsx", import.meta.url), "utf8");
+  assert.match(ctx, /const \{\s*maxFeePerGas,\s*maxPriorityFeePerGas,\s*\.\.\.req\s*\}: NonNullable<typeof prepared> = prepared \|\|/);
+  assert.match(ctx, /await r\.client\.call\(\{ \.\.\.req, account: address \}\);\s*const estimate = await r\.client\.estimateGas\(\{ \.\.\.req, account: address \}\);/);
+  assert.match(ctx, /wallet\.sendTransaction\(\{\s*\.\.\.req,\s*\.\.\.\(maxFeePerGas !== undefined && \{ maxFeePerGas, maxPriorityFeePerGas \}\),/);
 });
 
 test("the Buy page: Pay with ETH by default, remembered per browser, IMD for the seed's opening buy and for every sale", () => {
@@ -297,6 +356,19 @@ test("RT1-3: the price impact is the Quoter's IMD against the pools' price after
   assert.match(src, /impactKey = `\$\{raw\}:\$\{route\?\.symbol \?\? ""\}`/);
 });
 
+// RT2-1: the impact in what the buyer gets. "8.13% below the pool's price" read like a discount, but 8.13%
+// less IMD is about 8.9% more paid for each IMD; USDC's route has two pools.
+test("RT2-1: the price impact's words say the buy gets less IMD than at the pool's price (the pools' prices for USDC)", () => {
+  assert.equal(impactWords(ETH_ROUTE, "IMD", 813), "8.13% less IMD than at the pool’s price");
+  assert.equal(impactWords(USDC_ROUTE, "IMD", 661), "6.61% less IMD than at the pools’ prices");
+  assert.equal(impactWords(ETH_ROUTE, "IMD", 300), "3.00% less IMD than at the pool’s price");
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(src, /`Tick “Buy anyway” above to get \$\{impactWords\(route!, pair, impact\)\}, or lower the amount\.`/);
+  assert.match(src, /title=\{`This buy gets \$\{impactWords\(route, pair, impact\)\}\.`\}/);
+  assert.match(src, /Buy anyway, getting \{pct\(impact\)\} less \{pair\}/);
+  assert.doesNotMatch(src, /below the pool’s price|less \$\{pair\} than the pool’s price/);
+});
+
 // RT1-1: the minimum a trade is sent with is the one the page showed at the click. The fork's case: the
 // page showed ≈ 3,044,008 PLEA (1% minimum 3,013,568); another wallet's 1 ETH buy was mined; the fresh
 // quote at the click was 2,651,744. The old code sent 1% under the fresh quote, 2,625,227.
@@ -334,7 +406,7 @@ test("PAY-3: on the ETH route the wallet's insufficient funds reads in the gas r
   // Without it, the plain gas words.
   assert.match(explainError(wallet).title, /You need (Sepolia )?ETH for gas/);
   const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
-  assert.match(src, /\.\.\.\(native \? \{ \[NO_FUNDS\]: fundsMessage \} : \{\}\)/);
+  assert.match(src, /\.\.\.\(native \? \{ \[NO_FUNDS\]: fundsMessage\(\) \} : \{\}\)/);
   assert.match(src, /title: "Not bought: too little ETH is left for the gas\."/);
 });
 

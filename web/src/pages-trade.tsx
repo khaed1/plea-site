@@ -56,13 +56,16 @@ import {
   buyPath,
   ethMax,
   feeWords,
+  fitFees,
   gasReserve,
   impactBps,
+  impactWords,
   IMPACT_CONFIRM_BPS,
   isNative,
   quoteToImd,
   rateLine,
   readHopFees,
+  readRouteFees,
   routeLine,
   routeRefusal,
 } from "./pay";
@@ -308,8 +311,14 @@ export function Buy() {
     [address, route?.symbol],
     !!address && !!s && !!route,
   );
-  // The ETH a routed buy leaves for gas (Max keeps it; a typed amount that leaves less is warned).
-  const reserve = useRead(() => gasReserve(r.client), [address], !!address && !!s && native);
+  // The fees a routed ETH buy is sent with, and the ETH it leaves for gas at them (Max keeps it; a
+  // typed amount that leaves less is warned).
+  const gasFees = useRead(
+      () => readRouteFees(r.client),
+      [address, revision],
+      !!address && !!s && native,
+    ),
+    reserve = gasFees.data ? gasReserve(gasFees.data) : undefined;
   const inputToken = selling
       ? r.addresses.PLEA
       : route
@@ -501,21 +510,21 @@ export function Buy() {
     quote.error === LIQUIDITY_SHORT ||
     quote.error === NO_LIQUIDITY ||
     (!!route && routeRefusal(quote.error));
-  // Native ETH also pays the gas: an amount that leaves less than the reserve is warned (the wallet
-  // has the last word on its own fee), Max never takes it.
+  // Native ETH also pays the gas: an amount that leaves less than the reserve is warned (the send
+  // lowers its max fee to what is left while the chain still takes it, fitFees), Max never takes it.
   const gasLeft =
     native && available !== undefined && raw > 0n && raw <= available
       ? available - raw
       : undefined;
   const gasNote =
-    !tradeDone && gasLeft !== undefined && reserve.data !== undefined && gasLeft < reserve.data
-      ? `This leaves ${amount(gasLeft, 18, 4)} ETH; the wallet needs about ${amount(reserve.data, 18, 4, "up")} ETH free for the gas. Lower the amount or press Max.`
+    !tradeDone && gasLeft !== undefined && reserve !== undefined && gasLeft < reserve
+      ? `This leaves ${amount(gasLeft, 18, 4)} ETH; the wallet needs about ${amount(reserve, 18, 4, "up")} ETH free for the gas. Lower the amount or press Max.`
       : "";
   const reason = tradeDone
     ? ""
     : amountReason ||
       (confirmImpact && !impactAccepted
-        ? `Tick “Buy anyway” above to pay ${pct(impact)} below the pool’s price, or lower the amount.`
+        ? `Tick “Buy anyway” above to get ${impactWords(route!, pair, impact)}, or lower the amount.`
         : "") ||
       (!needsApproval
         ? quote.error ||
@@ -591,11 +600,12 @@ export function Buy() {
     title: `The price moved: the new quote is ≈ ${tokenAmount(fresh, s, selling)}.`,
     body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, selling)}, so nothing was sent and your ${unit} stays in your wallet. The quote above is the new one: press ${selling ? "Sell" : "Buy"} again to ${selling ? "sell" : "buy"} at it.`,
   });
-  // Native ETH pays the gas too: the wallet's "insufficient funds" in the gas reserve's words.
-  const fundsMessage = {
+  // Native ETH pays the gas too: the wallet's "insufficient funds", or the send's own check
+  // (fitFees, with the ETH left and the reserve at the fees read then), in the gas reserve's words.
+  const fundsMessage = (left = gasLeft, need = reserve) => ({
     title: "Not bought: too little ETH is left for the gas.",
-    body: `${gasLeft !== undefined ? `Paying ${payAmount(raw)} leaves ${amount(gasLeft, 18, 4)} ETH; the` : "The"} wallet needs ${reserve.data !== undefined ? `about ${amount(reserve.data, 18, 4, "up")} ETH` : "ETH"} free for the gas. Lower the amount or press Max. Nothing was sent.`,
-  };
+    body: `${left !== undefined ? `Paying ${payAmount(raw)} leaves ${amount(left, 18, 4)} ETH; the` : "The"} wallet needs ${need !== undefined ? `about ${amount(need, 18, 4, "up")} ETH` : "ETH"} free for the gas. Lower the amount or press Max. Nothing was sent.`,
+  });
   const routerErrors: Record<string, { title: string; body: string }> = universal
     ? {
         BalanceTooLow: priceMessage,
@@ -674,7 +684,7 @@ export function Buy() {
       errors: {
         ...swapErrors,
         ...routerErrors,
-        ...(native ? { [NO_FUNDS]: fundsMessage } : {}),
+        ...(native ? { [NO_FUNDS]: fundsMessage() } : {}),
       },
       prepare: async () => {
         if (!shown)
@@ -693,12 +703,25 @@ export function Buy() {
           // Cabal lives); the router enforces the page's minimum: a balance check on the buyer's
           // PLEA for a buy, the IMD it takes for a sale.
           const router = { address: trade.router, minHopPrice: trade.minHopPrice },
-            [block, held] = await Promise.all([
+            [block, held, fees, eth] = await Promise.all([
               r.client.getBlock(),
               selling
                 ? Promise.resolve(0n)
                 : read(r, "PLEA", "balanceOf", [address]),
+              native ? readRouteFees(r.client) : undefined,
+              native ? r.client.getBalance({ address: address! }) : undefined,
             ]);
+          // Native ETH: the fees go with the buy, fitted to the ETH it leaves, so the most the wallet
+          // holds for gas is what Max kept. Too little left for the fees the chain takes now (a typed
+          // amount that leaves too little, or the base fee more than doubled since Max): nothing is
+          // sent, and the page rereads the fees, so Max keeps enough again.
+          const fit = fees && eth !== undefined ? fitFees(fees, eth - raw) : undefined;
+          if (native && !fit) {
+            setRevision((n) => n + 1);
+            throw new DisplayError(
+              fundsMessage(eth! - raw, fees ? gasReserve(fees) : undefined),
+            );
+          }
           const encoded = route
             ? // ETH or USDC: the route's pools into IMD, then PLEA's pool, in the same execute.
               encodeBuyVia({
@@ -743,6 +766,10 @@ export function Buy() {
             }),
             // Native ETH is the transaction's value; every other currency comes through Permit2.
             value: (encoded as { value?: bigint }).value ?? 0n,
+            ...(fit && {
+              maxFeePerGas: fit.maxFeePerGas,
+              maxPriorityFeePerGas: fit.maxPriorityFeePerGas,
+            }),
           };
         }
         const zeroForOne =
@@ -963,18 +990,18 @@ export function Buy() {
                       if (available === undefined) return;
                       if (native) {
                         // Max leaves the gas: what a routed buy may burn at today's fees.
-                        if (reserve.data === undefined) return;
-                        const most = ethMax(available, reserve.data);
+                        if (reserve === undefined) return;
+                        const most = ethMax(available, reserve);
                         if (!most) {
                           setMaxNote(
-                            `Max keeps about ${amount(reserve.data, 18, 4, "up")} ETH free for the gas, and this wallet has ${amount(available, 18, 4)} ETH: too little to buy with ETH. Add ETH, or pay with another currency.`,
+                            `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas, and this wallet has ${amount(available, 18, 4)} ETH: too little to buy with ETH. Add ETH, or pay with another currency.`,
                           );
                           return;
                         }
                         setInput(exactAmount(most, 18, 0));
                         setMaxRaw(most);
                         setMaxNote(
-                          `Max keeps about ${amount(reserve.data, 18, 4, "up")} ETH free for the gas.`,
+                          `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas.`,
                         );
                         return;
                       }
@@ -1227,7 +1254,7 @@ export function Buy() {
               <>
                 <Notice
                   kind="warn"
-                  title={`This buy gets ${pct(impact)} less ${pair} than the pool’s price.`}
+                  title={`This buy gets ${impactWords(route, pair, impact)}.`}
                 >
                   <p>
                     {rateLine(route, pair, raw, quote.data.imd, quote.data.atPrice)}{" "}
@@ -1246,7 +1273,7 @@ export function Buy() {
                     disabled={tx.busy}
                   />
                   <span className="toggle-card__title" id="impact-title">
-                    Buy anyway, {pct(impact)} below the pool’s price
+                    Buy anyway, getting {pct(impact)} less {pair}
                   </span>
                 </label>
               </>
