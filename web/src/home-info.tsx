@@ -72,31 +72,38 @@ export function HowItWorks() {
         <p className="meta">Four steps, all on chain</p>
       </div>
       <div className="stack stack--xl">
-        <ol className="steps steps--4">
-          {[
-            [
-              "Buy",
-              `Open to anyone. Every trade pays a ${(n("PleaHook.IMD_FEE_BPS") + n("PleaHook.PLEA_BURN_BPS")) / 100}% fee, and ${cashbackWords(String(pair)).step(`${n("PleaHook.CASHBACK_BPS") / 100}%`, `${tokenAmount((100n * 10n ** 18n * BigInt(c("PleaHook.CASHBACK_BPS") || 0)) / (10000n + BigInt(c("PleaHook.IMD_FEE_BPS") || 0)), s, true)} on a 100 ${pair} buy`)}.`,
-            ],
-            [
-              "Plead",
-              `Write why you want to sell ${n("CabalGate.MIN_SHARE_BPS") / 100}% to ${n("CabalGate.MAX_SHARE_BPS") / 100}% of your PLEA (at most ${amount(c("CabalGate.MAX_SELL"), Number(s?.constants.decimals ?? 18))}): 1 to ${c("CabalGate.MAX_PLEA_BYTES")} bytes, any language. Pay the ${tokenAmount(c("CabalGate.ORACLE_FEE"), s, true)} oracle fee. The contract computes your need first.`,
-            ],
-            [
-              "The Cabal judges",
-              `${c("CabalGate.PANEL_SIZE")} judges score your plea from 0 to ${c("CabalGate.MAX_PLEA_SCORE")}, and ${c("CabalGate.QUORUM")} must agree. It usually takes 3 to 6 minutes. A score at or above your need is approved.`,
-            ],
-            [
-              `Sell in ${t("CabalGate.EXECUTE_WINDOW")}`,
-              `Approved: sell within ${t("CabalGate.EXECUTE_WINDOW")}, or tick auto-sell and anyone may sell it for you for a ${tokenAmount(LETTERBOX.TIP, s, true)} tip. Denied: one appeal within ${t("CabalGate.COOLDOWN")}. After a sale, a denial or a lapse: a ${span(n("CabalGate.COOLDOWN"), "adj")} cooldown.`,
-            ],
-          ].map(([title, text]) => (
-            <li className="step" key={title}>
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </li>
-          ))}
-        </ol>
+        <div className="stack stack--md">
+          <ol className="steps steps--4">
+            {[
+              [
+                "Buy",
+                `Open to anyone. Every trade pays a ${(n("PleaHook.IMD_FEE_BPS") + n("PleaHook.PLEA_BURN_BPS")) / 100}% fee, and ${cashbackWords(String(pair)).step(`${n("PleaHook.CASHBACK_BPS") / 100}%`, `${tokenAmount((100n * 10n ** 18n * BigInt(c("PleaHook.CASHBACK_BPS") || 0)) / (10000n + BigInt(c("PleaHook.IMD_FEE_BPS") || 0)), s, true)} on a 100 ${pair} buy`)}.`,
+              ],
+              [
+                "Plead",
+                `Write why you want to sell ${n("CabalGate.MIN_SHARE_BPS") / 100}% to ${n("CabalGate.MAX_SHARE_BPS") / 100}% of your PLEA (at most ${amount(c("CabalGate.MAX_SELL"), Number(s?.constants.decimals ?? 18))}): 1 to ${c("CabalGate.MAX_PLEA_BYTES")} bytes, any language. Pay the ${tokenAmount(c("CabalGate.ORACLE_FEE"), s, true)} oracle fee. The contract computes your need first.`,
+              ],
+              [
+                "The Cabal judges",
+                `${c("CabalGate.PANEL_SIZE")} judges score your plea from 0 to ${c("CabalGate.MAX_PLEA_SCORE")}, and ${c("CabalGate.QUORUM")} must agree. It usually takes 3 to 6 minutes. A score at or above your need is approved.`,
+              ],
+              [
+                `Sell in ${t("CabalGate.EXECUTE_WINDOW")}`,
+                `Approved: sell within ${t("CabalGate.EXECUTE_WINDOW")}, or tick auto-sell and anyone may sell it for you for a ${tokenAmount(LETTERBOX.TIP, s, true)} tip. Denied: one appeal within ${t("CabalGate.COOLDOWN")}. After a sale, a denial or a lapse: a ${span(n("CabalGate.COOLDOWN"), "adj")} cooldown.`,
+              ],
+            ].map(([title, text]) => (
+              <li className="step" key={title}>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </li>
+            ))}
+          </ol>
+          <p>
+            <a className="link-btn" href="#/docs">
+              Read the docs: every rule, step by step <Icon name="arrow-right" />
+            </a>
+          </p>
+        </div>
         {!dead && sellGateWarning() && (
           <Notice title={sellGateWarning()!.title}>
             <p>{sellGateWarning()!.body}</p>
