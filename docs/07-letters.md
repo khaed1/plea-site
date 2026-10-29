@@ -46,7 +46,7 @@ At another price the PLEA counts change, but {{letter_min_value}} stays the leas
 - **Commands are capitals, then a space.** "SELL" sells; "sell" is read as a new plea, and is refused while you have an open one. APPEAL alone is refused. NAME alone clears your name.
 - **Names.** {{name_min_length}} to {{name_max_length}} characters, using {{name_chars}}. Each name belongs to one wallet. Reserved: {{name_reserved}}.
 - **An appeal letter.** It appeals your newest plea for its original amount, a little less if the fee sale shrank your PLEA. Its fees must fit in {{max_fee_share}} of your PLEA, or in {{fee_cap}} of the denied plea's amount, so you need about {{letter_appeal_min_value}} unless the second fits. See [Appeals](06-appeals.md).
-- **Read your letter's state.** The Letterbox's `status` on Etherscan's Read Contract tab, given your wallet, answers in one sentence. `leaderboard` gives the season's top 25.
+- **Read your letter's state.** The Letterbox's `status` on Etherscan's Read Contract tab, given your wallet, answers in one sentence. `leaderboard` gives the season's top {{top}}.
 - **Points.** An approved letter's score counts for the season like any other. Its points can be recorded once the objection window has passed. See [Seasons and prizes](10-seasons.md).
 - **After the Cabal dies.** New letters are refused. PLEA still waiting in a letter comes back through settle.
 

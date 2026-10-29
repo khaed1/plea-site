@@ -38,7 +38,7 @@ And the owner's fee on a 100 IMD buy: {{fee_owner}} of the 98.04 IMD that reache
 ## Good to know
 
 - **The source is public and matches.** Sourcify matches each contract's code on Ethereum with its source at the launch commit: seven in full, and PleaHook on its running code. The links are under the picture.
-- **Check a free sender.** Every address the owner allows is public: PLEA's `allowed` view answers for any address, and each one is logged as an `Allowed` event. Such an address could send PLEA to another market; it can never sell in PLEA's pool without a plea.
+- **Check a free sender.** Every address the owner allows is public: on Etherscan, PLEA's Read Contract tab answers for any address, and its event log lists each one. Such an address could send PLEA to another market; it can never sell in PLEA's pool without a plea.
 - **The claim list decides the {{supply_distributor}}.** The code pays whatever the list says. Until it is set, nobody can claim: the [Claim](#/claim) page says "The list is not open yet".
 - **A safety check at the open.** On Ethereum, opening trading is refused if the seasons are shorter than {{seed_check_season}}, the dead-man shorter than {{seed_check_deadman}}, or the opening market cap under {{market_cap_check}}. The launched code opens at {{market_cap}}.
 - **Before the start time.** Anyone but the owner who tries to open trading early is refused: "Trading is not open yet. Wait until the start time shown."

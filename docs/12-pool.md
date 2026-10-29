@@ -26,8 +26,8 @@ A cap follows the pool's PLEA down as people buy. PLEA sold back above the cap i
 A first week, in round numbers.
 
 1. **The open.** The pool holds all {{supply_pool}}, and the cap is the same.
-2. **Day 1.** Buyers take 120,000,000 PLEA, so the pool holds 700,000,000. The cap may follow by only {{cap_decay_per_day}} a day: 820,000,000 − 54,606,666 = 765,393,334. Sales may bring the pool back up to that with no trim.
-3. **Day 3.** The cap has had three days: it may have fallen 3 × 54,606,666 = 163,819,998, to 656,180,002. A buy leaves the pool with 699,000,000 PLEA. That is more than 656,180,002, so the cap falls all the way to it: 699,000,000.
+2. **Day 1.** Buyers take 120,000,000 PLEA, so the pool holds 700,000,000. The cap may follow by only {{cap_decay_per_day}} a day, ({{supply_pool}} − {{cap_floor}}) ÷ {{cap_decay_days}}. After one day it is about 820 − 54.6 = 765.4 million. Sales may bring the pool back up to that with no trim.
+3. **Day 3.** Two more days let the cap fall about 2 × 54.6 = 109.2 million more, to about 656.2 million. But a buy leaves the pool with 699,000,000 PLEA, and the cap never falls below what the pool holds: it stops at 699,000,000.
 4. **A sale.** Next comes the largest sale a plea allows, {{max_sell}}. The trade's {{fee_burn}} burn comes off first: 2,500,000 × 25 ÷ 10,025 = about 6,234 PLEA. About 2,493,766 PLEA reach the pool, which would then hold 701,493,766: 2,493,766 over the cap.
 5. **The trim.** Those 2,493,766 PLEA are burned at once. The same share of the pool's IMD, 2,493,766 ÷ 701,493,766 = 0.36% of it, is kept for the wall. The pool holds 699,000,000 PLEA again, at the same price.
 6. **The wall.** At the next rebalance, that IMD joins the wall below the price.
@@ -44,7 +44,7 @@ And the wall's climb: if the price doubles in a day, the wall's top needs about 
 - **The rebalance button.** When the wall has work, Home's Fees and supply panel shows "Rebalance buy wall". If there is nothing to do, the site says: "The buy wall has no work ready. Wait for more fees or a market move."
 - **Not the Wall page.** The site's [Wall](#/wall) page lists every plea and its verdict. It has nothing to do with the buy wall.
 - **A reference price.** The pool's contract also keeps a reference price that moves at most {{ref_step}} ticks a block. The wall sits below the lowest of the price now, the reference and its slow top, so one block's pump cannot reach it.
-- **The opening price.** The pool's prices come in steps of {{tick_spacing}} ticks. The opening is rounded up to the next step, so it is about 0.23% above {{seed_price}}.
+- **The opening price.** The pool's prices come in steps of {{tick_spacing}} ticks. The opening is rounded up to the next step, so it is {{seed_price_rounding}} above {{seed_price}}.
 - **After the Cabal dies.** The same cap, trims and wall, with anyone free to sell. See [The dead-man](13-dead-man.md).
 
 ::: builders

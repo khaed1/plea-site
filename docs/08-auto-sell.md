@@ -45,7 +45,7 @@ What the plea costs you in IMD, besides the usual trade fee:
 - **A delivery has a floor.** A runner's sale must pay at least {{delivery_floor}} of the escrow's hourly value, or it fails and someone may try again inside the window.
 - **Appeals too.** The appeal box has the same tick. An auto-sell appeal asks for the denied plea's amount, and its fees, {{letter_appeal_fee}}, are paid in PLEA. See [Appeals](06-appeals.md).
 - **Letters are different.** A letter always pleads {{letter_share}} of your PLEA and pays no auto-sell fee. The box pleads the amount you choose and pays it. See [Letters](07-letters.md).
-- **Where the fee goes.** The {{auto_sell_fee}} joins the season's prize pot, which pays the season's top 25. See [Seasons and prizes](10-seasons.md).
+- **Where the fee goes.** The {{auto_sell_fee}} joins the season's prize pot, which pays the season's top {{top}}. See [Seasons and prizes](10-seasons.md).
 
 ::: builders
 The box calls `Letterbox.plead(amount, text)`, and the appeal box `appealAuto(originalId, text)`. Both escrow the amount and pay the fees through `CabalGate.submitFor` / `appealFor` with the auto-sell flag; `deliver(id)` takes `AUTO_SELL_FEE` from the sale for `Seasons` unless the plea came by letter. Refusals: `TooSmallForTheFee(value)`, `FeeTooHigh(maxFeePlea, balance)`, and the gate's own (`FeeTooHigh(pleaIn, maxPleaIn)` from the fee sale). A plea sold by hand with the box ticked is refused at the gate with `UseLetterbox`.

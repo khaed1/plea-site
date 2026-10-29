@@ -12,7 +12,7 @@ Your need is {{pass_mark}} minus your fact score. The contract reads the fact sc
 2. **Held.** How long ago you bought, on average, weighted by the PLEA each buy got. Under a day: {{held_points_0}}. {{held_day_1}} day: {{held_points_1d}}. {{held_day_3}} days: {{held_points_3d}}. {{held_day_7}} days: {{held_points_7d}}.
 3. **Profit or loss.** The PLEA your buys got, at the latest hourly price, against the IMD they cost you, fees included. At a loss: {{profit_points_loss}}. Up at most {{profit_band_50}}: {{profit_points_50}}. At most {{profit_band_200}}: {{profit_points_200}}. At most {{profit_band_500}}: {{profit_points_500}}. At most {{profit_band_1000}}: {{profit_points_1000}}. More: {{profit_points_more}}.
 4. **PLEA you received.** PLEA no buy of yours covers, from the airdrop or a prize, counts as held since trading opened, at {{received_profit}} for profit. A plea bigger than your buy record mixes the two, weighted by PLEA and rounded.
-5. **The 24-hour trend.** The latest hourly price against the price 24 hours earlier. Up more than {{trend_band}}: {{trend_up}}. Within {{trend_band}}, or no price from 24 hours ago: {{trend_flat}}. Down more than {{trend_band}}: {{trend_down}}.
+5. **The trend.** The latest hourly price against the price {{trend_window}} earlier. Up more than {{trend_band}}: {{trend_up}}. Within {{trend_band}}, or no price from {{trend_window}} before: {{trend_flat}}. Down more than {{trend_band}}: {{trend_down}}.
 6. **Your need.** Add the four parts: that is your fact score, from {{fact_min}} to {{fact_max}}. Your need is {{pass_mark}} minus it, so it is never below {{need_min}}.
 7. **The verdict.** The judges score from 0 to {{max_score}}. A score at or above your need is approved.
 
