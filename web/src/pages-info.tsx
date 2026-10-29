@@ -113,6 +113,18 @@ export function Home() {
             </a>
           </div>
           <TradingGate />
+          {/* A copycat token named PLEA was announced on its own site (2026-10-29): name the one contract. */}
+          <Notice kind="warn" title="Only one PLEA">
+            <p>PLEA’s token contract on {site().chain}:</p>
+            <p>
+              <AddressView address={r.addresses.PLEA} label="PLEA" />
+            </p>
+            <p>
+              Other tokens called PLEA are not ours: check the address before
+              you buy. All of PLEA’s contracts are on the{" "}
+              <a href="#/contracts">Contracts</a> page.
+            </p>
+          </Notice>
         </div>
         {latest && <HeroPlea p={latest} />}
       </div>

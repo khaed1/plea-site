@@ -38,6 +38,7 @@ a:hover { text-decoration-thickness: 3px; }
 /* On a state fill the theme's ring could vanish (cream on yellow in dark): use ink there. */
 .toast--pending, .toast--ok, .toast--bad, .toast--sold, .notice--warn, .notice--bad, .notice--ok, .issue--bad, .issue--warn, .banner, .textarea.is-invalid .textarea__bar { --focus-ring: 3px solid var(--on-state); }
 .toast--pending code, .toast--ok code, .toast--bad code, .toast--sold code, .notice--warn code, .notice--bad code, .notice--ok code, .issue code { background: var(--day); color: var(--on-state); }
+.notice--warn .copy-btn, .notice--bad .copy-btn, .notice--ok .copy-btn { background: var(--day); color: var(--on-state); border-color: var(--on-state); }
 input, textarea, button, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 hr { border: 0; border-top: var(--bw-thin) dashed var(--line-soft); margin: var(--space-4) 0; }
