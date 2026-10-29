@@ -1,7 +1,7 @@
 {
   "_meta": {
     "deployment": "PLEA launch #2647 on Ethereum (block 26,293,890)",
-    "source": "khaed1/plea mainnet @ 42e0f855875786a953e945e528e9d7f2724a5352 (src/ = /home/user/plea-mainnet/src)",
+    "source": "khaed1/plea, the branch IMD deployed for the Ethereum launch, @ 42e0f855875786a953e945e528e9d7f2724a5352 (its src/; every file:line below is there)",
     "status": "DRAFT by the main session from a first read; every entry must be re-checked, and the hook's mechanics (launch fee curve, cap decay, trim, wall) are still to add",
     "format": "key -> {text: words the docs print, value: raw on-chain value as a decimal string or null, chain: the site's constant key con(s, 'Contract.NAME') or null, format: int|imd|plea|duration|bps|multiplier|text, source: file:line, what: one line}"
   },

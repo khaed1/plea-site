@@ -486,7 +486,7 @@ export type CheckInput = {
   numberText?: NumberText;
 };
 /** Everything wrong with one page: parse errors, the title, heading order, unknown placeholders and
- * diagrams, links to pages that do not exist, and the word "mainnet". */
+ * diagrams, links to pages that do not exist, and the main network's nickname (MAIN_NETWORK). */
 export function checkPage(md: string, title: string, input: CheckInput) {
   const { blocks, errors } = parse(md, input.numberText);
   const problems = [...errors];

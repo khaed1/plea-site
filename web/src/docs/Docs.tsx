@@ -146,7 +146,9 @@ function DocsSearch() {
   const [query, setQuery] = useState("");
   const box = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
-  const results = useMemo(() => search(INDEX, query), [query]);
+  const SHOWN = 8;
+  const all = useMemo(() => search(INDEX, query, Infinity), [query]);
+  const results = all.slice(0, SHOWN);
   const active = terms(query).join("").length >= 2;
   useEffect(() => {
     const clear = () => setQuery("");
@@ -200,7 +202,9 @@ function DocsSearch() {
         />
       </div>
       <p id="docs-q-count" className="sr-only" aria-live="polite">
-        {active ? `${results.length || "No"} result${results.length === 1 ? "" : "s"}` : ""}
+        {active
+          ? `${all.length || "No"} result${all.length === 1 ? "" : "s"}${all.length > SHOWN ? `, the first ${SHOWN} shown` : ""}`
+          : ""}
       </p>
       {active &&
         (results.length ? (
@@ -219,6 +223,11 @@ function DocsSearch() {
                 </a>
               </li>
             ))}
+            {all.length > SHOWN && (
+              <li className="small text-2 docs-results__more" aria-hidden="true">
+                {all.length} sections match; the first {SHOWN} are shown. Add a word to narrow it.
+              </li>
+            )}
           </ul>
         ) : (
           <p className="small text-2 docs-results__none">No section mentions “{query.trim()}”.</p>

@@ -171,6 +171,9 @@
   color: var(--ink);
   font-weight: var(--w-bold);
 }
+.docs-results__more {
+  padding: var(--space-2) var(--space-3);
+}
 .docs-results__none {
   padding-inline: var(--space-1);
 }
@@ -253,6 +256,9 @@
 .docs-anchor:hover {
   color: var(--ink);
   background: var(--paper-2);
+}
+.docs-body [tabindex="-1"] {
+  scroll-margin-top: var(--space-4);
 }
 .docs-body [tabindex="-1"]:focus-visible {
   outline-offset: var(--space-1);
@@ -424,6 +430,38 @@
 .docs-figure__svg {
   width: 100%;
   height: auto;
+}
+/* fee-bar: the bar stretches; its numbers are text on top, the same size at every width. */
+.docs-bar {
+  position: relative;
+  height: 56px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.docs-bar__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.docs-bar__key {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-content: center;
+  width: 26px;
+  height: 26px;
+  border: var(--bw-thin) solid var(--night);
+  border-radius: 50%;
+  background: var(--day);
+  color: var(--night);
+  font-size: var(--text-sm);
+  font-weight: var(--w-heavy);
+  line-height: 1;
+}
+.docs-figure .costs > div {
+  align-items: center;
 }
 .docs-key-row {
   display: inline-flex;

@@ -1,7 +1,8 @@
 /** The docs' search: a small index built in the browser from the parsed pages (no service). One entry
  * per section: a page's opening (before its first heading) and each heading with the text under it.
- * A result needs every word of the query (any case, any part of a word); a word in the heading counts
- * most, then in the page's title, then in the text. */
+ * A result needs every word of the query (any case, any part of a word). The whole query in the
+ * heading counts most, then a heading word that starts with a query word, then the page's title, then
+ * how often the words occur in the text. */
 import { plain, docLink, type Block, type List, type NumberText } from "./markdown.ts";
 
 export type SearchEntry = {
@@ -70,26 +71,31 @@ const count = (hay: string, w: string) => {
   }
   return n;
 };
-/** The best `limit` sections for `query` (none under two characters). */
+const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Whether a word of `hay` starts with `w` ("auto-sell" has no word starting "to"). */
+const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${escape(w)}`, "u").test(hay);
+const wholeWord = (hay: string, w: string) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}])${escape(w)}($|[^\\p{L}\\p{N}])`, "u").test(hay);
+/** The best `limit` sections for `query` (none under two characters), best first. */
 export function search(index: SearchEntry[], query: string, limit = 8): SearchResult[] {
   const words = terms(query);
   if (words.join("").length < 2) return [];
+  const phrase = words.join(" ");
   const scored: { e: SearchEntry; score: number }[] = [];
   for (const e of index) {
     const heading = norm(e.heading),
       page = norm(e.page),
       text = norm(e.text);
-    let score = 0;
-    for (const w of words) {
-      const s = (heading.includes(w) ? 10 : 0) + (page.includes(w) ? 5 : 0) + count(text, w);
-      if (!s) {
-        score = 0;
-        break;
-      }
-      const whole = new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "u");
-      score += s + (whole.test(heading) || whole.test(text) ? 2 : 0);
-    }
-    if (score) scored.push({ e, score });
+    // Every word must be somewhere: the heading, the title or the text.
+    if (!words.every((w) => heading.includes(w) || page.includes(w) || text.includes(w))) continue;
+    let score = words.length > 1 && heading.includes(phrase) ? 20 : 0;
+    for (const w of words)
+      score +=
+        (startsWord(heading, w) ? 10 : 0) +
+        (startsWord(page, w) ? 5 : 0) +
+        count(text, w) +
+        (wholeWord(heading, w) || wholeWord(text, w) ? 2 : 0);
+    scored.push({ e, score });
   }
   scored.sort((a, b) => b.score - a.score || a.e.order - b.e.order);
   return scored.slice(0, limit).map(({ e }) => ({

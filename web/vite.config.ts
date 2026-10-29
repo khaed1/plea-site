@@ -18,7 +18,7 @@ const keys: Record<string, string> = {
   PLEA_OG_IMAGE_ALT: meta.ogImageAlt,
 };
 // The docs (docs/NN-slug.md at the repository root, rendered by src/docs): the build fails on a page
-// outside the sidebar, an unknown {{number}} or diagram, a broken docs link or the word "mainnet"
+// outside the sidebar, an unknown {{number}} or diagram, a broken docs link or the main network's nickname
 // (src/docs/markdown.ts checkDocs; the unit tests run the same checks and the numbers' own).
 function checkTheDocs() {
   const dir = new URL("../docs/", import.meta.url);

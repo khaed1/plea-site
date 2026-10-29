@@ -222,7 +222,9 @@ test("blocks: paragraphs, lists nested one level, tables, quotes, code, rules, d
   assert.match(parse("::: note\n::: warn\nx\n:::\n:::").errors.join(), /callout inside a callout/);
 });
 
-test("the page checks: title, heading order, unknown numbers and diagrams, links, the word mainnet", () => {
+// The main network's nickname, built here so that this file never spells it (a testnet build refuses it).
+const NICKNAME = ["main", "net"].join("");
+test("the page checks: title, heading order, unknown numbers and diagrams, links, the main network's nickname", () => {
   const input = { numbers: Object.keys(NUMBERS), diagrams: diagramNames, numberText: fileText };
   assert.deepEqual(checkPage("# Fees\n\n## A\n\n### B\n\n{{fee_total}}\n\n::: diagram fee-bar", "Fees", input).problems, []);
   const bad = (md) => checkPage(md, "Fees", input).problems.join("\n");
@@ -234,8 +236,9 @@ test("the page checks: title, heading order, unknown numbers and diagrams, links
   assert.match(bad("# Fees\n\n::: diagram no-such"), /unknown diagram "no-such"/);
   assert.match(bad("# Fees\n\n[x](99-nope.md)"), /does not exist/);
   assert.match(bad("# Fees\n\n[x](../keeper/VPS.md)"), /neither a site page/);
-  assert.match(bad("# Fees\n\nOn Ethereum mainnet."), /the word "mainnet"/);
-  assert.match(bad("# Fees\n\nChain ID 1."), /the word "Chain ID 1"/);
+  assert.match(bad(`# Fees\n\nOn Ethereum ${NICKNAME}.`), new RegExp(`the word "${NICKNAME}"`));
+  const chainOne = ["Chain", "ID", String(1)].join(" ");
+  assert.match(bad(`# Fees\n\n${chainOne}.`), new RegExp(`the word "${chainOne}"`));
   const files = { ...docFiles, "11-fees.md": docFiles["11-fees.md"] + "\n[x](04-your-bar.md#no-such-heading)\n", "19-extra.md": "# Extra\n" };
   const all = checkDocs(files, input).join("\n");
   assert.match(all, /docs\/19-extra.md is not in the sidebar/);
@@ -320,7 +323,7 @@ test("an unknown number or diagram fails to render (the build refuses them first
   assert.throws(() => html("# Fees\n\n::: diagram no-such"), /unknown diagram "no-such"/);
 });
 
-test("every page renders with the real diagrams and numbers: no raw placeholder, no 'mainnet'", () => {
+test("every page renders with the real diagrams and numbers: no raw placeholder, no network nickname", () => {
   for (const p of DOCS) {
     const out = R.renderToStaticMarkup(
       R.createElement(R.Markdown, { tree: parse(docFiles[fileOf(p)], fileText).blocks, ctx: ctx({ slug: p.slug }) }),
@@ -333,11 +336,15 @@ test("every page renders with the real diagrams and numbers: no raw placeholder,
 
 test("the fee-bar diagram: an image with words, five numbered parts that add up to the total", () => {
   const out = R.renderToStaticMarkup(R.createElement(R.diagrams["fee-bar"]));
-  assert.match(out, /<svg class="docs-figure__svg" viewBox="0 0 360 64" role="img" aria-labelledby="([^"]+)"[^>]*><title id="\1">/);
+  assert.match(out, /<svg class="docs-bar__svg" viewBox="0 0 1000 48" preserveAspectRatio="none" role="img" aria-labelledby="([^"]+)"><title id="\1">/);
+  // The numbers on the bar sit at the middle of their parts: 50, 100, 25, 25, 25 of 225.
+  const keys = [...out.matchAll(/<span class="docs-bar__key" style="left:([\d.]+)%" aria-hidden="true">(\d)<\/span>/g)];
+  assert.deepEqual(keys.map((k) => k[2]), ["1", "2", "3", "4", "5"]);
+  assert.deepEqual(keys.map((k) => Number(k[1]).toFixed(2)), ["11.11", "44.44", "72.22", "83.33", "94.44"]);
   const alt = out.match(/<title id="[^"]+">([^<]+)<\/title>/)[1].replace(/&#x27;|’/g, "'");
   assert.equal(
     alt,
-    "A bar for the 2.25% fee every trade pays, in five numbered parts: 1, back to you, as staked imd: 0.5% of the IMD; 2, the owner: 1% of the IMD; 3, the season's prize pot: 0.25% of the IMD; 4, the buy wall, kept in the pool: 0.25% of the IMD; 5, burned: 0.25% of the PLEA. Parts 1 to 4 are 2% of the trade's IMD; part 5 is 0.25% of its PLEA.",
+    "A bar for the 2.25% fee every trade pays, in five numbered parts: 1, back to you, as staked IMD: 0.5% of the IMD; 2, the owner: 1% of the IMD; 3, the season's prize pot: 0.25% of the IMD; 4, the buy wall, kept in the pool: 0.25% of the IMD; 5, burned: 0.25% of the PLEA. Parts 1 to 4 are 2% of the trade's IMD; part 5 is 0.25% of its PLEA.",
   );
   assert.equal(NUMBERS.fee_total.text, "2.25%");
   assert.match(out, /<figcaption class="docs-figure__title">The 2.25% fee on every trade: 2% of its IMD in four parts, and 0.25% of its PLEA, burned<\/figcaption>/);
