@@ -97,7 +97,7 @@ export default function FeeBar() {
         ]}
       />
       <p className="small text-2">
-        Once the Cabal is dead there are no more seasons: part 3 joins the pool too.
+        Once the Cabal is dead there are no more seasons: part 3 goes to the buy wall too, like part 4.
       </p>
     </figure>
   );

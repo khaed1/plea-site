@@ -13,7 +13,7 @@ The risks, one by one.
 1. **You may not be able to sell.** While the Cabal lives, every sale needs an approved plea. The judges may deny you, again and again. One plea sells at most {{max_share}} of your PLEA, and never more than {{max_sell}}. See [Your bar](04-your-bar.md).
 2. **Pleading costs money, whatever the verdict.** Every plea pays the {{oracle_fee}} oracle fee; it is never refunded. An appeal costs {{appeal_total}}. After a sale, a denial or a lapse you wait {{cooldown}} before the next plea.
 3. **The pool may not be able to pay.** The pool starts with no IMD at all: it only holds the IMD that buyers have put in, plus the buy wall. A sale bigger than the pool can fill fails, and an approved plea sells all at once or not at all. Early on, the pool may be small.
-4. **Fees are high at the start.** Every trade pays {{fee_total}}. In the first {{launch_window}}, a buy pays up to {{launch_open_fee}} of what reaches the pool on top. See [Fees](11-fees.md).
+4. **Fees are high at the start.** Every trade pays {{fee_total}}. In the first {{launch_window}}, a buy also pays the launch fee: at the very open its whole fee is {{launch_open_fee}} of what reaches the pool, {{launch_open_fee_of_payment}} of what you pay. See [Buying](02-buying.md).
 5. **Scanners may call PLEA a trap.** Wallets and token scanners test a token by trying a plain sale. While the Cabal lives a plain sale fails, so they may warn that PLEA cannot be sold. That is the plea rule at work, written in the code and on this site, not a hidden trap. Once the Cabal dies, PLEA sells like any token.
 6. **No sending, either.** While the Cabal lives you cannot send PLEA to another wallet. Only the pool, PLEA's own contracts and the owner's allowed senders can.
 7. **The judges can go quiet.** The Cabal is IMD's oracle. If it does not answer, your plea gets no verdict and its fee is spent. If no verdict comes for {{deadman}}, the Cabal dies, and everyone may sell at once. See [The dead-man](13-dead-man.md).
@@ -21,6 +21,10 @@ The risks, one by one.
 9. **The owner has a few powers.** It opens trading early if it wants, sets the claim list once, may let chosen addresses send PLEA freely, and receives the {{fee_owner}} fee. An allowed address could move its PLEA to another market. See [Contracts and owner](15-contracts.md).
 10. **The code may have a flaw.** It was audited many times; that lowers the risk but is no guarantee. See [Audits](16-audits.md).
 11. **The price can fall.** The buy wall is not a floor: enough selling uses it up.
+
+## In a picture
+
+::: diagram sale-gates
 
 ## Example
 

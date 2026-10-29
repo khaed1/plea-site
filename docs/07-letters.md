@@ -12,7 +12,7 @@ A letter pleads {{letter_share}} of your PLEA. Its fees are paid in PLEA, in the
    - Etherscan's message page, [etherscan.io/idm](https://etherscan.io/idm): the Letterbox as the recipient, your plea as the message.
    - Etherscan's Write Contract tab for the Letterbox: the function `letter`, with your plea as its text.
    - Your wallet's data field: your plea, written as hex.
-2. **The first word decides.** APPEAL followed by a text appeals your latest denied plea. SELL sells your own approved letter. NAME followed by a name sets your display name. Any other text is a new plea. The command words are in capitals.
+2. **The first word decides.** APPEAL followed by a text appeals your newest plea, if it was denied. SELL sells your own approved letter. NAME followed by a name sets your display name. Any other text is a new plea. The command words are in capitals.
 3. **A plea for {{letter_share}}.** A letter pleads {{letter_share}} of your PLEA, never more than {{max_sell}}. The same judges, rules and need as on the site apply; your fact score is read from your PLEA before the escrow. See [Your bar](04-your-bar.md).
 4. **Fees in PLEA.** In the same transaction, some of your PLEA is sold for {{letter_fee}}: the {{oracle_fee}} oracle fee and a {{runner_tip}} tip for whoever delivers the sale. An appeal letter buys {{letter_appeal_fee}}, with the {{appeal_wall_share}} for the buy wall. The fee sale may spend PLEA worth up to {{fee_cap}} of the fees at the hourly price; what it does not spend comes back at once.
 5. **The fees' limit.** The fees may take at most {{max_fee_share}} of your PLEA. So a letter needs PLEA worth about {{letter_min_value}} or more at the hourly price.

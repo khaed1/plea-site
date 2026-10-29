@@ -16,7 +16,7 @@ The owner has a few small powers and receives the {{fee_owner}} fee. The owner c
 6. **Power 2: the claim list, once.** The owner sets the distributor's list of who may claim its {{supply_distributor}}. Once set, it can never change. See [Claim](#/claim).
 7. **Power 3: free senders.** The owner may let an address send PLEA freely while the Cabal lives. It is for good: an address can be added, never removed. Even then, it cannot send PLEA into the pool or the gate, so it cannot sell in PLEA's pool without a plea.
 8. **Handing over.** The owner may hand PLEA or the distributor to a new owner, in two steps, or give ownership up. The distributor cannot be given up before its list is set.
-9. **The {{fee_owner}} fee.** It goes to the wallet that launched PLEA, for good, even if PLEA's ownership is handed over.
+9. **The {{fee_owner}} fee.** It goes to the owner's wallet as it was at the launch, written into the pool's contract for good. It stays there even if PLEA's ownership is handed over.
 10. **What the owner cannot do.** Change any fee, time limit, number or rule. Take liquidity out of the pool. Move anyone's PLEA or IMD. Mint more PLEA. Change the judges. Earn season points, prizes or the bonus, or object to a plea.
 
 ## In a picture

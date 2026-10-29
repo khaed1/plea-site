@@ -1117,3 +1117,12 @@
 .dg-sev__badge--low {
   background: var(--noverdict);
 }
+
+/* ---------------------------------------------------------------- integrate: diagrams of pages 14, 17, 18
+   (keeper-jobs, sale-gates, word-map). Tokens only. */
+/* A flow that stays top to bottom at every width (word-map: its stages hold rows of badges). */
+@container (min-width: 600px) {
+  .dg-flow--down {
+    flex-direction: column;
+  }
+}

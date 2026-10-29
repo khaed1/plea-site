@@ -24,7 +24,8 @@ const ROWS = [
   { name: "mira_eth", seat: true, scores: [38, 36, 35] },
   { name: "oath_keeper", seat: false, scores: [37, 36, 34] },
 ];
-const OUT = { name: "fresh_start", rank: 11, scores: [33, 25] };
+/** Under the line: two approvals, each at least the lowest need (numbers.json need_min, 28), short of the points line. */
+const OUT = { name: "fresh_start", rank: 11, scores: [31, 28] };
 
 export default function Season() {
   const n = useNumbers(),

@@ -19,7 +19,11 @@ A keeper is whoever does them. Delivering a letter's sale pays a {{runner_tip}} 
 9. **Rebalance.** When the buy wall has work, anyone may rebalance it: "Rebalance buy wall" on Home. See [The pool](12-pool.md).
 10. **The keeper bot.** A small program does all of this, every few seconds, for everyone. Anyone may run one: the guide is [keeper/VPS.md](https://github.com/khaed1/plea/blob/main/keeper/VPS.md), and what it does is in its [README](https://github.com/khaed1/plea/blob/main/keeper/README.md).
 
-## The jobs at a glance
+## In a picture
+
+::: diagram keeper-jobs
+
+### The jobs at a glance
 
 | Job | When |
 | --- | --- |

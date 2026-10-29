@@ -117,6 +117,12 @@ test("every page passes the build's checks, and the skeletons keep the five part
     for (const part of ["In short", "How it works", "Example", "Good to know"]) assert.ok(heads.includes(part), `${fileOf(p)}: ${part}`);
   }
   assert.match(docFiles["11-fees.md"], /^::: diagram fee-bar$/m);
+  // Every page: How it works as numbered steps, and one diagram.
+  for (const p of DOCS) {
+    const text = docFiles[fileOf(p)];
+    assert.equal((text.match(/^::: diagram /gm) || []).length, 1, `${fileOf(p)}: one diagram`);
+    assert.match(text.split(/^## How it works$/m)[1].split(/^## /m)[0], /^1\. /m, `${fileOf(p)}: numbered steps`);
+  }
 });
 
 test("headings: h1 to h4, ids from the words, {#custom} ids, repeats numbered, h5 refused", () => {
@@ -580,7 +586,7 @@ test("season: the leaderboard rows add the seat's ×1.2 rounded down, and pay th
   assert.match(out, /4\.5 IMD<\/span> <span class="nowrap">\+ 450,000 PLEA<\/span> <span class="text-2 nowrap">\(4\.5%\)/);
   assert.match(out, /<span class="lb__label">Points<\/span> 107<\/span>/);
   assert.match(out, /4\.46 IMD<\/span> <span class="nowrap">\+ 446,000 PLEA<\/span>/);
-  assert.match(out, /no prize <span class="nowrap">\(58 of 60\)<\/span>/);
+  assert.match(out, /no prize <span class="nowrap">\(59 of 60\)<\/span>/);
   // shares_list is Seasons.shareBps(0..24), 10,000 basis points in all.
   const bps = NUMBERS.shares_list.text.split(", ").map((x) => Math.round(parseFloat(x) * 100));
   assert.equal(bps.length, 25);
@@ -640,4 +646,42 @@ test("audit-timeline: the twelve rounds' badges add up to numbers.json's totals"
   for (let r = 1; r <= 12; r++) assert.ok(out.includes(`Swarm round ${r}`), `round ${r}`);
   assert.match(out, /dg-sev__badge--high">1 High</);
   assert.match(out, /93 findings/);
+});
+
+// Pages 14, 17 and 18's diagrams (integrate): the same figure, drawn from numbers.json.
+const C_DIAGRAMS = ["keeper-jobs", "sale-gates", "word-map"];
+test("pages 14, 17 and 18's diagrams: a figure with a title, one image named in words, on its page", () => {
+  for (const name of C_DIAGRAMS) {
+    const out = draw(name);
+    assert.match(out, /^<figure class="docs-figure panel stack stack--md dg"><figcaption class="docs-figure__title">/, name);
+    assert.ok((nameOf(out) || "").length > 80, `${name}: the image's name says what it shows`);
+    assert.ok(!/\{\{|\}\}|undefined|NaN/.test(out), name);
+    assert.ok(!/\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i.test(out), name);
+    assert.ok(!out.slice(out.indexOf('role="img"')).includes("<a "), `${name}: no link inside the image`);
+  }
+  assert.match(docFiles["14-keepers.md"], /^::: diagram keeper-jobs$/m);
+  assert.match(docFiles["17-risks.md"], /^::: diagram sale-gates$/m);
+  assert.match(docFiles["18-glossary.md"], /^::: diagram word-map$/m);
+});
+
+test("keeper-jobs: every job's button, and only the delivery pays (the tip)", () => {
+  const out = draw("keeper-jobs");
+  for (const b of ["Expire unanswered plea", "Deliver approved sale", "Return escrow and tip", "Record the points", "Close season", "Send leftovers to the buy wall", "Rebalance buy wall"])
+    assert.ok(out.includes(b), b);
+  assert.equal((out.match(/Pays the 0\.25 IMD tip</g) || []).length, 1);
+  assert.equal((out.match(/Pays nothing</g) || []).length, 5);
+});
+
+test("sale-gates: the plea's limits, the verdict's quorum, the sell window and the cooldown", () => {
+  const name = nameOf(draw("sale-gates"));
+  for (const s of ["0.5 IMD oracle fee", "at most 50% of your PLEA, never more than 2,500,000 PLEA", "A need above 45", "17 of 30 judges", "within 20 minutes", "within 7 minutes", "waits 4 hours", "for 0.85 IMD", "for 33 hours"])
+    assert.ok(name.includes(s), s);
+});
+
+test("word-map: every A to Z word of the glossary sits in the map", () => {
+  const out = draw("word-map");
+  const words = [...docFiles["18-glossary.md"].split(/^## A to Z$/m)[1].split(/^## /m)[0].matchAll(/^- \*\*([^*]+)\.\*\*/gm)].map((m) => m[1]);
+  assert.ok(words.length > 40, String(words.length));
+  for (const w of words)
+    for (const part of w.split(", ")) assert.ok(out.toLowerCase().includes(`<span class="badge">${part.toLowerCase()}</span>`), part);
 });

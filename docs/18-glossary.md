@@ -20,6 +20,10 @@ The words in the order you meet them.
 8. Every trade pays the **fee**: some comes back as **cashback**, some fills the **buy wall**. PLEA sold back above the **cap** is burned in a **trim**.
 9. **Keepers** do the upkeep. If no verdict comes for long enough, the **dead-man** rule ends the Cabal.
 
+## In a picture
+
+::: diagram word-map
+
 ## A to Z
 
 - **Allowed sender.** An address the owner lets send PLEA freely while the Cabal lives. Added for good, never removed. [Contracts and owner](15-contracts.md).
