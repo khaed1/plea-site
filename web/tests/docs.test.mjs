@@ -548,3 +548,96 @@ test("ring: 30 seats, 17 of them ticked; objection-window: the 7-minute sale ins
   assert.match(obj, /<span class="dg-time__fill" style="width:100%;background:var\(--objection\)">/);
   for (const s of ["SUSTAINED", "OVERRULED", "VOID"]) assert.match(obj, new RegExp(`stamp--objection stamp--sm">${s}<`));
 });
+
+// Pages 10-16's diagrams (writer-b): the same figure, drawn from numbers.json and the contracts' rules.
+const B_DIAGRAMS = ["season", "pool", "heartbeat", "contracts", "audit-timeline"];
+const quiet = (f) => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    return f();
+  } finally {
+    console.warn = warn;
+  }
+};
+
+test("pages 10-16's diagrams: a figure with a title, one image named in words, no raw placeholder", () => {
+  for (const name of B_DIAGRAMS) {
+    assert.ok(R.diagrams[name], name);
+    const out = draw(name);
+    assert.match(out, /^<figure class="docs-figure panel stack stack--md dg"><figcaption class="docs-figure__title">/, name);
+    assert.ok((nameOf(out) || "").length > 200, `${name}: the image's name says what it shows`);
+    assert.ok(!/\{\{|\}\}|undefined|NaN|Infinity/.test(out), name);
+    assert.ok(!/\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i.test(out), name);
+    assert.ok(DOCS.some((p) => docFiles[fileOf(p)].includes(`::: diagram ${name}\n`)), `${name} is on a page`);
+  }
+});
+
+test("season: the leaderboard rows add the seat's ×1.2 rounded down, and pay the shares of a 100 IMD pot", () => {
+  const out = draw("season");
+  assert.match(out, /45 · 43 · 42 <span class="seatx nowrap">\(38·36·35 ×1\.2\)<\/span>/);
+  assert.match(out, /<span class="lb__label">Points<\/span> 130<\/span>/);
+  assert.match(out, /4\.5 IMD<\/span> <span class="nowrap">\+ 450,000 PLEA<\/span> <span class="text-2 nowrap">\(4\.5%\)/);
+  assert.match(out, /<span class="lb__label">Points<\/span> 107<\/span>/);
+  assert.match(out, /4\.46 IMD<\/span> <span class="nowrap">\+ 446,000 PLEA<\/span>/);
+  assert.match(out, /no prize <span class="nowrap">\(58 of 60\)<\/span>/);
+  // shares_list is Seasons.shareBps(0..24), 10,000 basis points in all.
+  const bps = NUMBERS.shares_list.text.split(", ").map((x) => Math.round(parseFloat(x) * 100));
+  assert.equal(bps.length, 25);
+  assert.equal(bps.reduce((a, b) => a + b, 0), 10000);
+  assert.deepEqual([bps[0], bps[24]], [Number(NUMBERS.share_first.value), Number(NUMBERS.share_last.value)]);
+});
+
+test("pool: the cap falls at most (seeded − floor) ÷ 15 a day, trims burn the excess, the wall climbs 700 ticks a day", () => {
+  const alt = nameOf(draw("pool"));
+  assert.match(alt, /falls at most about 54\.6 million PLEA a day/);
+  assert.match(alt, /catches up on day 5/);
+  assert.match(alt, /may rise at most 700 ticks, about 7\.25%, a day/);
+  assert.match(alt, /×1\.75 by day 8/); // 1.0001 ^ (700 × 8) = 1.75
+  assert.equal(Math.round(Math.pow(1.0001, 700 * 8) * 100) / 100, 1.75);
+  assert.equal(Math.floor((820_000_000 - 900_000) / 15), 54_606_666);
+});
+
+test("heartbeat: the Cabal dies the dead-man's hours after the last verdict; a missing verdict changes nothing", () => {
+  const alt = nameOf(draw("heartbeat"));
+  assert.match(alt, /Hour 30: a verdict, denied\. Back to 33 hours\./);
+  assert.match(alt, /Hour 40: a plea gets no verdict\. Nothing changes/);
+  assert.match(alt, /Hour 63: 33 hours since the last verdict\. The Cabal is dead, for good\./);
+  // The chain's DEADMAN moves the death with it.
+  assert.match(nameOf(quiet(() => draw("heartbeat", { "CabalGate.DEADMAN": 18000n }))), /Hour 35: 5 hours since the last verdict/);
+});
+
+test("contracts: the eight addresses and the owner's, each linked to Etherscan, the contracts to Sourcify too", () => {
+  const out = draw("contracts");
+  const keys = ["addr_plea", "addr_gate", "addr_letterbox", "addr_tribunal", "addr_hook", "addr_seasons", "addr_launch", "addr_distributor"];
+  for (const k of keys) {
+    const a = NUMBERS[k].text;
+    assert.match(a, /^0x[0-9a-fA-F]{40}$/, k);
+    assert.ok(out.includes(`href="https://etherscan.io/address/${a}"`), k);
+    assert.ok(out.includes(`href="https://repo.sourcify.dev/1/${a}"`), k);
+  }
+  assert.ok(out.includes(`href="https://etherscan.io/address/${NUMBERS.owner.text}"`));
+  assert.equal((out.match(/href="https:\/\/repo\.sourcify\.dev\//g) || []).length, 8);
+  // The links sit under the drawing, never inside the image.
+  const image = out.slice(out.indexOf('role="img"'), out.indexOf('<dl class="addr-list dg-addrs">'));
+  assert.ok(image.length > 1000 && !image.includes("<a "), "no link inside the image");
+});
+
+test("audit-timeline: the twelve rounds' badges add up to numbers.json's totals", () => {
+  const sum = { High: 0, Medium: 0, Low: 0, Info: 0 };
+  for (let r = 1; r <= Number(NUMBERS.audit_rounds.value); r++)
+    for (const part of NUMBERS[`audit_r${r}`].text.split(", ")) {
+      const [count, word] = part.split(" ");
+      assert.ok(word in sum, `round ${r}: ${part}`);
+      sum[word] += Number(count);
+    }
+  assert.deepEqual(
+    [sum.High, sum.Medium, sum.Low, sum.Info],
+    ["audit_high", "audit_medium", "audit_low", "audit_info"].map((k) => Number(NUMBERS[k].value)),
+  );
+  assert.equal(sum.High + sum.Medium + sum.Low + sum.Info, Number(NUMBERS.audit_total.value));
+  const out = draw("audit-timeline");
+  for (let r = 1; r <= 12; r++) assert.ok(out.includes(`Swarm round ${r}`), `round ${r}`);
+  assert.match(out, /dg-sev__badge--high">1 High</);
+  assert.match(out, /93 findings/);
+});
