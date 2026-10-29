@@ -1657,7 +1657,7 @@ export function Objections() {
           <p className="meta">
             {specific
               ? selected
-                ? `Plea #${selected.id}${shown ? "" : " · not approved"}`
+                ? `Plea #${selected.id}${shown ? "" : selected.status === 1 ? " · no verdict yet" : selected.status === 3 ? " · denied" : " · not approved"}`
                 : exists || !s
                   ? `Plea #${specific}`
                   : `${s.historyError ? "" : `${open.length} open now · `}plea #${specific} not found`

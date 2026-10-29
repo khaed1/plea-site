@@ -448,12 +448,13 @@ function SeasonBody({
           };
         }),
       );
-      const [best, seatHeld] = address
+      const [best, seatHeld, ownExcluded] = address
         ? await Promise.all([
             read("Seasons", "bestOf", [season, address]),
             read("Seasons", "holdsSeat", [address]),
+            read("Seasons", "excluded", [address]),
           ])
-        : [[0, 0, 0], false];
+        : [[0, 0, 0], false, false];
       const pleas = await unrecorded(r, s!),
         closing = closingPleas(pleas, s!, season);
       const own = pleas.filter(
@@ -469,6 +470,7 @@ function SeasonBody({
         own,
         closing,
         seatHeld,
+        ownExcluded,
       };
     },
     [
@@ -917,6 +919,7 @@ function SeasonBody({
                 <>
                   <p className="small">
                     {noPleaText({
+                      excluded: !!query.data?.ownExcluded,
                       season,
                       ended: ended || !!bounds[3],
                       last,
@@ -1262,6 +1265,7 @@ function SeasonBody({
                     now < closeAt ||
                     !bounds[0] ||
                     season !== nextToClose ||
+                    !!s!.historyError ||
                     !query.data
                   }
                   // A reason no wallet can change is shown to every viewer, before the connect
@@ -1271,7 +1275,11 @@ function SeasonBody({
                       ? `Anyone can close it from ${clock(closeAt)} (${span(grace, "adj")} grace).`
                       : season !== nextToClose
                         ? "Close the oldest season first."
-                        : undefined
+                        : // closeSeason records only the approvals it is sent: without the history they are
+                          // not known, and a close then could pay nobody and burn the PLEA bonus (NEW-1).
+                          s!.historyError
+                          ? "The history is incomplete, so the approved pleas the close must record first are not known. Close it once the history is read (Try history again at the top)."
+                          : undefined
                   }
                   reason={
                     query.error

@@ -316,7 +316,12 @@ test("F2: the projection says which unrecorded pleas it counts", () => {
     "Counts pleas #13 (+44), #16 (+51, seat × 1.2, if no objection is sustained) and #17 (+42), approved and not recorded: the close records them first. The close reads the seat again as it records.",
   );
   assert.equal(closeCounts({ pleas: [], mult: "1.2" }), "");
-  assert.match(closeCounts({ pleas: [], mult: "1.2", historyError: true }), /not counted until the history is read/);
+  assert.match(closeCounts({ pleas: [], mult: "1.2", historyError: true }), /not known until the history is read.*stays off until then/);
+  // F6: the launch owner gets no season pitch.
+  const { noPleaText } = seasonText;
+  const base = { season: 0n, ended: false, last: false, minPoints: 60, mult: "1.2" };
+  assert.match(noPleaText({ ...base, excluded: true }), /does not play seasons/);
+  assert.match(noPleaText(base), /two pleas that score 30 already reach the 60-point bar/);
 });
 
 test("N1, N2, N4: countdowns read 6m 05s; no 'yet' for a plea number that never comes; an Intake's no answer is not an expiry", () => {

@@ -48,7 +48,7 @@ export function closeCounts(o: {
   historyError?: boolean;
 }) {
   if (o.historyError)
-    return "Approved pleas nobody recorded are not counted until the history is read; the close records them first.";
+    return "Approved pleas nobody recorded are not known until the history is read, so this counts the recorded leaderboard only. The close records the ones it is sent, so it stays off until then.";
   if (!o.pleas.length) return "";
   const items = o.pleas.map(
       (p) =>
@@ -74,9 +74,13 @@ export function noPleaText(o: {
   current?: bigint;
   minPoints: number;
   mult: string;
+  /** Seasons.excluded: the launch owner does not play (F6). */
+  excluded?: boolean;
 }) {
   const n = o.season + 1n,
     head = `No approved plea of yours is recorded in season ${n}.`;
+  if (o.excluded)
+    return "This wallet does not play seasons: it is the launch owner's, so its pleas earn no points and no prize or bonus goes to it.";
   if (o.last)
     return `${head} It was the last season: pleas are closed, and no new plea counts in it.`;
   if (o.ended && o.dead)

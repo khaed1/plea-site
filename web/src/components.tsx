@@ -160,7 +160,14 @@ export const Empty = ({
     <div className="btn-row">
       {[...(action ? [action] : []), ...actions].map((a, i) =>
         a.href ? (
-          <a key={i} className="btn btn--sm" href={a.href}>
+          <a
+            key={i}
+            className="btn btn--sm"
+            href={a.href}
+            {...(/^https?:/.test(a.href)
+              ? { target: "_blank", rel: "noreferrer" }
+              : {})}
+          >
             {a.label}
           </a>
         ) : (
