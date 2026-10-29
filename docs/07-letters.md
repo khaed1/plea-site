@@ -30,11 +30,11 @@ On the site, a letter's page has the buttons: "Deliver approved sale" for anyone
 
 The smallest letter, if the hourly price is the opening {{seed_price}} a PLEA.
 
-1. **The fees' cap.** The fees are {{letter_fee}}. The fee sale may spend up to {{fee_cap}} of that, 0.825 IMD, which is 0.825 ÷ 0.00002 = 41,250 PLEA.
-2. **Your PLEA.** The fees may take at most {{max_fee_share}} of it: 41,250 ÷ 10% = 412,500 PLEA. You need about that much or more, worth 412,500 × 0.00002 = {{letter_min_value}}.
-3. **The plea.** The letter pleads {{letter_share}} of 412,500 = 82,500 PLEA, worth 82,500 × 0.00002 = 1.65 IMD. That clears both minimums: {{min_letter}} and {{min_sale_value}}.
-4. **The fee sale.** It sells about 38,400 PLEA: 0.75 IMD, plus the trade's fee, at 0.00002 IMD. The rest of the 41,250 comes back at once. Like any sale, it shrinks your buy record.
-5. **Delivered.** The sale must pay at least {{delivery_floor}} of the escrow's hourly value: 1.65 × 92.86% = 1.53 IMD. All of it is yours. The runner gets the {{runner_tip}} tip.
+1. **The fees' cap.** The fees are {{letter_fee}}. The fee sale may spend up to {{fee_cap}} of that, 0.825 IMD, which is 0.825 ÷ {{seed_price}} = 41,250 PLEA.
+2. **Your PLEA.** The fees may take at most {{max_fee_share}} of it: 41,250 ÷ {{max_fee_share}} = 412,500 PLEA. You need about that much or more, worth 412,500 × {{seed_price}} = {{letter_min_value}}.
+3. **The plea.** The letter pleads {{letter_share}} of 412,500 = 82,500 PLEA, worth 82,500 × {{seed_price}} = 1.65 IMD. That clears both minimums: {{min_letter}} and {{min_sale_value}}.
+4. **The fee sale.** It sells about 38,400 PLEA: {{letter_fee}}, plus the trade's fee, at {{seed_price}}. The rest of the 41,250 comes back at once. Like any sale, it shrinks your buy record.
+5. **Delivered.** The sale must pay at least {{delivery_floor}} of the escrow's hourly value: 1.65 × {{delivery_floor}} = 1.53 IMD. All of it is yours. The runner gets the {{runner_tip}} tip.
 6. **Or settled.** Your 82,500 PLEA and the {{runner_tip}} tip come back. The {{oracle_fee}} is spent.
 
 At another price the PLEA counts change, but {{letter_min_value}} stays the least your PLEA must be worth.
