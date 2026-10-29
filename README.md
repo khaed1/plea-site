@@ -4,7 +4,8 @@ The PLEA website: a static Vite + React + TypeScript app (wagmi/viem) that reads
 
 - `web/`: the source. It started as IMD's run 9 site (launch #2234 repository, commit `b214b529673ac46ec8adbb0766086403971efc34`, folder `web/`), with its licences (`web/licenses/`), unit tests (`web/tests/`) and QA scripts (`web/scripts/`).
 - `dist/`: the built export, committed. IMD hosts exactly these bytes (its import reads this repository as a site with `build: false`, `exportDir: "dist"`).
-- `docs/imd-run9/`: IMD's notes from the three run 9 site jobs (FRONTEND, DESIGN, FIXES, VALIDATION).
+- `docs/NN-slug.md`: the site's Docs section (`#/docs`, `#/docs/<slug>`, `#/docs/<slug>/<heading-id>`), 18 Markdown pages the build bundles and renders in the site's theme (`web/src/docs/`; how to write one: `web/src/docs/AUTHORING.md`; every number in `web/src/docs/numbers.json`).
+- `docs/imd-run9/`: IMD's notes from the three run 9 site jobs (FRONTEND, DESIGN, FIXES, VALIDATION). Not a docs page.
 - Branches: `next` is work in progress; `main` is what IMD hosts and moves only when a version passes every check. The old v10 static copy is kept on branch `archive/v10-copy`.
 
 ## Build

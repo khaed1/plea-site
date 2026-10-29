@@ -35,6 +35,7 @@ const entry = [
   `export { Markdown } from ${JSON.stringify(path.join(SRC, "docs/render.tsx"))};`,
   `export * as numbers from ${JSON.stringify(path.join(SRC, "docs/numbers.ts"))};`,
   `export { readerFor, NumbersProvider } from ${JSON.stringify(path.join(SRC, "docs/numbers-context.tsx"))};`,
+  `export * as kit from ${JSON.stringify(path.join(SRC, "docs/kit.tsx"))};`,
   ...diagramNames.map((n, i) => `import d${i} from ${JSON.stringify(path.join(DIAGRAM_DIR, n + ".tsx"))};`),
   `export const diagrams = {${diagramNames.map((n, i) => `${JSON.stringify(n)}: d${i}`).join(", ")}};`,
 ].join("\n");
@@ -234,6 +235,7 @@ test("the page checks: title, heading order, unknown numbers and diagrams, links
   assert.match(bad("# Fees\n\n{{no_such_number}}"), /unknown number \{\{no_such_number\}\}/);
   assert.match(bad("# Fees\n\n`{{_meta}}`"), /unknown number \{\{_meta\}\}/);
   assert.match(bad("# Fees\n\n::: diagram no-such"), /unknown diagram "no-such"/);
+  assert.match(bad("# Fees\n\nEscaped \\{{pass_mark}}"), /raw braces/);
   assert.match(bad("# Fees\n\n[x](99-nope.md)"), /does not exist/);
   assert.match(bad("# Fees\n\n[x](../keeper/VPS.md)"), /neither a site page/);
   assert.match(bad(`# Fees\n\nOn Ethereum ${NICKNAME}.`), new RegExp(`the word "${NICKNAME}"`));
@@ -364,6 +366,21 @@ test("the fee-bar diagram: an image with words, five numbered parts that add up 
     console.warn = warn;
   }
   assert.equal(said.length, 1);
+});
+
+test("the docs kit draws the site's stamp and need meter from given values and numbers.json", () => {
+  const stamp = R.renderToStaticMarkup(R.createElement(R.kit.Stamp, { state: "NO VERDICT", sub: "expired", size: "lg" }));
+  assert.equal(stamp, '<span class="stamp stamp--noverdict stamp--lg">NO VERDICT<span class="stamp__sub">expired</span></span>');
+  assert.equal(R.renderToStaticMarkup(R.createElement(R.kit.Stamp, { state: "OVERRULED" })), '<span class="stamp stamp--objection">OVERRULED</span>');
+  // Need = 69 - 34 = 35; a score of 33 is 2 short.
+  const meter = R.renderToStaticMarkup(R.createElement(R.kit.Meter, { fact: 34, score: 33, verdict: "DENIED" }));
+  assert.match(meter, /^<div class="meter meter--denied" style="--score:33;--need:35">/);
+  assert.match(meter, /Need <b>35<\/b> = 69 − fact <b>34<\/b>/);
+  assert.match(meter, /<span class="bad-text">2 short<\/span>/);
+  assert.match(meter, /role="img" aria-label="Score 33 of 45, need 35: 2 short"/);
+  const none = R.renderToStaticMarkup(R.createElement(R.kit.Meter, { fact: 41 }));
+  assert.match(none, /class="meter meter--none"/);
+  assert.match(none, /aria-label="No score yet, need 28 of 45."/);
 });
 
 test("search finds a heading and a word, best match first, and links to the heading", () => {

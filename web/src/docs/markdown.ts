@@ -504,6 +504,7 @@ export function checkPage(md: string, title: string, input: CheckInput) {
   for (const nodes of inlines(blocks))
     for (const n of nodes) {
       if (n.t === "num" && !known.has(n.key)) problems.push(`an unknown number {{${n.key}}}: add it to web/src/docs/numbers.json`);
+      if (n.t === "text" && /\{\{|\}\}/.test(n.v)) problems.push(`raw braces "${n.v.trim().slice(0, 30)}": a page never prints {{ or }}`);
       if (n.t === "link") {
         const href = docLink(n.href);
         if (href.startsWith("#/docs")) {
