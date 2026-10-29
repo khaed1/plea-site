@@ -21,7 +21,7 @@ export function closingCopy(o: {
     paysIn = `in ${o.pair}${o.bonus ? " and PLEA" : ""}`,
     grace = o.ready
       ? o.historyError
-        ? `The grace is over, but the site's close of season ${n} stays off until the history is read: the close must be sent every approved plea nobody recorded. `
+        ? `The grace is over, but the site's close of season ${n} stays off until the history is read. `
         : `The grace is over: anyone can close season ${n} now. `
       : "";
   if (o.last)

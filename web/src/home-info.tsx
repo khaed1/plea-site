@@ -500,6 +500,7 @@ export function ContractsPanel() {
             never removed. Even an allowed sender cannot send PLEA into the pool
             or the gate, so it cannot sell in PLEA’s pool without a plea.
           </p>
+          <p>The distributor’s owner sets the claim list’s root once.</p>
           <p>
             <b>Handing over.</b> The owner may hand PLEA or the distributor to a
             new owner, in two steps, or give ownership up.
@@ -512,7 +513,6 @@ export function ContractsPanel() {
             <b>The owner does not play.</b> Its pleas earn no points, no prize
             and no bonus.
           </p>
-          <p>The distributor’s owner sets the claim list’s root once.</p>
           <AddressView address={val(s, "PLEA.owner")} label="PLEA owner" />
         </Panel>
         {!val(s, "CabalGate.diedAt") && (
