@@ -277,11 +277,14 @@ export function Profile({ target }: { target?: string }) {
         derived.lapsedAt,
       ) + Number(con(s, "CabalGate.COOLDOWN")),
     label = data?.current || short(wallet || ""),
-    next = derived.open
-      ? `after #${data?.pendingPlea?.id}`
-      : cooldown > now
-        ? clock(cooldown)
-        : "Ready now";
+    // Before the seed the Cabal takes no pleas: not "Ready now" (RS1-N4).
+    next = !val(s, "PleaHook.seeded")
+      ? "After trading opens"
+      : derived.open
+        ? `after #${data?.pendingPlea?.id}`
+        : cooldown > now
+          ? clock(cooldown)
+          : "Ready now";
   if (target && !isAddress(target, { strict: false }))
     return (
       <>
@@ -525,7 +528,10 @@ export function Profile({ target }: { target?: string }) {
                   // The hourly checkpoint the next plea is scored on, labelled as such: #/buy and the
                   // header show the spot price (r2D-VN2). Signed, with U+2212, as on #/buy (r2X-7, r2D-N8).
                   [
-                    `At the hourly price, ${tokenAmount((BigInt(val(s, "PleaHook.latestPrice") || 0n) * 10n ** 24n) / 2n ** 96n, s, true)} per 1M`,
+                    // No hourly price before the seed: no "0.00 IMD per 1M" (RS1-N4).
+                    val(s, "PleaHook.latestPrice")
+                      ? `At the hourly price, ${tokenAmount((BigInt(val(s, "PleaHook.latestPrice") || 0n) * 10n ** 24n) / 2n ** 96n, s, true)} per 1M`
+                      : "At the hourly price, once trading opens",
                     data.basis[0]
                       ? signedPercent(
                           (Number(

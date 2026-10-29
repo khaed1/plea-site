@@ -44,16 +44,19 @@ export function slipAdvice(bps: number) {
   return next ? `raise the slippage to ${slipWords(next)}.` : "lower the amount.";
 }
 /** The warning under the chips at the top slippage (5%): how much less the trade may get, who can cause
- * it, and when to choose it. While the Cabal lives PLEA cannot be sold, so nobody can buy PLEA ahead of
- * a buy and sell it straight after (other buys still move the price); a route's own pool (IMD's ETH
- * pool) trades both ways, so a bot can sandwich the route's swap there; after the death PLEA's pool
- * trades both ways too. */
+ * it, and when to choose it. While the Cabal lives PLEA sells only through an approved plea, so a bot
+ * cannot simply buy PLEA ahead of a buy and sell it straight after, but other buys still move the price
+ * and so can a holder whose approved plea is open (CabalGate.executeSell sells it at a moment the seller
+ * picks inside its window: RC2-1); the route's own pools (IMD's ETH pool, and Uniswap's USDC/ETH pool
+ * before it on a USDC buy: RC2-5) trade both ways, so a bot can sandwich the route's swaps there; after
+ * the death PLEA's pool trades both ways too. */
 export function slipWarning(o: {
   bps: number;
   selling: boolean;
   dead: boolean;
-  /** The pool a route buys the IMD on (IMD’s ETH pool), or undefined for a buy paid with IMD. */
-  routePool?: string;
+  /** The pools a route buys the IMD on, in order (IMD’s ETH pool; Uniswap’s USDC/ETH pool first for
+   * USDC), or undefined for a buy paid with IMD. */
+  routePools?: string[];
   pair: string;
 }) {
   if (o.bps < SLIPPAGES[SLIPPAGES.length - 1]) return "";
@@ -64,9 +67,11 @@ export function slipWarning(o: {
   const when = `Choose ${most} only when buys at 2% keep failing${o.dead ? "." : ", as on a busy launch."}`;
   if (o.dead)
     return `${at}: a bot that sees your buy before it is mined can buy ahead of it and sell after. ${when}`;
-  if (o.routePool)
-    return `${at}: a bot that sees your buy before it is mined can buy ${o.pair} ahead of it on ${o.routePool} and sell it after. ${when}`;
-  return `${at}. PLEA cannot be sold while the Cabal lives, so no bot can buy ahead of you and sell straight after; other buyers can still move the price. ${when}`;
+  if (o.routePools?.length === 1)
+    return `${at}: a bot that sees your buy before it is mined can buy ${o.pair} ahead of it on ${o.routePools[0]} and sell it after. ${when}`;
+  if (o.routePools?.length)
+    return `${at}: a bot that sees your buy before it is mined can buy ahead of it on the route’s pools (${o.routePools.join(" and ")}) and sell after. ${when}`;
+  return `${at}. While the Cabal lives PLEA sells only through an approved plea, so a bot cannot simply buy ahead of you and sell straight after; other buyers can still move the price, and so can a holder whose approved plea is open, by buying ahead of you and selling after. ${when}`;
 }
 /** What helps when the ETH a buy leaves cannot pay the gas: a smaller amount, or Max, while Max has
  * something to spend; otherwise more ETH or another currency (the pool currency first). */

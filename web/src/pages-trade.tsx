@@ -526,12 +526,16 @@ export function Buy() {
     native && available !== undefined && raw > 0n && raw <= available
       ? available - raw
       : undefined;
-  const gasNote =
-    !tradeDone && gasLeft !== undefined && gasFees.data && reserve !== undefined && gasLeft < reserve
-      ? fitFees(gasFees.data, gasLeft)
-        ? `This leaves ${amount(gasLeft, 18, 4)} ETH for the gas: enough at the fees the site sends, less than the ${amount(reserve, 18, 4, "up")} ETH Max keeps in case your wallet sets its own fee.`
-        : `This leaves ${amount(gasLeft, 18, 4)} ETH, too little for the gas at today’s fees: Max keeps about ${amount(reserve, 18, 4, "up")} ETH for it. ${ethFix}`
-      : "";
+  const gasLow =
+      !tradeDone && gasLeft !== undefined && !!gasFees.data && reserve !== undefined && gasLeft < reserve,
+    // Too little even for the chain's own fee: the send would refuse it, so the button is off and
+    // points at this note (RC2-3).
+    gasShort = gasLow && !fitFees(gasFees.data!, gasLeft!);
+  const gasNote = !gasLow
+    ? ""
+    : gasShort
+      ? `This leaves ${amount(gasLeft, 18, 4)} ETH, too little for the gas at today’s fees: Max keeps about ${amount(reserve, 18, 4, "up")} ETH for it. ${ethFix}`
+      : `This leaves ${amount(gasLeft, 18, 4)} ETH for the gas: enough at the fees the site sends, less than the ${amount(reserve, 18, 4, "up")} ETH Max keeps in case your wallet sets its own fee.`;
   // Max's note, from the balance and fees read now: what it left for the gas while that is still
   // the reserve (otherwise the gas note says what is short), or why it could not spend anything.
   const maxText =
@@ -544,6 +548,9 @@ export function Buy() {
         : gasLeft !== undefined && gasLeft >= reserve
           ? `Max keeps about ${amount(gasLeft, 18, 4)} ETH free for the gas.`
           : "";
+  // The field's hint already says why the button is off: an amount over the balance or the cap, ETH
+  // left too short for the gas (RC2-3), or Max with nothing to spend (RC2-4). The button points at it.
+  const hintSays = invalid || gasShort || (raw <= 0n && !!maxText);
   const reason = tradeDone
     ? ""
     : amountReason ||
@@ -555,12 +562,12 @@ export function Buy() {
           (!quote.data ? "Waiting for the quote from the pool." : "")
         : "");
   const minOut = quote.data ? minimumOf(quote.data.out, slip) : undefined;
-  // At 5%: who can make the trade get that much less, on which pool (trade-text.ts slipWarning).
+  // At 5%: who can make the trade get that much less, on which pools (trade-text.ts slipWarning).
   const slipNote = slipWarning({
     bps: slip,
     selling,
     dead,
-    routePool: route?.path[route.path.length - 1].pool,
+    routePools: route?.path.map((h) => h.pool),
     pair,
   });
   const normal = BigInt(con(s, "PleaHook.IMD_FEE_BPS") || 0),
@@ -1044,6 +1051,10 @@ export function Buy() {
                         if (reserve === undefined) return;
                         const most = ethMax(available, reserve);
                         if (!most) {
+                          // Nothing to spend: Max empties the field, so its note replaces a typed
+                          // amount's hint instead of hiding behind it (RC2-4).
+                          setInput("");
+                          setMaxRaw(undefined);
                           setMaxNote("short");
                           return;
                         }
@@ -1363,10 +1374,13 @@ export function Buy() {
             connectText={`Connect in the top bar to ${selling ? "sell" : "buy"}.`}
             onRun={buy}
             disabled={
-              !tx.ready || !!reason || (!native && allowance.data === undefined)
+              !tx.ready ||
+              !!reason ||
+              gasShort ||
+              (!native && allowance.data === undefined)
             }
-            reason={invalid ? undefined : reason}
-            describedBy={invalid ? "pay-hint" : undefined}
+            reason={hintSays ? undefined : reason}
+            describedBy={hintSays ? "pay-hint" : undefined}
           />
           {address &&
             raw > 0n &&
@@ -1875,7 +1889,12 @@ export function Plead() {
               address
                 ? invalid
                   ? reason
-                  : `From ${tokenAmount(min, s)}${auto ? ` (worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price)` : ""} to ${tokenAmount(max, s)}: at most ${Number(con(s, "CabalGate.MAX_SHARE_BPS") || 0) / 100}% and ${tokenAmount(cap, s)}.`
+                  : !balance.data
+                    ? undefined
+                    : bal === 0n
+                      ? // No range "from 0 PLEA to 0 PLEA" for an empty wallet (RS1-N4).
+                        `This wallet has no PLEA to plead with. A plea sells from ${Number(con(s, "CabalGate.MIN_SHARE_BPS") || 100) / 100}% to ${Number(con(s, "CabalGate.MAX_SHARE_BPS") || 0) / 100}% of your PLEA, at most ${tokenAmount(cap, s)}.`
+                      : `From ${tokenAmount(min, s)}${auto ? ` (worth ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} at the hourly price)` : ""} to ${tokenAmount(max, s)}: at most ${Number(con(s, "CabalGate.MAX_SHARE_BPS") || 0) / 100}% and ${tokenAmount(cap, s)}.`
                 : undefined
             }
           />

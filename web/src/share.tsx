@@ -94,7 +94,8 @@ export function ShareCard({ p }: { p?: Plea }) {
         : [];
   const sold = p?.status === 4;
   const state = p && s ? shareState(p, s, now) : "";
-  const cardUrl = location.host + location.pathname + (p ? `#/p/${p.id}` : "");
+  // The site's own address (site.json siteUrl), whichever alias it was opened through (RS1-N2).
+  const cardUrl = site().siteUrl.replace(/^https?:\/\//, "") + (p ? `#/p/${p.id}` : "");
   const dead = !!s?.v["CabalGate.diedAt"];
   return (
     <div
@@ -354,7 +355,7 @@ export function Share({
   const node = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const url = location.href.split("#")[0] + (p ? `#/p/${p.id}` : "#/");
+  const url = site().siteUrl + (p ? `#/p/${p.id}` : "#/");
   const subject = p ? shareSubject(p, address) : "PLEA";
   const ending = s?.v["CabalGate.diedAt"]
     ? "The Cabal is dead; PLEA trades freely:"

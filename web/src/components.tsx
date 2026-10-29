@@ -231,7 +231,8 @@ export function AddressView({
           try {
             await navigator.clipboard.writeText(address);
             setCopied(true);
-            toast?.({ kind: "info", text: `${label} address copied.` });
+            // The label may read "the owner" (the Copy button's words): the toast starts a sentence.
+            toast?.({ kind: "info", text: `${label[0].toUpperCase()}${label.slice(1)} address copied.` });
             setTimeout(() => setCopied(false), 1500);
           } catch {
             toast?.({

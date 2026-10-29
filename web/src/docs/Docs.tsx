@@ -4,7 +4,8 @@
  * contracts' constants arrive (numbers.ts). Loaded as its own chunk (App.tsx). */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../context";
-import { Empty, Icon, Notice, Title } from "../components";
+import { AddressView, Empty, Icon, Notice, Title } from "../components";
+import { val } from "../chain";
 import { site } from "../site";
 import { DOCS, docHref, headingElementId, pageOf, prevNext } from "./order";
 import { tocOf } from "./markdown";
@@ -13,6 +14,38 @@ import { search, terms, type SearchEntry } from "./search";
 import { Markdown } from "./render";
 import { DIAGRAMS, INDEX, NUMBERS, PAGES } from "./pages";
 import { NumbersProvider, readerFor } from "./numbers-context";
+
+/** PLEA's eight contracts as Home's old Contracts list named them, for a test build's own list. */
+const EIGHT = ["PLEA", "CabalGate", "Seasons", "PleaHook", "Letterbox", "Tribunal", "PleaDistributor", "PleaLaunch"];
+/** A test build's own addresses, in its banner on Contracts and owner (RS1-L3): the page lists
+ * Ethereum's, and Home's "Only one PLEA" notice and the footer's Contracts link point here. */
+function SiteContracts() {
+  const { r, s } = useApp(),
+    owner = val(s, "PLEA.owner") as string | undefined;
+  const rows: [string, string | undefined][] = [
+    ...EIGHT.map((name): [string, string | undefined] => [name, r.addresses[name]]),
+    ["The owner", owner],
+    [s?.constants.pairSymbol || site().pairSymbol, r.addresses.PairToken],
+  ];
+  return (
+    <>
+      <p>This site’s own contracts on {site().chain}:</p>
+      <dl className="addr-list">
+        {rows.map(
+          ([name, address]) =>
+            address && (
+              <div key={name}>
+                <dt>{name}</dt>
+                <dd>
+                  <AddressView address={address} label={name.replace(/^The /, "the ")} />
+                </dd>
+              </div>
+            ),
+        )}
+      </dl>
+    </>
+  );
+}
 
 export default function Docs({ slug, heading }: { slug?: string; heading?: string }) {
   const { statics, s } = useApp();
@@ -49,6 +82,7 @@ export default function Docs({ slug, heading }: { slug?: string; heading?: strin
                 {!site().pay &&
                   ` Pay with ETH or USDC is Ethereum only: here the Buy page pays with ${site().pairSymbol}.`}
               </p>
+              {page.slug === "contracts" && <SiteContracts />}
             </Notice>
           )}
           {page ? (

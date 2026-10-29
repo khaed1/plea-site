@@ -1785,18 +1785,20 @@ export function Objections() {
       </section>
       <section className="section">
         <div className="section__head">
-          <h2>Recent rulings</h2>
+          {/* Pending and unanswered objections are listed too, with their state as the ruling: not
+              only rulings (RS1-N5). */}
+          <h2>Recent objections</h2>
         </div>
         {objections.length ? (
           <div
             className="table-wrap"
             role="region"
-            aria-label="Recent rulings on objections"
+            aria-label="Recent objections"
             tabIndex={0}
           >
             <table className="table table--tight">
               <caption className="sr-only">
-                Recent rulings on objections, newest first
+                Recent objections and their rulings, newest first
               </caption>
               <thead>
                 <tr>

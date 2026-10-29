@@ -6,11 +6,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { DEFAULT_SLIP, gasFix, SLIPPAGES, slipAdvice, slipWarning, slipWords } from "../src/trade-text.ts";
 import { minimumOf, priceLimit, sendMinimum } from "../src/swap-math.ts";
+import { quietStorage } from "../src/wallet-list.ts";
 
 const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
 const N = JSON.parse(fs.readFileSync(new URL("../src/docs/numbers.json", import.meta.url)));
 const buying = fs.readFileSync(new URL("../../docs/02-buying.md", import.meta.url), "utf8");
-const POOL = "IMD’s ETH pool";
+const POOL = "IMD’s ETH pool",
+  USDC_POOL = "Uniswap’s USDC/ETH pool";
 
 test("slippage: 0.5% · 1% · 2% · 5%, every visit at 1%; the chips, the minimum and the docs follow one list", () => {
   assert.deepEqual([...SLIPPAGES], [50, 100, 200, 500]);
@@ -68,35 +70,47 @@ test("a buy that failed on price suggests one step up: 0.5% → 1%, 1% → 2%, 2
 test("the 5% warning: up to 5% less than the quote, who can cause it on which pool, and when to choose it", () => {
   const base = { selling: false, dead: false, pair: "IMD" };
   for (const bps of [50, 100, 200]) assert.equal(slipWarning({ ...base, bps }), "", `${bps}: no warning`);
-  // IMD while the Cabal lives: PLEA cannot be sold back, so no sandwich on PLEA's pool, only other buys.
+  // IMD while the Cabal lives: PLEA sells only through an approved plea, so no plain bot sandwich on
+  // PLEA's pool; other buys can move the price, and so can a holder whose approved plea is open, who may
+  // buy ahead and sell inside the plea's window (CabalGate.executeSell: RC2-1).
   assert.equal(
     slipWarning({ ...base, bps: 500 }),
-    "At 5% the buy can get up to 5% less PLEA than the quote if someone trades just before it. PLEA cannot be sold while the Cabal lives, so no bot can buy ahead of you and sell straight after; other buyers can still move the price. Choose 5% only when buys at 2% keep failing, as on a busy launch.",
+    "At 5% the buy can get up to 5% less PLEA than the quote if someone trades just before it. While the Cabal lives PLEA sells only through an approved plea, so a bot cannot simply buy ahead of you and sell straight after; other buyers can still move the price, and so can a holder whose approved plea is open, by buying ahead of you and selling after. Choose 5% only when buys at 2% keep failing, as on a busy launch.",
   );
-  // ETH or USDC: IMD's ETH pool trades both ways.
+  assert.doesNotMatch(slipWarning({ ...base, bps: 500 }), /cannot be sold|no bot can/);
+  // ETH: IMD's ETH pool trades both ways.
   assert.equal(
-    slipWarning({ ...base, bps: 500, routePool: POOL }),
+    slipWarning({ ...base, bps: 500, routePools: [POOL] }),
     "At 5% the buy can get up to 5% less PLEA than the quote if someone trades just before it: a bot that sees your buy before it is mined can buy IMD ahead of it on IMD’s ETH pool and sell it after. Choose 5% only when buys at 2% keep failing, as on a busy launch.",
+  );
+  // USDC: both of the route's pools, Uniswap's USDC/ETH pool first (RC2-5).
+  assert.equal(
+    slipWarning({ ...base, bps: 500, routePools: [USDC_POOL, POOL] }),
+    "At 5% the buy can get up to 5% less PLEA than the quote if someone trades just before it: a bot that sees your buy before it is mined can buy ahead of it on the route’s pools (Uniswap’s USDC/ETH pool and IMD’s ETH pool) and sell after. Choose 5% only when buys at 2% keep failing, as on a busy launch.",
   );
   // After the death PLEA's own pool trades both ways, for buys and sales.
   assert.equal(
     slipWarning({ ...base, bps: 500, dead: true }),
     "At 5% the buy can get up to 5% less PLEA than the quote if someone trades just before it: a bot that sees your buy before it is mined can buy ahead of it and sell after. Choose 5% only when buys at 2% keep failing.",
   );
-  assert.equal(slipWarning({ ...base, bps: 500, dead: true, routePool: POOL }), slipWarning({ ...base, bps: 500, dead: true }));
+  assert.equal(slipWarning({ ...base, bps: 500, dead: true, routePools: [POOL] }), slipWarning({ ...base, bps: 500, dead: true }));
   assert.equal(
     slipWarning({ ...base, bps: 500, dead: true, selling: true }),
     "At 5% the sale can get up to 5% less IMD than the quote if someone trades just before it: a bot that sees your sale before it is mined can sell ahead of it and buy back after. Choose 5% only when sales at 2% keep failing.",
   );
-  for (const o of [{}, { routePool: POOL }, { dead: true }, { dead: true, selling: true }])
+  for (const o of [{}, { routePools: [POOL] }, { routePools: [USDC_POOL, POOL] }, { dead: true }, { dead: true, selling: true }])
     assert.doesNotMatch(slipWarning({ ...base, bps: 500, ...o }), /mainnet|chain id 1\b/i);
-  // Under the chips, describing them, only at 5%; the route's pool is the last hop's (IMD's ETH pool).
-  assert.match(src, /const slipNote = slipWarning\(\{\s*bps: slip,\s*selling,\s*dead,\s*routePool: route\?\.path\[route\.path\.length - 1\]\.pool,\s*pair,\s*\}\);/);
+  // Under the chips, describing them, only at 5%; the route's pools are its hops' own, in order (the
+  // routes in site.json name them).
+  assert.match(src, /const slipNote = slipWarning\(\{\s*bps: slip,\s*selling,\s*dead,\s*routePools: route\?\.path\.map\(\(h\) => h\.pool\),\s*pair,\s*\}\);/);
+  const eth = JSON.parse(fs.readFileSync(new URL("../networks/ethereum/site.json", import.meta.url), "utf8"));
+  assert.deepEqual(eth.pay.routes.map((x) => x.path.map((h) => h.pool)), [[POOL], [USDC_POOL, POOL]]);
   assert.match(src, /aria-describedby=\{slipNote \? "slip-note" : undefined\}/);
   assert.match(src, /\{slipNote && \(\s*<p className="field__hint" id="slip-note">\s*\{slipNote\}\s*<\/p>\s*\)\}/);
   // The docs say the same.
-  assert.match(buying, /At 5% a buy can get up to 5% less PLEA than the quote if someone trades just before it\. While the Cabal lives PLEA cannot be sold/);
-  assert.match(buying, /IMD's ETH pool trades both ways/);
+  assert.match(buying, /At 5% a buy can get up to 5% less PLEA than the quote if someone trades just before it\. While the Cabal lives PLEA sells only through an approved plea, so a bot cannot simply buy PLEA ahead of your buy and sell it straight after; other buys can still move the price, and so can a holder whose approved plea is open, by buying ahead of you and selling after\./);
+  assert.match(buying, /IMD's ETH pool trades both ways, and so does Uniswap's USDC\/ETH pool that a USDC buy passes first/);
+  assert.doesNotMatch(buying, /PLEA cannot be sold|nobody can buy PLEA ahead/);
   assert.match(buying, /Choose 5% only when buys at 2% keep failing, for example on a busy launch\./);
 });
 
@@ -117,9 +131,19 @@ test("RT3-5 + RT2-2: when Max has nothing to spend, the ETH words offer more ETH
 test("RT3-4: the gas note warns only when the send would refuse; a buy that fits the fees sent gets a margin note", () => {
   assert.match(
     src,
-    /\? fitFees\(gasFees\.data, gasLeft\)\s*\? `This leaves \$\{amount\(gasLeft, 18, 4\)\} ETH for the gas: enough at the fees the site sends, less than the \$\{amount\(reserve, 18, 4, "up"\)\} ETH Max keeps in case your wallet sets its own fee\.`\s*: `This leaves \$\{amount\(gasLeft, 18, 4\)\} ETH, too little for the gas at today’s fees/,
+    /gasShort = gasLow && !fitFees\(gasFees\.data!, gasLeft!\);\s*const gasNote = !gasLow\s*\? ""\s*: gasShort\s*\? `This leaves \$\{amount\(gasLeft, 18, 4\)\} ETH, too little for the gas at today’s fees: Max keeps about \$\{amount\(reserve, 18, 4, "up"\)\} ETH for it\. \$\{ethFix\}`\s*: `This leaves \$\{amount\(gasLeft, 18, 4\)\} ETH for the gas: enough at the fees the site sends, less than the \$\{amount\(reserve, 18, 4, "up"\)\} ETH Max keeps in case your wallet sets its own fee\.`;/,
   );
+  assert.match(src, /const gasLow =\s*!tradeDone && gasLeft !== undefined && !!gasFees\.data && reserve !== undefined && gasLeft < reserve,/);
   assert.doesNotMatch(src, /the wallet needs about/);
+});
+
+test("RC2-3 + RC2-4: the Buy button is off when the gas note says the ETH left is too little, and points at the field's hint; Max with nothing to spend empties the field so its note shows", () => {
+  // The button: off for gasShort, its reason left to the field's hint (over the balance or the cap, gas
+  // too short, or Max's note on an empty field).
+  assert.match(src, /const hintSays = invalid \|\| gasShort \|\| \(raw <= 0n && !!maxText\);/);
+  assert.match(src, /disabled=\{\s*!tx\.ready \|\|\s*!!reason \|\|\s*gasShort \|\|\s*\(!native && allowance\.data === undefined\)\s*\}\s*reason=\{hintSays \? undefined : reason\}\s*describedBy=\{hintSays \? "pay-hint" : undefined\}/);
+  // Max: nothing to spend clears a typed amount (over the balance, its hint would hide Max's note).
+  assert.match(src, /if \(!most\) \{[^}]*setInput\(""\);\s*setMaxRaw\(undefined\);\s*setMaxNote\("short"\);\s*return;\s*\}/);
 });
 
 test("RT3-2: Max's note is worded from the balance and fees read now, gives way to the gas note, and goes when a send is refused", () => {
@@ -158,5 +182,38 @@ test("RT2-4: the sentence under the costs no longer claims the shown parts add u
 test("blocked storage: wagmi gets a storage that cannot throw, so the site loads where the browser blocks localStorage", () => {
   const config = fs.readFileSync(new URL("../src/config.ts", import.meta.url), "utf8");
   assert.match(config, /storage: createStorage\(\{ storage: walletStorage\(\) \}\),/);
-  assert.match(config, /function walletStorage\(\) \{\s*try \{\s*const storage = window\.localStorage;\s*storage\.getItem\("wagmi\.store"\);\s*return storage;\s*\} catch \{\s*return noopStorage;\s*\}\s*\}/);
+  assert.match(config, /function walletStorage\(\) \{\s*try \{\s*const storage = window\.localStorage;\s*storage\.getItem\("wagmi\.store"\);\s*return quietStorage\(storage\);\s*\} catch \{\s*return noopStorage;\s*\}\s*\}/);
+});
+
+test("RC2-2: full storage: wagmi's writes that the browser refuses are dropped, never thrown", () => {
+  const kept = new Map(),
+    full = {
+      getItem: (k) => kept.get(k) ?? null,
+      setItem: () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+      removeItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    };
+  kept.set("wagmi.store", "{}");
+  const q = quietStorage(full);
+  assert.doesNotThrow(() => q.setItem("wagmi.store", "{\"a\":1}"));
+  assert.doesNotThrow(() => q.removeItem("wagmi.store"));
+  assert.equal(q.getItem("wagmi.store"), "{}");
+  const blocked = quietStorage({
+    getItem: () => {
+      throw new DOMException("blocked", "SecurityError");
+    },
+    setItem: () => {},
+    removeItem: () => {},
+  });
+  assert.equal(blocked.getItem("wagmi.store"), null);
+  // A storage that works is passed through.
+  const m = new Map(),
+    ok = quietStorage({ getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v), removeItem: (k) => m.delete(k) });
+  ok.setItem("wagmi.store", "x");
+  assert.equal(ok.getItem("wagmi.store"), "x");
+  ok.removeItem("wagmi.store");
+  assert.equal(ok.getItem("wagmi.store"), null);
 });

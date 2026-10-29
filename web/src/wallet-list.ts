@@ -37,3 +37,28 @@ export function connectErrorText(e: any) {
     return "Your wallet already has a connection request open. Finish it in the wallet.";
   return "The wallet did not connect. Try again, or choose another wallet.";
 }
+/** A storage for wagmi that never throws (it remembers the connected wallet between visits): a read that
+ * throws reads nothing, and a write the browser refuses (storage full: QuotaExceededError; blocked) is
+ * a convenience lost. wagmi's createStorage awaits these inside its own async calls, so a throw there
+ * became an uncaught page error on every "wagmi.store" write (RC2-2). */
+export function quietStorage(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+  return {
+    getItem(key: string) {
+      try {
+        return storage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    setItem(key: string, value: string) {
+      try {
+        storage.setItem(key, value);
+      } catch {}
+    },
+    removeItem(key: string) {
+      try {
+        storage.removeItem(key);
+      } catch {}
+    },
+  };
+}

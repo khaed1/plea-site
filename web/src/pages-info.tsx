@@ -144,8 +144,13 @@ export function Home() {
             ],
             [
               "Market cap",
-              tokenAmount((supply * price) / 2n ** 96n, s, true, 0),
-              `Supply ${tokenAmount(supply, s)}`,
+              // Before the seed the pool has no price: the cap it opens at, not a 0 (RS1-L2).
+              seeded
+                ? tokenAmount((supply * price) / 2n ** 96n, s, true, 0)
+                : "Not open yet",
+              seeded
+                ? `Supply ${tokenAmount(supply, s)}`
+                : `Opens at ${tokenAmount(con(s, "PleaHook.MARKET_CAP_IMD"), s, true, 0)}`,
             ],
             [
               "PLEA burned",

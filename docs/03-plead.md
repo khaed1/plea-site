@@ -13,7 +13,7 @@ The Cabal usually answers within minutes. Approved, you have {{sell_window}} to 
 3. **Check your need.** The [Plead](#/plead) page shows your fact score and your need before you send. If your need is above {{max_score}}, not even a perfect plea can pass, so the contract refuses it and you pay nothing. See [Your bar](04-your-bar.md).
 4. **Send it.** One transaction pays the {{oracle_fee}} oracle fee in IMD (the site asks you to approve it once). Your plea, its amount, your fact score and your need are stored on Ethereum.
 5. **Wait for the verdict.** {{panel_size}} judges score your plea. If the score is at least your need, it is approved; if not, denied.
-6. **Approved: sell.** Press Sell now within {{sell_window}}. The whole amount sells in one go, for at least the minimum you set. Miss the window and the approval lapses: nothing is sold, but its points still count.
+6. **Approved: sell.** Press Sell now within {{sell_window}}. The whole amount sells in one go, for at least the minimum the page shows: the quote less 1%. Miss the window and the approval lapses: nothing is sold, but its points still count.
 7. **Denied: appeal or wait.** You may appeal once within {{appeal_window}}. See [Appeals](06-appeals.md).
 8. **No verdict.** If no verdict comes within {{pending_expiry}}, anyone may close the plea. You may plead again at once. The fee is spent.
 9. **Cooldown.** After a sale, a denial or a lapse, your next plea waits {{cooldown}}. A lapse counts from the moment of the approval.
@@ -49,8 +49,8 @@ The same plea could have ended three other ways:
 - **A need above {{max_score}}.** The site says: "This plea cannot pass: your need is above {{max_score}}. Sell a smaller share or wait for your facts to improve." Nothing is paid.
 - **One plea at a time.** While a plea waits for its verdict, or is approved and not yet sold, a new one is refused: "You already have an open plea. Open its status page first."
 - **The cooldown.** A plea sent too soon is refused: "Your cooldown is still running. Wait until the time shown before sending another plea."
-- **Too late to sell.** After the window: "The sell window closed. The plea has lapsed; its points may still count."
-- **The price moved.** A sale that would get less than your minimum is refused, and you may try again inside the window: "The price moved beyond your minimum. Refresh the quote or raise your slippage."
+- **Too late to sell.** After the window the plea's page shows it as lapsed. A sale mined just after the window is refused: "The window closed at 12:11:00 UTC. Plea #… lapsed: nothing was sold. Your +37 points still count. Next plea at 16:04 UTC."
+- **The price moved.** The sale's minimum is fixed at 1% under the quote: there is no slippage to choose. If the price falls further before the sale is mined, nothing is sold, and you may try again inside the window: "The price moved more than 1%. Nothing was sold; your PLEA stays in your wallet. The window is open until 12:11:00 UTC: try again."
 - **The sale pays the usual fee.** {{fee_total}} of every trade, as on a buy. Your buy record shrinks by the share you sold. See [Fees](11-fees.md).
 - **The fee is spent.** The {{oracle_fee}} pays the judges, whatever the verdict.
 - **Your need is fixed when you send.** The facts use hourly prices, so the need the site shows changes only with a new hour, a change in your balance or another day held.

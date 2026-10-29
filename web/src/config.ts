@@ -22,6 +22,7 @@ import { createConfig, createStorage, noopStorage } from "wagmi";
 import { injected } from "wagmi/connectors";
 import expectedAbi from "./abi-hashes.json";
 import { setSite, type Site } from "./site";
+import { quietStorage } from "./wallet-list";
 /** The ABI hashes of the contracts the deployment file does not list (Letterbox, Tribunal, PleaHook).
  * Every network setting (the first block, the oracle API, the swap router, the expected addresses…)
  * comes from the deployment's site block: `site()` (site.ts). */
@@ -146,12 +147,13 @@ export async function loadConfig() {
 /** wagmi's storage (it remembers the connected wallet between visits): the browser's, or none where the
  * browser blocks it. With every cookie blocked Chrome throws on reading window.localStorage itself, which
  * wagmi's default storage does unguarded, so the deployment never loaded; now the site loads and only
- * forgets the wallet between visits. */
+ * forgets the wallet between visits. Where storage is full, its writes throw: quietStorage drops them
+ * rather than leave an uncaught error per write (RC2-2). */
 function walletStorage() {
   try {
     const storage = window.localStorage;
     storage.getItem("wagmi.store");
-    return storage;
+    return quietStorage(storage);
   } catch {
     return noopStorage;
   }

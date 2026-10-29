@@ -845,7 +845,7 @@ export function objectionLine(o: any, p: Plea, s?: Snapshot, now?: number) {
     return `#${o.id}: ${voidWords(o.reason, s)}: nothing changes`;
   return `#${o.id}: ${o.newScore} vs need ${p.need}${o.ruling === 3 && !p.standing?.[1] && !p.excluded ? ` · counts ${p.points || 0} points` : ""}`;
 }
-/** Where an objection's stake is, for the Recent rulings table (objections.html:236): once
+/** Where an objection's stake is, for the Recent objections table (objections.html:236): once
  * Tribunal.settle paid it (objection.settled), where it went; before, where it will go. An
  * overruled stake goes to Seasons, any other ruling's back to the objector (Tribunal.settle). */
 export function stakeNote(o: { ruling: number; settled?: boolean }, stale = false) {
