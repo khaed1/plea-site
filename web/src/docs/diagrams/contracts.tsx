@@ -33,7 +33,7 @@ const OUTSIDE: { name: string; key: string; what?: string }[] = [
   { name: "Permit2", key: "addr_permit2", what: "holds your approval for the router, for 30 minutes" },
   { name: "Uniswap's V4 Quoter", key: "addr_quoter", what: "prices a buy paid with ETH or USDC, up to the IMD (a read, never a transaction)" },
   { name: "IMD's ETH pool hook (POOL4)", key: "addr_pool4_hook", what: "the hook of IMD's own ETH/IMD pool, which ETH and USDC buys pass through" },
-  { name: "USDC", key: "addr_usdc", what: "one of the Buy page's Pay with currencies" },
+  { name: "USDC", key: "addr_usdc", what: "an extra Pay with option on the Buy page, beside IMD" },
   { name: "The delegate.xyz registry", key: "addr_delegate", what: "the Claim page reads delegated vaults from it" },
 ];
 /** Each of the eight in a few words, as Home's Contracts list said them. */

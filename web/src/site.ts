@@ -28,8 +28,9 @@ export type PayHop = { pool: string; currency: Address; fee: number; tickSpacing
 /** A way to pay for PLEA other than the pool currency: `currency` (0x0 is native ETH) swapped along
  * `path` into IMD, then IMD into PLEA, in one Universal Router transaction. */
 export type PayRoute = { symbol: string; currency: Address; decimals: number; path: PayHop[] };
-/** The Buy page's "Pay with" routes and Uniswap's V4 Quoter that prices them; the first route is the
- * default. Null where the network has none (Sepolia run 9): the Buy page pays IMD only. */
+/** The Buy page's "Pay with" routes and Uniswap's V4 Quoter that prices them: extra options beside the
+ * pool currency (IMD), which the page offers first and starts on (pay.ts storedPay). Null where the
+ * network has none (Sepolia run 9): the Buy page pays IMD only. */
 export type PaySettings = { quoter: Address; routes: PayRoute[] } | null;
 export type SiteSettings = {
   key: string;

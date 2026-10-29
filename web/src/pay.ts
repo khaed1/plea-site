@@ -240,41 +240,77 @@ export async function quoteToImd(
  * USDC on a fork of PLEA's deployment: PleaHook refuses a swap that reaches it with less than 1,400,000
  * gas left, so the estimate sits far above the 540,000 to 980,000 gas a buy used there). */
 export const ROUTE_GAS = 2_400_000n;
-/** The least tip a routed ETH buy is sent with: a wallet's own, not the RPCs'. On 2026-10-29 the RPCs'
- * eth_maxPriorityFeePerGas read 9,800 wei (tenderly 0), while MetaMask's default ("Market", its gas
- * API's medium) asked a 2 gwei tip and a 2.78 gwei max fee at a 0.55 gwei base fee. */
+/** A wallet's own tip, for a wallet that ignores the fees the site sends: MetaMask's default ("Market",
+ * its gas API's medium) asked 2 gwei on 2026-10-29 (a 2.40 gwei max fee at a 0.28 gwei base fee), and
+ * the same when it was read again. The site's tip is the market's (marketTip), which is usually far
+ * less; Max still keeps enough for this one (gasReserve). Also the tip sent when the fee history
+ * cannot be read. */
 export const WALLET_TIP = 2_000_000_000n;
+/** The fee history the site's tip is read from: the last TIP_BLOCKS blocks, each block's
+ * TIP_PERCENTILE-th percentile tip (eth_feeHistory weighs it by gas). */
+export const TIP_BLOCKS = 20,
+  TIP_PERCENTILE = 75;
+/** The market tip from eth_feeHistory: the median of the blocks' TIP_PERCENTILE-th percentile tips
+ * (blocks with no transactions say nothing and are left out), at least the node's own
+ * eth_maxPriorityFeePerGas. On 2026-10-29 the last 20 blocks' 75th percentiles read 0.12 to 2 gwei
+ * (median 0.72 gwei; their medians 0.01 to 0.21 gwei) while the RPCs' eth_maxPriorityFeePerGas read
+ * 46,119 wei (tenderly 0). WALLET_TIP when there is no history to read. */
+export function marketTip(
+  history: { reward?: bigint[][]; gasUsedRatio: number[] } | undefined,
+  nodeTip: bigint,
+): bigint {
+  const tips = (history?.reward ?? [])
+    .filter((_, i) => (history?.gasUsedRatio[i] ?? 0) > 0)
+    .map((r) => r[0])
+    .filter((t): t is bigint => typeof t === "bigint")
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (!tips.length) return nodeTip > WALLET_TIP ? nodeTip : WALLET_TIP;
+  const mid = tips.length >> 1,
+    median = tips.length % 2 ? tips[mid] : (tips[mid - 1] + tips[mid]) / 2n;
+  return median > nodeTip ? median : nodeTip;
+}
 /** The fees a routed ETH buy is sent with (the base fee they were worked out at, for fitFees). */
 export type RouteFees = { baseFee: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
-/** The tip: the node's, at least WALLET_TIP; the max fee: twice the base fee plus the tip (room for
- * the base fee to double before the buy is mined). The site sends both with a routed ETH buy, and a
- * wallet uses the fees a site suggests (MetaMask marks them "Site suggested"), so the most it holds
- * for gas is the gas limit at this max fee: what Max keeps (gasReserve). */
-export function routeFees(baseFee: bigint, nodeTip: bigint): RouteFees {
-  const tip = nodeTip > WALLET_TIP ? nodeTip : WALLET_TIP;
+/** The tip: the market's (marketTip); the max fee: twice the base fee plus the tip (room for the base
+ * fee to double before the buy is mined). The site sends both with a routed ETH buy, and a wallet
+ * uses the fees a site suggests (MetaMask marks them "Site suggested"). */
+export function routeFees(baseFee: bigint, tip: bigint): RouteFees {
   return { baseFee, maxFeePerGas: 2n * baseFee + tip, maxPriorityFeePerGas: tip };
 }
-/** routeFees at the latest block's base fee and the RPC's tip. */
+/** routeFees at the latest block's base fee and the market's tip (the fee history of the last
+ * TIP_BLOCKS blocks, at least the RPC's eth_maxPriorityFeePerGas). */
 export async function readRouteFees(client: {
   getBlock: () => Promise<{ baseFeePerGas: bigint | null }>;
   estimateMaxPriorityFeePerGas: () => Promise<bigint>;
+  getFeeHistory: (a: {
+    blockCount: number;
+    rewardPercentiles: number[];
+  }) => Promise<{ reward?: bigint[][]; gasUsedRatio: number[] }>;
 }): Promise<RouteFees> {
-  const [block, tip] = await Promise.all([
+  const [block, nodeTip, history] = await Promise.all([
     client.getBlock(),
-    client.estimateMaxPriorityFeePerGas().catch(() => WALLET_TIP),
+    client.estimateMaxPriorityFeePerGas().catch(() => 0n),
+    client
+      .getFeeHistory({ blockCount: TIP_BLOCKS, rewardPercentiles: [TIP_PERCENTILE] })
+      .catch(() => undefined),
   ]);
-  return routeFees(block.baseFeePerGas ?? 0n, tip);
+  return routeFees(block.baseFeePerGas ?? 0n, marketTip(history, nodeTip));
 }
-/** The ETH a routed buy leaves for gas: ROUTE_GAS at the max fee it is sent with, so Max never spends
- * what the wallet will ask to hold for gas. */
-export const gasReserve = (fees: RouteFees) => ROUTE_GAS * fees.maxFeePerGas;
+/** The ETH Max keeps for the gas: ROUTE_GAS at twice the base fee plus the larger of the tip sent and
+ * WALLET_TIP, so it also covers a wallet that ignores the site's fees and uses its own default. */
+export const gasReserve = (fees: RouteFees) =>
+  ROUTE_GAS *
+  (2n * fees.baseFee +
+    (fees.maxPriorityFeePerGas > WALLET_TIP ? fees.maxPriorityFeePerGas : WALLET_TIP));
+/** The most a routed ETH buy holds for gas at the fees it is sent with: ROUTE_GAS at their max fee. */
+export const gasHeld = (fees: RouteFees) => ROUTE_GAS * fees.maxFeePerGas;
 /** The fees sent with a routed ETH buy that leaves `left` ETH beside its value: `fees` when `left`
- * covers them at ROUTE_GAS (Max leaves exactly that); when it does not (the base fee rose since Max,
- * or a typed amount leaves less), the max fee `left` covers at ROUTE_GAS, as long as that still pays
- * the base fee and the tip, so the next block can take the buy. Undefined when even that is short: the
- * ETH left cannot pay the chain's fee now for ROUTE_GAS. */
+ * covers them at ROUTE_GAS (gasHeld; Max leaves more, gasReserve); when it does not (the base fee
+ * rose since Max, or a typed amount leaves less), the max fee `left` covers at ROUTE_GAS, as long as
+ * that still pays the base fee and the tip, so the next block can take the buy. Undefined when even
+ * that is short: the ETH left cannot pay the chain's fee now for ROUTE_GAS, and nothing is sent. */
 export function fitFees(fees: RouteFees, left: bigint): RouteFees | undefined {
-  if (left >= gasReserve(fees)) return fees;
+  if (left >= gasHeld(fees)) return fees;
   const most = left / ROUTE_GAS;
   return most >= fees.baseFee + fees.maxPriorityFeePerGas ? { ...fees, maxFeePerGas: most } : undefined;
 }
@@ -282,3 +318,27 @@ export function fitFees(fees: RouteFees, left: bigint): RouteFees | undefined {
  * exactly what is paid; 0 when the balance does not cover the gas. */
 export const ethMax = (balance: bigint, reserve: bigint) =>
   balance > reserve ? ((balance - reserve) / 10n ** 14n) * 10n ** 14n : 0n;
+
+/** The Buy page's "Pay with" choice, per browser: PAY_PAIR (the pool currency, IMD: the main way to
+ * buy) or a route's symbol (ETH, USDC: extra options). */
+export const PAY_KEY = "plea-pay-with",
+  PAY_PAIR = "pair";
+/** The choices in their order: the pool currency first, then the routes. */
+export const payChoices = (routes: PayRoute[]) => [PAY_PAIR, ...routes.map((x) => x.symbol)];
+/** The choice this browser starts with: a route the visitor picked before (stored by rememberPay),
+ * else the pool currency: on a first visit, and whenever storage is empty, blocked or holds a route
+ * this network does not have. */
+export function storedPay(routes: PayRoute[], storage: () => Pick<Storage, "getItem"> = () => localStorage) {
+  let v: string | null = null;
+  try {
+    v = storage().getItem(PAY_KEY);
+  } catch {}
+  return routes.some((x) => x.symbol === v) ? v! : PAY_PAIR;
+}
+/** Remembers a choice the visitor made (nothing is stored before one). Storage that is blocked or full
+ * is a convenience lost, never an error. */
+export function rememberPay(v: string, storage: () => Pick<Storage, "setItem"> = () => localStorage) {
+  try {
+    storage().setItem(PAY_KEY, v);
+  } catch {}
+}

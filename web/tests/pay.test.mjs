@@ -19,6 +19,7 @@ import {
   atPoolPrice,
   buyPath,
   ethMax,
+  gasHeld,
   impactBps,
   impactWords,
   IMPACT_CONFIRM_BPS,
@@ -28,17 +29,25 @@ import {
   fitFees,
   gasReserve,
   hopKey,
+  marketTip,
+  PAY_KEY,
+  PAY_PAIR,
+  payChoices,
   poolId,
   quoteToImd,
   readHopFees,
   readRouteFees,
+  rememberPay,
   ROUTE_GAS,
   routeFees,
   routeLine,
   routeRefusal,
   routeToImd,
   slot0Slot,
+  storedPay,
   swapFee,
+  TIP_BLOCKS,
+  TIP_PERCENTILE,
   WALLET_TIP,
 } from "../src/pay.ts";
 
@@ -214,60 +223,106 @@ test("quoteToImd: the Quoter's IMD for the route's hops; a refusal is a plain re
   assert.ok(!routeRefusal(LIQUIDITY_SHORT) && !routeRefusal(NO_LIQUIDITY) && !routeRefusal(undefined));
 });
 
-test("ETH's Max leaves the gas: 2.4M gas (the limit the site sends) at twice the base fee plus the tip, rounded down to 0.0001 ETH", async () => {
-  const gwei = 10n ** 9n;
-  const fees = await readRouteFees({ getBlock: async () => ({ baseFeePerGas: 2n * gwei }), estimateMaxPriorityFeePerGas: async () => 3n * gwei });
-  assert.deepEqual(fees, { baseFee: 2n * gwei, maxFeePerGas: 7n * gwei, maxPriorityFeePerGas: 3n * gwei });
-  const reserve = gasReserve(fees);
-  assert.equal(reserve, 2_400_000n * 7n * gwei); // 0.0168 ETH
-  // An RPC without eth_maxPriorityFeePerGas: the wallet's tip.
-  assert.deepEqual(await readRouteFees({ getBlock: async () => ({ baseFeePerGas: null }), estimateMaxPriorityFeePerGas: async () => { throw Error("no"); } }), { baseFee: 0n, maxFeePerGas: WALLET_TIP, maxPriorityFeePerGas: WALLET_TIP });
-  assert.equal(ethMax(2n * 10n ** 18n, reserve), 19_832n * 10n ** 14n);
-  assert.equal(ethMax(2n * 10n ** 18n + 123_456_789n, reserve), 19_832n * 10n ** 14n, "rounded down: the field shows what is paid");
-  assert.equal(ethMax(10n ** 16n, 2_400_000n * 1_002_705_384n), 75n * 10n ** 14n, "the fork's 0.01 ETH wallet: Max 0.0075, 0.0024 kept");
-  assert.equal(ethMax(reserve, reserve), 0n, "nothing to spend once the gas is kept");
-  assert.equal(ethMax(reserve - 1n, reserve), 0n);
+// RT3-1: the tip a routed ETH buy is sent with is the market's. Read-only on 2026-10-29 (publicnode,
+// mevblocker, flashbots and tenderly gave the same history): eth_feeHistory(20, latest, [75]) from block
+// 26,300,031, base fee 0.2818 gwei; eth_maxPriorityFeePerGas 46,119 wei (tenderly 0); MetaMask's gas API
+// (suggestedGasFees) medium: a 2 gwei tip and a 2.403 gwei max fee. The old floor sent 2 gwei always.
+const LIVE = {
+  base: 281_790_934n,
+  nodeTip: 46_119n,
+  p75: ["797724960", "117363492", "770142227", "1000000000", "1000000000", "2000000000", "770142227", "376368987", "503920899", "719473710", "443770526", "676938154", "268632675", "207377383", "1000000000", "600000000", "1000000000", "417979799", "718059978", "718209066"].map(BigInt),
+  ratio: [0.356, 0.209, 0.666, 0.448, 0.424, 0.319, 0.407, 0.46, 0.501, 0.376, 0.312, 0.361, 0.403, 0.271, 0.608, 0.495, 0.421, 0.506, 0.498, 0.51],
+  metaMaskTip: 2_000_000_000n,
+  metaMaskMaxFee: 2_402_961_036n,
+};
+const history = (p75, ratio = p75.map(() => 0.5)) => ({ reward: p75.map((t) => [t]), gasUsedRatio: ratio });
+
+test("RT3-1: the tip is the market's: the median of the last 20 blocks' 75th percentile tips, at least the node's; 2 gwei without a history", async () => {
+  assert.deepEqual([TIP_BLOCKS, TIP_PERCENTILE], [20, 75]);
+  // The live window: 0.718 gwei (the 10th and 11th of the 20 sorted, averaged), not 2 gwei.
+  const live = marketTip(history(LIVE.p75, LIVE.ratio), LIVE.nodeTip);
+  assert.equal(live, 718_134_522n);
+  // An odd count takes the middle one; a block with no transactions (gas used 0, reward 0) says nothing.
+  assert.equal(marketTip(history([5n, 1n, 3n]), 0n), 3n);
+  assert.equal(marketTip(history([0n, 5n, 1n, 3n], [0, 0.5, 0.5, 0.5]), 0n), 3n);
+  // At least the node's own suggestion.
+  assert.equal(marketTip(history([5n, 1n, 3n]), 4n), 4n);
+  // No history (the call failed, or only empty blocks): a wallet's own tip, or the node's if higher.
+  assert.equal(marketTip(undefined, LIVE.nodeTip), WALLET_TIP);
+  assert.equal(marketTip(history([0n, 0n], [0, 0]), 0n), WALLET_TIP);
+  assert.equal(marketTip({ gasUsedRatio: [0.5] }, 0n), WALLET_TIP);
+  assert.equal(marketTip(undefined, 3n * 10n ** 9n), 3n * 10n ** 9n);
+  // readRouteFees asks for exactly that window, and falls back when a read fails.
+  let asked;
+  const client = (o = {}) => ({
+    getBlock: async () => ({ baseFeePerGas: LIVE.base }),
+    estimateMaxPriorityFeePerGas: o.noNode ? async () => { throw Error("no"); } : async () => LIVE.nodeTip,
+    getFeeHistory: o.noHistory ? async () => { throw Error("no"); } : async (a) => ((asked = a), history(LIVE.p75, LIVE.ratio)),
+  });
+  const fees = await readRouteFees(client());
+  assert.deepEqual(asked, { blockCount: 20, rewardPercentiles: [75] });
+  assert.deepEqual(fees, { baseFee: LIVE.base, maxFeePerGas: 2n * LIVE.base + live, maxPriorityFeePerGas: live });
+  assert.deepEqual(await readRouteFees(client({ noNode: true })), fees);
+  assert.equal((await readRouteFees(client({ noHistory: true }))).maxPriorityFeePerGas, WALLET_TIP);
+  assert.deepEqual(
+    await readRouteFees({ getBlock: async () => ({ baseFeePerGas: null }), estimateMaxPriorityFeePerGas: async () => { throw Error("no"); }, getFeeHistory: async () => { throw Error("no"); } }),
+    { baseFee: 0n, maxFeePerGas: WALLET_TIP, maxPriorityFeePerGas: WALLET_TIP },
+  );
+  // What a buy pays in tips at the 570,000 to 980,000 gas it uses: 0.0004 to 0.0007 ETH, not 0.0011 to 0.0020.
+  assert.equal(980_000n * live, 703_771_831_560_000n);
+  assert.equal(980_000n * WALLET_TIP, 1_960_000_000_000_000n);
 });
 
-// PAY-2: the site sends no fees unless it brings them, and a wallet then picks its own. On 2026-10-29 the
-// RPCs' tip was 9,800 wei at a 0.534 gwei base fee, so the old reserve (2.4M x (2 x base + 9,800 wei))
-// kept 0.00257 ETH, while MetaMask's default (its gas API's medium: 2 gwei tip, 2.781 gwei max fee)
-// holds 0.00625 ETH at the site's gas limit (1.3 x 1,729,778): Max with ETH was refused.
-test("PAY-2: a routed ETH buy is sent with a wallet's tip (at least 2 gwei) and a max fee of twice the base fee plus it, fitted to the ETH it leaves", () => {
-  const base = 534_491_551n, nodeTip = 9_800n, limit = (1_729_778n * 130n + 99n) / 100n;
-  const metaMask = limit * 2_781_445_819n;
-  assert.ok(ROUTE_GAS * (2n * base + nodeTip) < metaMask, "the old reserve: less than MetaMask holds");
-  const fees = routeFees(base, nodeTip);
-  assert.equal(WALLET_TIP, 2_000_000_000n);
-  assert.deepEqual(fees, { baseFee: base, maxFeePerGas: 2n * base + WALLET_TIP, maxPriorityFeePerGas: WALLET_TIP });
-  assert.equal(gasReserve(fees), 7_365_559_444_800_000n); // 0.0073656 ETH
-  assert.ok(gasReserve(fees) >= metaMask, "covers MetaMask's own fee too, for a wallet that ignores the site's");
-  // A node tip above the wallet's is kept.
-  assert.equal(routeFees(base, 5n * 10n ** 9n).maxPriorityFeePerGas, 5n * 10n ** 9n);
-  assert.ok(limit <= ROUTE_GAS, "the gas limit the site sends fits the reserve");
-  // Max leaves the reserve: the fees go as they are, and the wallet holds at most what Max kept.
-  const balance = 5n * 10n ** 16n, paid = ethMax(balance, gasReserve(fees)), left = balance - paid;
-  assert.equal(fitFees(fees, left), fees);
-  assert.ok(limit * fees.maxFeePerGas <= left);
-  assert.equal(fitFees(fees, gasReserve(fees)), fees);
-  // The base fee rose since Max (three full blocks): the max fee is lowered to what is left, still
-  // above the new base fee plus the tip.
-  const later = routeFees((base * 1_423_828n) / 1_000_000n, nodeTip), fit = fitFees(later, gasReserve(fees));
-  assert.deepEqual(fit, { ...later, maxFeePerGas: fees.maxFeePerGas });
-  assert.ok(limit * fit.maxFeePerGas <= gasReserve(fees) && fit.maxFeePerGas >= later.baseFee + later.maxPriorityFeePerGas);
-  // A typed amount that leaves a little less than the reserve: the max fee it covers.
-  assert.deepEqual(fitFees(fees, gasReserve(fees) - 1n), { ...fees, maxFeePerGas: fees.maxFeePerGas - 1n });
-  // Down to the base fee plus the tip; below that nothing is sent (the page says too little ETH is left).
-  const least = ROUTE_GAS * (base + WALLET_TIP);
-  assert.deepEqual(fitFees(fees, least), { ...fees, maxFeePerGas: base + WALLET_TIP });
+test("RT3-1: Max keeps 2.4M gas at twice the base fee plus the larger of the tip sent and a wallet's own 2 gwei; the send fits the fees it actually sends", () => {
+  const gwei = 10n ** 9n,
+    tip = 718_134_522n,
+    fees = routeFees(LIVE.base, tip);
+  assert.deepEqual(fees, { baseFee: LIVE.base, maxFeePerGas: 2n * LIVE.base + tip, maxPriorityFeePerGas: tip });
+  // The reserve covers a wallet that ignores the site's fees and uses its own default (MetaMask: 2 gwei).
+  assert.equal(gasReserve(fees), ROUTE_GAS * (2n * LIVE.base + WALLET_TIP)); // 0.0061526 ETH
+  assert.equal(gasReserve(fees), 6_152_596_483_200_000n);
+  const limit = (1_729_778n * 130n + 99n) / 100n; // the site's gas limit: 1.3 x the fork's estimate
+  assert.ok(limit <= ROUTE_GAS);
+  assert.ok(gasReserve(fees) >= limit * LIVE.metaMaskMaxFee, "covers what MetaMask's own fee holds");
+  // The fees sent hold less: ROUTE_GAS at their own max fee.
+  assert.equal(gasHeld(fees), ROUTE_GAS * fees.maxFeePerGas);
+  assert.ok(gasHeld(fees) < gasReserve(fees));
+  // A tip above the wallet's own: the reserve follows it.
+  assert.equal(gasReserve(routeFees(LIVE.base, 5n * gwei)), ROUTE_GAS * (2n * LIVE.base + 5n * gwei));
+  // Max leaves the reserve; the fees go as they are.
+  const balance = 5n * 10n ** 16n,
+    paid = ethMax(balance, gasReserve(fees));
+  assert.equal(paid, 438n * 10n ** 14n, "0.05 ETH: Max 0.0438, 0.0062 kept");
+  assert.equal(fitFees(fees, balance - paid), fees);
+  assert.equal(ethMax(2n * 10n ** 18n + 123_456_789n, gasReserve(fees)), 19_938n * 10n ** 14n, "rounded down: the field shows what is paid");
+  assert.equal(ethMax(gasReserve(fees), gasReserve(fees)), 0n, "nothing to spend once the gas is kept");
+  // A typed amount that leaves less than Max keeps but still covers the fees sent: sent as they are.
+  assert.equal(fitFees(fees, gasHeld(fees)), fees);
+  // Less than that: the max fee is lowered to what is left, down to the base fee plus the tip.
+  assert.deepEqual(fitFees(fees, gasHeld(fees) - 1n), { ...fees, maxFeePerGas: fees.maxFeePerGas - 1n });
+  const least = ROUTE_GAS * (LIVE.base + tip);
+  assert.deepEqual(fitFees(fees, least), { ...fees, maxFeePerGas: LIVE.base + tip });
+  // Below it nothing is sent (the page says too little ETH is left), and a negative remainder too.
   assert.equal(fitFees(fees, least - 1n), undefined);
   assert.equal(fitFees(fees, -1n), undefined);
-  // The page sends them with a routed ETH buy only, from a fresh read of the fees and the balance.
+  // The base fee rose 1.5x and 2.25x since Max: Max's reserve still covers the fees then (it keeps room
+  // for twice the base fee plus 2 gwei); at 2.25x the max fee is lowered, never below the base fee plus the tip.
+  const kept = gasReserve(fees);
+  const up15 = routeFees((LIVE.base * 3n) / 2n, tip), up225 = routeFees((LIVE.base * 9n) / 4n, tip);
+  assert.equal(fitFees(up15, kept), up15);
+  assert.equal(fitFees(up225, kept), up225, "2 x 2.25 x 0.28 + 0.72 = 1.99 gwei, under the 2.56 gwei kept");
+  const steep = routeFees(LIVE.base * 6n, tip); // 1.69 gwei: 2 x base + tip is 4.1 gwei, more than the 2.56 kept
+  assert.deepEqual(fitFees(steep, kept), { ...steep, maxFeePerGas: kept / ROUTE_GAS });
+  assert.equal(fitFees(routeFees(LIVE.base * 7n, tip), kept), undefined, "1.97 gwei + 0.72: more than the 2.56 kept");
+});
+
+test("RT3-1: the page sends the fees with a routed ETH buy only, from a fresh read of the fees and the balance", () => {
   const page = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
   assert.match(page, /native \? readRouteFees\(r\.client\) : undefined,\s*native \? r\.client\.getBalance\(\{ address: address! \}\) : undefined,/);
-  assert.match(page, /const fit = fees && eth !== undefined \? fitFees\(fees, eth - raw\) : undefined;\s*if \(native && !fit\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*throw new DisplayError\(\s*fundsMessage\(eth! - raw, fees \? gasReserve\(fees\) : undefined\),\s*\);/);
-  // The refusal rereads the fees (so Max keeps enough again), and the wallet's own refusal keeps its words.
+  assert.match(page, /const fit = fees && eth !== undefined \? fitFees\(fees, eth - raw\) : undefined;\s*if \(native && !fit\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*setMaxNote\(""\);\s*throw new DisplayError\(fundsMessage\(eth! - raw, fees, eth\)\);/);
+  // The refusal rereads the fees and the balance (so Max keeps enough again), and the wallet's own refusal keeps its words.
   assert.match(page, /readRouteFees\(r\.client\),\s*\[address, revision\],/);
+  assert.match(page, /\[address, route\?\.symbol, revision\],\s*!!address && !!s && !!route,/);
   assert.match(page, /\[NO_FUNDS\]: fundsMessage\(\)/);
   assert.match(page, /\.\.\.\(fit && \{\s*maxFeePerGas: fit\.maxFeePerGas,\s*maxPriorityFeePerGas: fit\.maxPriorityFeePerGas,\s*\}\)/);
   assert.match(page, /reserve = gasFees\.data \? gasReserve\(gasFees\.data\) : undefined/);
@@ -277,17 +332,61 @@ test("PAY-2: a routed ETH buy is sent with a wallet's tip (at least 2 gwei) and 
   assert.match(ctx, /const \{\s*maxFeePerGas,\s*maxPriorityFeePerGas,\s*\.\.\.req\s*\}: NonNullable<typeof prepared> = prepared \|\|/);
   assert.match(ctx, /await r\.client\.call\(\{ \.\.\.req, account: address \}\);\s*const estimate = await r\.client\.estimateGas\(\{ \.\.\.req, account: address \}\);/);
   assert.match(ctx, /wallet\.sendTransaction\(\{\s*\.\.\.req,\s*\.\.\.\(maxFeePerGas !== undefined && \{ maxFeePerGas, maxPriorityFeePerGas \}\),/);
+  // The docs' numbers are pay.ts's.
+  const N = JSON.parse(fs.readFileSync(new URL("../src/docs/numbers.json", import.meta.url)));
+  assert.equal(BigInt(N.pay_wallet_tip.value), WALLET_TIP);
+  assert.equal(BigInt(N.pay_route_gas.value), ROUTE_GAS);
+  assert.equal(Number(N.pay_tip_blocks.value), TIP_BLOCKS);
+  assert.equal(N.pay_tip_percentile.text, `${TIP_PERCENTILE}th percentile`);
 });
 
-test("the Buy page: Pay with ETH by default, remembered per browser, IMD for the seed's opening buy and for every sale", () => {
+test("the Buy page: Pay with IMD first and by default; ETH or USDC only once picked, remembered per browser; IMD for the seed's opening buy and for every sale", () => {
+  assert.equal(PAY_KEY, "plea-pay-with");
+  assert.deepEqual(payChoices(eth.pay.routes), [PAY_PAIR, "ETH", "USDC"]);
+  assert.deepEqual(payChoices([]), [PAY_PAIR]);
+  const store = (v) => {
+    const m = new Map(v === undefined ? [] : [[PAY_KEY, v]]);
+    return () => ({ getItem: (k) => m.get(k) ?? null, setItem: (k, x) => m.set(k, String(x)), m });
+  };
+  const blocked = () => {
+    throw new DOMException("The operation is insecure.", "SecurityError");
+  };
+  const routes = eth.pay.routes;
+  // A first visit, an empty or blocked storage, or a choice this network does not have: IMD.
+  assert.equal(storedPay(routes, store()), PAY_PAIR);
+  assert.equal(storedPay(routes, store("")), PAY_PAIR);
+  assert.equal(storedPay(routes, blocked), PAY_PAIR);
+  assert.equal(storedPay(routes, () => ({ getItem: () => { throw Error("denied"); } })), PAY_PAIR);
+  assert.equal(storedPay(routes, store("DAI")), PAY_PAIR);
+  assert.equal(storedPay(routes, store(PAY_PAIR)), PAY_PAIR);
+  assert.equal(storedPay([], store("ETH")), PAY_PAIR, "Sepolia: no routes, IMD only");
+  // A choice the visitor made: kept.
+  assert.equal(storedPay(routes, store("ETH")), "ETH");
+  assert.equal(storedPay(routes, store("USDC")), "USDC");
+  // Picking stores it; a blocked or full storage is no error.
+  const s1 = store();
+  assert.equal(storedPay(routes, s1), PAY_PAIR);
+  assert.equal(s1().m.size, 0, "nothing is stored until the visitor picks");
+  rememberPay("USDC", s1);
+  assert.equal(s1().m.get(PAY_KEY), "USDC");
+  assert.equal(storedPay(routes, s1), "USDC");
+  assert.doesNotThrow(() => rememberPay("ETH", blocked));
+  assert.doesNotThrow(() => rememberPay("ETH", () => ({ setItem: () => { throw new DOMException("full", "QuotaExceededError"); } })));
+  // The page: the chips in payChoices' order, the start from storedPay, a write only on a pick, IMD for
+  // the seed's opening buy (not stored), and no route on a sale.
   const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
-  assert.match(src, /const PAY_KEY = "plea-pay-with"/);
-  // Storage is read and written inside try/catch (a blocked storage falls back to the first route).
-  assert.match(src, /try \{\s*v = localStorage\.getItem\(PAY_KEY\);\s*\} catch \{\}/);
-  assert.match(src, /try \{\s*localStorage\.setItem\(PAY_KEY, v\);\s*\} catch \{\}/);
-  assert.match(src, /routes\[0\]\?\.symbol \?\? PAY_PAIR/);
+  assert.match(src, /useState\(\(\) => storedPay\(routes\)\)/);
+  assert.match(src, /\{payChoices\(routes\)\.map\(\(v\) => \(/);
+  assert.match(src, /if \(remember\) rememberPay\(v\);/);
+  assert.equal((src.match(/rememberPay\(/g) || []).length, 1);
+  assert.doesNotMatch(src, /localStorage/);
   assert.match(src, /choosePay\(PAY_PAIR, false\);\s*setInput\(formatUnits\(con\(s, "PleaHook\.PAYOUT_RESERVE"\), 18\)\)/);
   assert.match(src, /const route = selling \? undefined : routes\.find/);
+  // The words: IMD is the main way, ETH and USDC extra options.
+  assert.match(src, /`\$\{pair\} buys PLEA directly in PLEA’s pool: the main way to buy\. \$\{routes\.map\(\(x\) => x\.symbol\)\.join\(" and "\)\} are extra options, turned into \$\{pair\} in the same transaction\.`/);
+  assert.match(src, /`An extra option: \$\{routeLine\(/);
+  const site = fs.readFileSync(new URL("../src/site.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(site, /first route is the\s*\*?\s*default/);
 });
 
 test("the docs' numbers for Pay with are site.json's: the Quoter, USDC, POOL4's hook and the pools' fees", () => {
@@ -389,7 +488,9 @@ test("RT1-1: the send keeps the page's minimum; a fresh quote below it sends not
   assert.match(src, /const shown = quote\.data;/);
   assert.match(src, /const \{ minimum, moved \} = sendMinimum\(shown\.out, q\.out, slip\);\s*if \(moved\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*throw new DisplayError\(movedMessage\(q\.out, minimum\)\);/);
   assert.doesNotMatch(src, /q\.out \* BigInt\(10000 - slip\)/);
-  assert.match(src, /title: `The price moved: the new quote is ≈ \$\{tokenAmount\(fresh, s, selling\)\}\.`/);
+  // RT2-3: "about": in the launch window the page's reloaded quote is a little higher (its launch fee read later).
+  assert.match(src, /title: `The price moved: the new quote is about \$\{tokenAmount\(fresh, s, selling\)\}\.`/);
+  assert.doesNotMatch(src, /the new quote is ≈/);
 });
 
 test("RT1-2: switching Buy and Sell clears the field and Max, as changing the currency does", () => {
@@ -413,7 +514,8 @@ test("PAY-3: on the ETH route the wallet's insufficient funds reads in the gas r
 test("RT1-7: a wallet with none of the paying currency is told to add it or pay with another", () => {
   const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
   assert.match(src, /available === 0n\s*\?[\s\S]{0,160}?`You have \$\{payAmount\(0n\)\}\. Add \$\{unit\}\$\{others\.length \? `, or pay with \$\{others\.join\(" or "\)\}` : ""\}\.`/);
-  assert.match(src, /const others = routes\.length\s*\? \[\.\.\.routes\.map\(\(x\) => x\.symbol\), pair\]\.filter\(\(v\) => v !== unit\)/);
+  // The pool currency first: "Add ETH, or pay with IMD or USDC."
+  assert.match(src, /const others = routes\.length\s*\? payChoices\(routes\)\s*\.map\(\(v\) => \(v === PAY_PAIR \? pair : v\)\)\s*\.filter\(\(v\) => v !== unit\)/);
 });
 
 test("RT1-4/5/6: the Sepolia docs say Pay with is Ethereum's; the docs quote the Buy page's own numbers and words", () => {
@@ -431,6 +533,6 @@ test("RT1-4/5/6: the Sepolia docs say Pay with is Ethereum's; the docs quote the
   assert.match(buying, /"Not bought: more than \{\{launch_max_buy\}\} in one buy\."/);
   assert.doesNotMatch(buying, /This buy exceeds the launch cap/);
   // The price moved before the send, and the price impact's confirmation, in the page's words.
-  assert.match(buying, /"The price moved: the new quote is …"/);
+  assert.match(buying, /"The price moved: the new quote is about …"/);
   assert.match(buying, /From \{\{pay_impact_confirm\}\} below, it asks you to tick "Buy anyway" first\./);
 });

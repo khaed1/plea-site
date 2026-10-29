@@ -18,7 +18,7 @@ import {
   type Abi,
   type Address,
 } from "viem";
-import { createConfig } from "wagmi";
+import { createConfig, createStorage, noopStorage } from "wagmi";
 import { injected } from "wagmi/connectors";
 import expectedAbi from "./abi-hashes.json";
 import { setSite, type Site } from "./site";
@@ -130,6 +130,7 @@ export async function loadConfig() {
     multiInjectedProviderDiscovery: true,
     connectors: [injected()],
     transports: { [chain.id]: transport },
+    storage: createStorage({ storage: walletStorage() }),
   });
   return {
     manifest,
@@ -141,6 +142,19 @@ export async function loadConfig() {
     addresses,
     walletConfig,
   };
+}
+/** wagmi's storage (it remembers the connected wallet between visits): the browser's, or none where the
+ * browser blocks it. With every cookie blocked Chrome throws on reading window.localStorage itself, which
+ * wagmi's default storage does unguarded, so the deployment never loaded; now the site loads and only
+ * forgets the wallet between visits. */
+function walletStorage() {
+  try {
+    const storage = window.localStorage;
+    storage.getItem("wagmi.store");
+    return storage;
+  } catch {
+    return noopStorage;
+  }
 }
 export type Runtime = Awaited<ReturnType<typeof loadConfig>>;
 export async function discover(r: Runtime) {
