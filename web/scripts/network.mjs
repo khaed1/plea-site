@@ -20,6 +20,8 @@ export function loadNetwork(key = process.env.PLEA_NETWORK || "ethereum", deploy
     : read(own("deployment.json") ? new URL("deployment.json", dir) : new URL("deployment-input.json", web));
   const site = read(new URL("site.json", dir));
   if (site.key !== key) throw Error(`networks/${key}/site.json names "${site.key}".`);
+  if (!factsValid(site.facts))
+    throw Error(`networks/${key}/site.json: facts must give the holding bands (days and points, longest first) and receivedProfit, as its CabalGate does.`);
   if (handoff.chainId !== net.network.chainId)
     throw Error(`The deployment is for chain ${handoff.chainId}, the network is ${net.network.chainId}.`);
   if (!Array.isArray(handoff.contracts) || !handoff.contracts.length)
@@ -29,6 +31,15 @@ export function loadNetwork(key = process.env.PLEA_NETWORK || "ethereum", deploy
       throw Error(`${c.name}: an address and an ABI hash are required.`);
   return { key, net, handoff, site: siteFor(site, handoff) };
 }
+
+/** site.json's fact-score rules (CabalGate._heldPoints and the profit of PLEA no buy record covers):
+ * whole days and points, longest band first (src/site.ts validFacts, at load). */
+const whole = (n, least = 0) => Number.isSafeInteger(n) && n >= least;
+export const factsValid = (f) =>
+  Array.isArray(f?.held) &&
+  f.held.length > 0 &&
+  f.held.every((b, i) => whole(b?.days, 1) && whole(b?.points) && (i === 0 || b.days < f.held[i - 1].days)) &&
+  whole(f.receivedProfit);
 
 /** site.json as the build ships it (the manifest's `site` block). A test deployment (fork-deployment.mjs's,
  * with a `test` block) brings its own first block (its contracts' deploy block) and its own Letterbox,

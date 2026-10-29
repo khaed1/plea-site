@@ -1,3 +1,5 @@
+import { site, type FactRules } from "./site.ts";
+
 /** Immutable internal Letterbox constants, pinned src/Letterbox.sol:111–136 (testnet9). */
 export const LETTERBOX = {
   LETTER_SHARE_BPS: 2000n,
@@ -89,6 +91,16 @@ export function clampAppeal(
     );
   return { amount, minimum, maximum: min(original, balance / 2n) };
 }
+/** CabalGate._heldPoints: the points for PLEA held since `since` (0: no record) at `now`, from the
+ * deployment's holding bands (site.json `facts`). */
+export function heldPoints(since: number, now: number, facts: FactRules = site().facts) {
+  if (!since || since > now) return 0;
+  return facts.held.find((b) => now - since >= b.days * 86400)?.points ?? 0;
+}
+/** The most a fact score can be: share 16 + the longest hold + a loss 13 + a rising trend 9 (45 on
+ * Sepolia run 9, 41 on Ethereum). */
+export const factMax = (facts: FactRules = site().facts) =>
+  16 + Math.max(...facts.held.map((b) => b.points)) + 13 + 9;
 export function factParts(
   balance: bigint,
   amount: bigint,
@@ -97,19 +109,12 @@ export function factParts(
   previous: bigint,
   started: number,
   now: number,
+  facts: FactRules = site().facts,
 ) {
-  const heldPoints = (t: number) =>
-    !t || t > now
-      ? 0
-      : now - t >= 604800
-        ? 7
-        : now - t >= 259200
-          ? 4
-          : now - t >= 86400
-            ? 2
-            : 0;
+  const held = (t: number) => heldPoints(t, now, facts),
+    receivedProfit = facts.receivedProfit;
   const share = balance ? sharePoints(ceil(amount * 10000n, balance)) : 0,
-    held = heldPoints(Number(basis[2]));
+    heldRecord = held(Number(basis[2]));
   const value = (basis[1] * latest) / Q96,
     spent = basis[0],
     gain = value - spent;
@@ -134,16 +139,17 @@ export function factParts(
         ? 5
         : 0;
   // CabalGate._factScoreAt: PLEA no buy record covers (claims, prizes, exempt transfers) counts as
-  // held since trading opened, at profit 10; a plea larger than the record takes the PLEA-weighted
-  // mean of the two, rounded to the nearest point (E2).
-  const openHeld = heldPoints(started),
+  // held since trading opened, at the deployment's received profit (10 on Sepolia run 9, 9 on
+  // Ethereum); a plea larger than the record takes the PLEA-weighted mean of the two, rounded to the
+  // nearest point (E2).
+  const openHeld = held(started),
     covered = Number(
       basis[1] < amount && amount
-        ? (basis[1] * BigInt(held + profit) +
-            (amount - basis[1]) * BigInt(openHeld + 10) +
+        ? (basis[1] * BigInt(heldRecord + profit) +
+            (amount - basis[1]) * BigInt(openHeld + receivedProfit) +
             amount / 2n) /
             amount
-        : BigInt(held + profit),
+        : BigInt(heldRecord + profit),
     );
   const mode: "record" | "received" | "mixed" =
     !amount || basis[1] >= amount
@@ -164,15 +170,15 @@ export function factParts(
     pnlBps: !received && spent ? ((value - spent) * 10000n) / spent : null,
     trendLabel: trend === 9 ? "up" : trend === 0 ? "down" : "flat",
     share,
-    held: received ? openHeld : held,
-    profit: received ? 10 : profit,
+    held: received ? openHeld : heldRecord,
+    profit: received ? receivedProfit : profit,
     trend,
     total: balance ? share + covered + trend : 0,
     uncovered: basis[1] < amount ? amount - basis[1] : 0n,
     weighted: covered,
     mode,
     covered: basis[1] < amount ? basis[1] : amount,
-    record: held + profit,
+    record: heldRecord + profit,
     openHeld,
     openFor: started ? Math.max(0, now - started) : null,
   };

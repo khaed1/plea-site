@@ -1369,7 +1369,7 @@ export function Meter({
 }) {
   const { s } = useApp(),
     max = Number(con(s, "CabalGate.MAX_PLEA_SCORE") || 45),
-    pass = Number(con(s, "CabalGate.PASS_MARK") || 71);
+    pass = Number(con(s, "CabalGate.PASS_MARK"));
   if (need > max)
     return (
       <p className="small">
@@ -1436,7 +1436,8 @@ export function FactCells({ parts, total }: { parts?: any; total: number }) {
       : pct(parts.shareBps).replace(".00%", "%");
   const trend = ["24h trend", parts.trendLabel || "flat", parts.trend];
   // CabalGate._factScoreAt (E2): PLEA no buy record covers counts as held since trading opened
-  // at profit 10; a plea larger than its record takes the PLEA-weighted mean of the two.
+  // at the deployment's received profit (site.json facts); a plea larger than its record takes the
+  // PLEA-weighted mean of the two.
   const rows =
     parts.total !== total
       ? [
@@ -1500,9 +1501,9 @@ export function FactCells({ parts, total }: { parts?: any; total: number }) {
   );
 }
 /** The sentence under the fact cells when a buy record does not cover the whole plea (E2). */
-export function factNote(parts: any) {
-  const open = (parts.openHeld ?? 0) + 10;
+export function factNote(parts: any, profit = site().facts.receivedProfit) {
+  const open = (parts.openHeld ?? 0) + profit;
   if (parts.mode === "received")
-    return `This plea’s ${amount(parts.uncovered)} PLEA have no buy record (received, not bought): they count as held since trading opened, at profit 10.`;
-  return `The buy record covers ${amount(parts.covered)} PLEA: held +${parts.held} and profit +${parts.profit}, ${parts.record} in all. The other ${amount(parts.uncovered)} PLEA have no buy record: held since the open +${parts.openHeld ?? 0} and profit +10, ${open} in all. The contract takes the PLEA-weighted mean, rounded: ${parts.weighted}.`;
+    return `This plea’s ${amount(parts.uncovered)} PLEA have no buy record (received, not bought): they count as held since trading opened, at profit ${profit}.`;
+  return `The buy record covers ${amount(parts.covered)} PLEA: held +${parts.held} and profit +${parts.profit}, ${parts.record} in all. The other ${amount(parts.uncovered)} PLEA have no buy record: held since the open +${parts.openHeld ?? 0} and profit +${profit}, ${open} in all. The contract takes the PLEA-weighted mean, rounded: ${parts.weighted}.`;
 }

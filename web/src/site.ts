@@ -13,6 +13,14 @@ import type { Address } from "viem";
 export type TradeSettings =
   | { kind: "poolSwapTest"; router: Address }
   | { kind: "universalRouter"; router: Address; minHopPrice: boolean; permit2: Address };
+/** The fact-score rules the deployed CabalGate fixes and no view returns (CabalGate._heldPoints,
+ * _factScoreAt): holding-time points, longest band first, and the profit points PLEA that no buy
+ * record covers scores. Sepolia run 9 (testnet9): 7 / 4 / 2 at 7 / 3 / 1 days, profit 10;
+ * Ethereum (launch #2647): 3 / 2 / 1, profit 9. */
+export type FactRules = {
+  held: { days: number; points: number }[];
+  receivedProfit: number;
+};
 export type SiteSettings = {
   key: string;
   /** The deployment in words: "Sepolia test run 9", "Ethereum". */
@@ -28,6 +36,7 @@ export type SiteSettings = {
   claimsPath: string;
   /** The Letterbox, Tribunal and hook PleaLaunch must name, or null to take PleaLaunch's. */
   expected: Record<"Letterbox" | "Tribunal" | "PleaHook", string> | null;
+  facts: FactRules;
   trade: TradeSettings;
   delegateRegistry: Address;
   /** imd/acc's Stacker and its sIMD vault (null: cashback is never staked on this network). */
@@ -72,6 +81,7 @@ export function siteFrom(manifest: any): Site {
     throw Error("The deployment file names no first block for PLEA's history.");
   if (!s.trade?.router || !["poolSwapTest", "universalRouter"].includes(s.trade.kind))
     throw Error("The deployment file names no swap router.");
+  if (!validFacts(s.facts)) throw Error("The deployment file names no fact-score rules.");
   return {
     ...s,
     chain: n.name,
@@ -81,6 +91,20 @@ export function siteFrom(manifest: any): Site {
     sourceCommit: manifest.sourceCommit,
   };
 }
+/** Holding bands longest first, whole days and points, and a whole profit score. */
+export const validFacts = (f: any): f is FactRules =>
+  Array.isArray(f?.held) &&
+  f.held.length > 0 &&
+  f.held.every(
+    (b: any, i: number) =>
+      Number.isSafeInteger(b?.days) &&
+      b.days > 0 &&
+      Number.isSafeInteger(b?.points) &&
+      b.points >= 0 &&
+      (i === 0 || b.days < f.held[i - 1].days),
+  ) &&
+  Number.isSafeInteger(f.receivedProfit) &&
+  f.receivedProfit >= 0;
 export function setSite(manifest: any): Site {
   const site = siteFrom(manifest);
   store[KEY] = site;

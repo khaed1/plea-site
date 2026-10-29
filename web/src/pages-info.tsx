@@ -1241,7 +1241,7 @@ export function Claim() {
               ) : (
                 ""
               )}{" "}
-              and scores 10 for profit or loss.
+              and scores {site().facts.receivedProfit} for profit or loss.
             </p>
           </div>
           <div className="stack stack--sm">

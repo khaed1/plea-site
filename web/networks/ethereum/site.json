@@ -12,6 +12,23 @@
     "Tribunal": "0x1aa665eb420f28103324daaaf034de13ee6f53d9",
     "PleaHook": "0xf1122bc96adea8768cff2badf02b6d4594f928cc"
   },
+  "facts": {
+    "held": [
+      {
+        "days": 7,
+        "points": 3
+      },
+      {
+        "days": 3,
+        "points": 2
+      },
+      {
+        "days": 1,
+        "points": 1
+      }
+    ],
+    "receivedProfit": 9
+  },
   "trade": {
     "kind": "universalRouter",
     "router": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",

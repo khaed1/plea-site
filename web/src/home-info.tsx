@@ -27,7 +27,7 @@ import {
   sellGateWarning,
   sourceLink,
 } from "./site";
-import { LETTERBOX } from "./models";
+import { LETTERBOX, factMax } from "./models";
 const NUMBER_WORDS = [
   "zero",
   "one",
@@ -63,6 +63,9 @@ export function HowItWorks() {
     t = (k: string) => span(n(k)),
     pair = s?.constants.pairSymbol,
     pass = n("CabalGate.PASS_MARK"),
+    facts = site().facts,
+    // The example's fresh buyer (share 16, a loss 13, a flat day 5) after holding each band.
+    fresh = 16 + 13 + 5,
     dead = !!val(s, "CabalGate.diedAt"),
     dies = Number(val(s, "CabalGate.lastVerdictAt")) + n("CabalGate.DEADMAN");
   return (
@@ -115,7 +118,7 @@ export function HowItWorks() {
                 <div className="panel__head">
                   <h4>The fact score</h4>
                   <span className="meta">
-                    0 to {String(c("CabalGate.MAX_PLEA_SCORE"))} points
+                    0 to {factMax(facts)} points
                   </span>
                 </div>
                 <div
@@ -148,9 +151,13 @@ export function HowItWorks() {
                               Held <span className="nowrap">(buy-weighted)</span>
                             </>,
                             [
-                              ["≥ 7 days", 7],
-                              ["≥ 3 days", 4],
-                              ["≥ 1 day", 2],
+                              ...facts.held.map(
+                                (b) =>
+                                  [
+                                    `≥ ${b.days} ${b.days === 1 ? "day" : "days"}`,
+                                    b.points,
+                                  ] as [string, number],
+                              ),
                               ["less", 0],
                             ],
                           ],
@@ -188,8 +195,8 @@ export function HowItWorks() {
                 <div className="panel__body">
                   <p className="small text-2">
                     PLEA that no buy record covers (received, not bought)
-                    counts as held since trading opened, with 10 points for
-                    profit or loss.
+                    counts as held since trading opened, with{" "}
+                    {facts.receivedProfit} points for profit or loss.
                   </p>
                 </div>
               </div>
@@ -254,10 +261,21 @@ export function HowItWorks() {
                   <tbody>
                     {(
                       [
-                        ["under a day", 34],
-                        ["a day", 36],
-                        ["three days", 38],
-                        ["a week", 41],
+                        ["under a day", fresh],
+                        ...facts.held
+                          .slice()
+                          .reverse()
+                          .map(
+                            (b) =>
+                              [
+                                b.days === 1
+                                  ? "a day"
+                                  : b.days === 7
+                                    ? "a week"
+                                    : `${NUMBER_WORDS[b.days] ?? b.days} days`,
+                                fresh + b.points,
+                              ] as [string, number],
+                          ),
                       ] as [string, number][]
                     ).map(([held, fact]) => (
                       <tr key={held}>
