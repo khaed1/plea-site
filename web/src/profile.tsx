@@ -221,6 +221,7 @@ export function Profile({ target }: { target?: string }) {
           pleas,
           last,
           seasons,
+          excluded,
         };
       },
       [wallet],
@@ -773,12 +774,24 @@ export function Profile({ target }: { target?: string }) {
                     </a>
                   )}
                 </div>
-                {!data.seasons.length ? (
+                {/* The owner never plays seasons (Seasons.excluded; record reverts OwnerExcluded) (F6). */}
+                {data.excluded && (
                   <div className="panel__body">
                     <p className="small">
-                      No plea of this wallet is recorded in any season yet.
+                      {mine ? "This wallet is" : `${label} is`} PLEA’s owner or
+                      the launch owner, excluded from seasons: its pleas earn no
+                      points, prize or bonus.
                     </p>
                   </div>
+                )}
+                {!data.seasons.length ? (
+                  data.excluded ? null : (
+                    <div className="panel__body">
+                      <p className="small">
+                        No plea of this wallet is recorded in any season yet.
+                      </p>
+                    </div>
+                  )
                 ) : (
                   <>
                     <div
@@ -892,6 +905,8 @@ export function Profile({ target }: { target?: string }) {
                           ? Math.min(ex.score, Number(ex.standing?.[2] ?? 255))
                           : 36,
                         seated = Math.floor((score * bps) / 10000);
+                      if (data.excluded)
+                        return `${who} ${data.seat ? "an" : "no"} identity.md seat. The multiplier never applies here: this wallet earns no season points.`;
                       return data.seat
                         ? `${who} an identity.md seat, so every recorded plea earns × ${mult}. ${ex ? `Plea #${ex.id}’s ${score} becomes ${ex.points} points.` : `A score of ${score} becomes ${seated} points.`}`
                         : `${who} no identity.md seat now, so a recorded plea earns its judges’ score. With a seat when ${ex ? `plea #${ex.id}` : "a plea"} is recorded, ${ex ? `its ${score}` : `a score of ${score}`} would earn ${seated} points (× ${mult}, rounded down).`;

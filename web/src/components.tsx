@@ -1395,7 +1395,9 @@ export function Meter({
             ? `Judges ${score}`
             : verdict === "PENDING"
               ? "Waiting for the judges"
-              : "No score yet"}
+              : verdict === "NO VERDICT"
+                ? "No score: no verdict"
+                : "No score yet"}
         </span>
         <span>
           Need <b>{need}</b> = {pass} − fact <b>{fact}</b>
@@ -1411,9 +1413,11 @@ export function Meter({
           label ||
           (judged
             ? `Score ${score} of ${max}, need ${need}: ${difference}`
-            : own
-              ? `No score yet. Your need is ${need} of ${max}.`
-              : `No score yet, need ${need} of ${max}.`)
+            : verdict === "NO VERDICT"
+              ? `No score: no verdict. The need was ${need} of ${max}.`
+              : own
+                ? `No score yet. Your need is ${need} of ${max}.`
+                : `No score yet, need ${need} of ${max}.`)
         }
       >
         <span className="meter__fill" />

@@ -377,6 +377,8 @@ export function HowItWorks() {
             <a
               className="link-btn"
               href={sourceLink("src/CabalGate.sol")}
+              target="_blank"
+              rel="noreferrer"
             >
               Read the rule in the code <Icon name="arrow-square-out" />
             </a>

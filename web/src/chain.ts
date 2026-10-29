@@ -590,12 +590,12 @@ export const tokenAmount = (
   mode: "down" | "up" = "down",
 ) =>
   `${amount(v, s?.constants[pair ? "pairDecimals" : "decimals"] ?? 18, digits, mode)} ${s?.constants[pair ? "pairSymbol" : "symbol"] ?? (pair ? "fee token" : "PLEA")}`;
+/** A countdown's time left: "6m 05s" in the last hour (never a clock-like "06:51" beside "closes at
+ * 06:51:24 UTC", N1), "4h 12m", "9d 4h". */
 export function duration(seconds: number) {
   seconds = Math.max(0, Math.floor(seconds));
   if (seconds < 3600)
-    return `${Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+    return `${Math.floor(seconds / 60)}m ${(seconds % 60).toString().padStart(2, "0")}s`;
   if (seconds < 86400)
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
@@ -1043,6 +1043,10 @@ export async function readPlea(r: Runtime, id: bigint, intake?: Address) {
   return p;
 }
 
+/** The not-found title for a plea link: "No plea #19 yet" while a plea can still take that number,
+ * "No plea #0" (numbers start at #1), "No plea #abc", and no "yet" once the Cabal is dead (N2). */
+export const missingPleaTitle = (id: string, s: Snapshot | undefined) =>
+  `No plea #${id}${/^\d+$/.test(id) && BigInt(id) > 0n && !val(s, "CabalGate.diedAt") ? " yet" : ""}`;
 export const pct = (bps: number | bigint) =>
   (Number(bps) / 100).toFixed(2) + "%";
 /** "1 wallet", "21 wallets" (r2S-VN3). */
@@ -1050,7 +1054,7 @@ export const plural = (n: number | bigint, one: string, many = one + "s") =>
   `${n} ${Number(n) === 1 ? one : many}`;
 /** Time left in words, for "… left" and "ends in …" lines: "9d 4h", "4h 12m", and in the last
  * hour "7 min" or "less than a minute", never a clock-like "07:42" (r2S-N5). Countdowns
- * (role=timer) keep their clock. */
+ * (role=timer) tick in minutes and seconds (duration). */
 export function timeLeft(seconds: number) {
   seconds = Math.max(0, Math.floor(seconds));
   if (seconds < 60) return "less than a minute";
@@ -1371,7 +1375,8 @@ export function noVerdict(p: Plea, s: Snapshot, now = s.timestamp) {
   const sentence = {
     refused: "The request was refused.",
     split: `The panel split: ${failure?.agreed} of ${failure?.answered} agreed (${con(s, "CabalGate.QUORUM")} needed).`,
-    "no answer": `No answer within ${span(expiry)}.`,
+    // The Intake reporting "no answer" clears the plea at once, before the expiry (N4).
+    "no answer": failure ? "The panel gave no answer." : `No answer within ${span(expiry)}.`,
     closed: "The Intake closed the request without a verdict.",
     unknown:
       "The request ended without a verdict. The reason is in history this page could not read.",

@@ -239,7 +239,11 @@ export default function App() {
                       {season.dead
                         ? season.current.closed
                           ? "closed"
-                          : `ended with the Cabal · close it from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`
+                          : now >=
+                              Number(season.current.bounds[2]) +
+                                Number(con(s, "Seasons.CLOSE_GRACE"))
+                            ? "ended with the Cabal · anyone can close it now"
+                            : `ended with the Cabal · close it from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`
                         : `${timeLeft(Number(season.current.bounds[2]) - now)} left · pot ${tokenAmount(potOf(s), s, true)}${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? ` + ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}` : ""}`}
                     </>
                   )}
@@ -335,7 +339,11 @@ export default function App() {
             {receipts.map((receipt) => (
               <p className="small" key={receipt.key}>
                 {receipt.text}{" "}
-                <a href={`${r.network.explorer}/tx/${receipt.hash}`}>
+                <a
+                  href={`${r.network.explorer}/tx/${receipt.hash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   View transaction
                 </a>
               </p>

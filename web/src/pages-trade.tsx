@@ -13,7 +13,7 @@ import {
   factTerms,
   autoSellBlock,
 } from "./models";
-import { returnedEscrow } from "./appeal";
+import { appealClosedWhy, returnedEscrow } from "./appeal";
 import {
   estimateHookOutput,
   priceLimit,
@@ -1181,7 +1181,9 @@ export function Buy() {
                         e.eventName === "CashbackStacked" &&
                         e.args.trader?.toLowerCase() === address.toLowerCase(),
                     ) ? (
-                      <a href="https://imdacc.fun">Staked through imd/acc.</a>
+                      <a href="https://imdacc.fun" target="_blank" rel="noreferrer">
+                        Staked through imd/acc.
+                      </a>
                     ) : (
                       cashbackWords(pair).plainNote
                     )}
@@ -1227,6 +1229,26 @@ export function Plead() {
     [address],
     !!s && !!address,
   );
+  // The owner never plays seasons (Seasons.excluded); a denial's cooldown is its appeal window, so
+  // the latest plea is read to point to its appeal (F6, N11).
+  const excluded = useRead(
+      () => read(r, "Seasons", "excluded", [address]),
+      [address],
+      !!s && !!address,
+    ),
+    denial = useRead(
+      () => read(r, "CabalGate", "getPlea", [balance.data!.last]),
+      [String(balance.data?.last)],
+      !!s && !!balance.data?.last && balance.data.cooldownCause === "denied plea",
+    ),
+    appealable =
+      !!denial.data &&
+      !appealClosedWhy(
+        BigInt(balance.data!.last),
+        denial.data,
+        now,
+        Number(con(s, "CabalGate.COOLDOWN")),
+      );
   const autoBlock =
       balance.data && s?.v.fees
         ? autoSellBlock(
@@ -1617,6 +1639,20 @@ export function Plead() {
                     ? "denied plea"
                     : "plea lapsed"}
                 .
+                {appealable && (
+                  <>
+                    {" "}
+                    Plea #{String(balance.data.last)} can be appealed once until{" "}
+                    {clock(
+                      Number(denial.data.verdictAt) +
+                        Number(con(s, "CabalGate.COOLDOWN")),
+                    )}
+                    :{" "}
+                    <a href={`#/p/${balance.data.last}`}>
+                      Appeal plea #{String(balance.data.last)}
+                    </a>
+                  </>
+                )}
               </p>
             </Notice>
           ) : cannot ? (
@@ -1631,6 +1667,15 @@ export function Plead() {
               </p>
             </Notice>
           ) : null}
+          {excluded.data && (
+            <Notice title="This wallet does not play seasons.">
+              <p>
+                It is PLEA’s owner or the launch owner (Seasons.excluded): its
+                pleas earn no season points, prize or bonus, and nobody can
+                object to them. Pleading and selling work as for anyone.
+              </p>
+            </Notice>
+          )}
           {auto ? (
             <Action
               connectText="Connect a wallet first: your balance, facts and need come from it."

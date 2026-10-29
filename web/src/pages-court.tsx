@@ -7,7 +7,7 @@ import { PleaTimeline } from "./details";
 import { oracleRequest, type OracleData } from "./oracle";
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useAccount } from "wagmi";
-import { formatUnits, type Address } from "viem";
+import { formatUnits, getAddress, isAddress, type Address } from "viem";
 import { rich, useApp, useRead, useTx } from "./context";
 import {
   amount,
@@ -50,7 +50,9 @@ import {
   utc,
   val,
   verdictSeason,
+  plural,
   type Plea,
+  missingPleaTitle,
 } from "./chain";
 import {
   Action,
@@ -75,6 +77,7 @@ import {
 import { parseAmount, WalletBalances, poolQuote } from "./pages-trade";
 export function Wall() {
   const { r, s, now } = useApp(),
+    { address } = useAccount(),
     [family, setFamily] = useState("All"),
     [flags, setFlags] = useState<string[]>([]),
     [sort, setSort] = useState("Newest"),
@@ -285,7 +288,7 @@ export function Wall() {
             ? `Showing #${shown[0].id} to #${shown.at(-1)!.id}: ${shown.length} of ${counts[family]} ${family === "All" ? "pleas" : family.toLowerCase() + " plea" + (counts[family] === 1 ? "" : "s")}, ${sort.toLowerCase()} first`
             : "No matching pleas"}
           {wallet
-            ? ` · Showing pleas by ${walletName.data || short(wallet)}`
+            ? ` · Showing pleas by ${walletName.data || short(isAddress(wallet, { strict: false }) ? getAddress(wallet.toLowerCase()) : wallet)}`
             : ""}
           {flags.length
             ? ` · ${flags.map((f) => (f === "By letter" ? "pleas sent by letter" : f === "Appeals" ? "appeals" : f.toLowerCase() + " pleas")).join(", ")}`
@@ -360,7 +363,13 @@ export function Wall() {
         total > 0 && (
           <div className="wall-more">
             <p className="strong">That is every plea, back to #1.</p>
-            <p className="meta">Yours would be #{total + 1}.</p>
+            {/* "Yours" only to a connected wallet; after the death no plea follows (N5). */}
+            {!val(s, "CabalGate.diedAt") && (
+              <p className="meta">
+                {address ? "Yours would be" : "The next plea will be"} #
+                {total + 1}.
+              </p>
+            )}
             {val(s, "PleaHook.seeded") && !val(s, "CabalGate.diedAt") && (
               <a className="btn btn--sm" href="#/plead">
                 Write a plea <Icon name="arrow-right" />
@@ -731,7 +740,7 @@ export function PleaPage({ id }: { id: string }) {
         ) : (
           <Empty
             icon="scales"
-            title={`No plea #${id} yet`}
+            title={missingPleaTitle(id, s)}
             action={{ href: "#/wall", label: "See the Wall" }}
             actions={
               val(s, "CabalGate.cabalAlive") && val(s, "PleaHook.seeded")
@@ -768,7 +777,14 @@ export function PleaPage({ id }: { id: string }) {
     !missedSeason && !p.excluded && !p.standing?.[1] && pointsHeld(p, s, now);
   const settled = p.escrow && !p.escrow[1];
   const recordAt = recordFrom(p, s, now),
-    cs = caseState(p, s, now);
+    cs = caseState(p, s, now),
+    // This wallet's objection that still counts (not void, not stale), as ObjectionForm's `same`.
+    ownObjection = p.objections?.find(
+      (o) =>
+        o.objector.toLowerCase() === address?.toLowerCase() &&
+        o.ruling !== 4 &&
+        !objectionStale(o, p, s, now),
+    );
   const appealId = latestAppealOf(s, p.id);
   return (
     <div className="stack stack--lg">
@@ -1008,7 +1024,7 @@ export function PleaPage({ id }: { id: string }) {
               !canSell &&
               (p.status !== 1 || state === "NO VERDICT") && (
                 <TxButton
-                  connectText="Connect in the top bar to settle the stake."
+                  connectText="Connect in the top bar to return the escrow."
                   label="Return escrow and tip"
                   name="Letterbox"
                   fn="settle"
@@ -1100,9 +1116,9 @@ export function PleaPage({ id }: { id: string }) {
               {cs.closed ? (
                 <div className="cluster">
                   <span className="pill">{caseClosedText(cs.closed)}</span>
-                  <span className="pill">
-                    {cs.filed} of {cs.max} filed
-                  </span>
+                  {/* A closed case counts every objection filed, the void and unanswered ones it
+                      lists too; the slots (N of 2) matter only while it is open (N7). */}
+                  <span className="pill">{filedText(p)}</span>
                 </div>
               ) : (
                 <>
@@ -1138,6 +1154,16 @@ export function PleaPage({ id }: { id: string }) {
                       {span(Number(con(s, "Tribunal.PENDING_EXPIRY")))}: nothing
                       changes. The sale is never touched.
                     </p>
+                  ) : ownObjection ? (
+                    // One objection per wallet: Object is offered only to a wallet that has none
+                    // standing on this plea (as the Objections page's form says, N6).
+                    <p className="small">
+                      <b>You already objected to this plea.</b> Objection #
+                      {String(ownObjection.id)}{" "}
+                      {ownObjection.ruling === 1
+                        ? "is pending: a new panel is re-scoring it."
+                        : "was ruled."}
+                    </p>
                   ) : address ? (
                     <>
                       <a
@@ -1167,7 +1193,13 @@ export function PleaPage({ id }: { id: string }) {
                       <Notice title="Connect in the top bar to object.">
                         <p>
                           The plea, its verdict and its timeline read without a
-                          wallet. Only the seller can sell it.
+                          wallet.
+                          {/* An auto-sell plea is sold by anyone, for the seller, as the lead says (F5). */}
+                          {canSell
+                            ? auto
+                              ? " Anyone can sell it for the seller."
+                              : " Only the seller can sell it."
+                            : ""}
                         </p>
                       </Notice>
                       <button
@@ -1295,6 +1327,8 @@ export function PleaPage({ id }: { id: string }) {
                     {log ? (
                       <a
                         href={`${r.network.explorer}/tx/${log.transactionHash}`}
+                        target="_blank"
+                        rel="noreferrer"
                       >
                         {clock(time)} · View transaction
                       </a>
@@ -1344,13 +1378,16 @@ export function ObjectionForm({ p }: { p: Plea }) {
     full = cs.full,
     own = address?.toLowerCase() === p.seller.toLowerCase(),
     until = Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW")),
-    closed =
-      cs.closed ||
-      (![2, 4, 5].includes(p.status)
-        ? "this plea is not approved"
-        : !val(s, "CabalGate.cabalAlive")
-          ? "the Cabal is dead"
-          : undefined);
+    // A plea that was never approved never had an objection window (F3): no "closed at".
+    approved = [2, 4, 5].includes(p.status),
+    closed = !approved
+      ? "this plea is not approved"
+      : cs.closed ||
+        (!val(s, "CabalGate.cabalAlive") ? "the Cabal is dead" : undefined),
+    closedText = (closed: string) =>
+      approved
+        ? caseClosedText(closed)
+        : `No objections: plea #${p.id} ${p.status === 1 ? "has no verdict yet" : p.status === 3 ? "was denied" : "got no verdict"}.`;
   const cost =
       BigInt(con(s, "Tribunal.ORACLE_FEE")) + BigInt(con(s, "Tribunal.STAKE")),
     // A void or stale objection does not count against its objector: object() voids a stale one first.
@@ -1362,7 +1399,7 @@ export function ObjectionForm({ p }: { p: Plea }) {
     ),
     name = useNames((p.objections || []).map((o) => o.objector)),
     reason = closed
-      ? caseClosedText(closed!)
+      ? closedText(closed!)
       : own
         ? "You can’t object to your own plea."
         : full
@@ -1402,14 +1439,17 @@ export function ObjectionForm({ p }: { p: Plea }) {
           <Countdown until={until} label="Objections close in" />
         </div>
       ) : (
-        <p>{caseClosedText(closed!)}</p>
+        <p>{closedText(closed!)}</p>
       )}
-      <div>
-        <span className="pill">
-          {count} of {String(con(s, "Tribunal.MAX_OBJECTIONS"))} filed
-          {!closed && count === cs.max - 1 ? " · one slot left" : ""}
-        </span>
-      </div>
+      {approved && (
+        <div>
+          <span className="pill">
+            {closed
+              ? filedText(p)
+              : `${count} of ${con(s, "Tribunal.MAX_OBJECTIONS")} filed${count === cs.max - 1 ? " · one slot left" : ""}`}
+          </span>
+        </div>
+      )}
       {p.objections
         ?.filter((o) => o.ruling === 1)
         .map((o) => {
@@ -1439,13 +1479,15 @@ export function ObjectionForm({ p }: { p: Plea }) {
             </div>
           );
         })}
-      <p>
-        {p.standing?.[1] || p.excluded
-          ? "No points"
-          : `+${p.points || 0} points${pointsHeld(p, s!, now) ? " held" : ""}`}
-      </p>
+      {approved && (
+        <p>
+          {p.standing?.[1] || p.excluded
+            ? "No points"
+            : `+${p.points || 0} points${pointsHeld(p, s!, now) ? " held" : ""}`}
+        </p>
+      )}
       {closed ? (
-        <Notice title={caseClosedText(closed)}>
+        <Notice title={closedText(closed)}>
           <p>
             {p.excluded
               ? "This seller is excluded from season points."
@@ -1548,14 +1590,17 @@ function quoteSub(
 export function Objections() {
   const { r, s, now, refresh } = useApp(),
     specific = new URLSearchParams(location.hash.split("?")[1]).get("plea"),
+    // ?plea=N names one plea; one that does not exist says so, never "No open cases" (F3).
+    exists =
+      !!s &&
+      !!specific &&
+      /^\d+$/.test(specific) &&
+      BigInt(specific) > 0n &&
+      BigInt(specific) < val(s, "CabalGate.nextId"),
     requested = useRead(
       () => getPlea(r, BigInt(specific!), s?.logs),
       [specific],
-      !!s &&
-        !!specific &&
-        /^\d+$/.test(specific) &&
-        BigInt(specific) > 0n &&
-        BigInt(specific) < val(s, "CabalGate.nextId"),
+      exists,
     );
   const open =
       s?.court.open
@@ -1567,7 +1612,8 @@ export function Objections() {
       s?.court.open.find((p) => String(p.id) === specific) ||
       s?.pleas.find((p) => String(p.id) === specific) ||
       requested.data,
-    list = specific ? (selected ? [selected] : []) : open;
+    list = specific ? (selected ? [selected] : []) : open,
+    shown = specific && selected ? [2, 4, 5].includes(selected.status) : true;
   const objections = (
     s?.v.objections ||
     s?.pleas.flatMap((p) => p.objections || []) ||
@@ -1609,9 +1655,15 @@ export function Objections() {
         <div className="section__head">
           <h2>Open now</h2>
           <p className="meta">
-            {s?.historyError && !specific && !list.length
-              ? "History incomplete"
-              : `${list.length} approved plea${list.length === 1 ? "" : "s"} · closing soonest first`}
+            {specific
+              ? selected
+                ? `Plea #${selected.id}${shown ? "" : " · not approved"}`
+                : exists || !s
+                  ? `Plea #${specific}`
+                  : `No plea #${specific}`
+              : s?.historyError && !list.length
+                ? "History incomplete"
+                : `${list.length} approved plea${list.length === 1 ? "" : "s"} · closing soonest first`}
           </p>
         </div>
         <div className="split">
@@ -1628,7 +1680,22 @@ export function Objections() {
               </Empty>
             ) : list.length ? (
               list.map((p) => <ObjectionForm p={p} key={String(p.id)} />)
-            ) : s?.historyError && !specific ? (
+            ) : specific && (!s || (exists && !requested.error)) ? (
+              <p className="loading-label">
+                <Icon name="hourglass" />
+                Reading plea #{specific}…
+              </p>
+            ) : specific ? (
+              <Empty
+                icon="megaphone-simple"
+                title={exists ? `Can’t read plea #${specific}` : `No plea #${specific}`}
+                action={{ href: "#/objections", label: "See the open cases" }}
+              >
+                {exists
+                  ? "The public RPC did not answer. The site tries the next one by itself."
+                  : `${/^\d+$/.test(specific) && BigInt(specific) > 0n ? `Plea #${specific} has not been submitted.` : "Plea numbers start at #1."}${s?.historyError ? "" : ` ${plural(open.length, "case")} ${open.length === 1 ? "is" : "are"} open now.`}`}
+              </Empty>
+            ) : s?.historyError ? (
               // The open cases come from history; with a gap in it, "none" is not known (r2S-N1).
               <Empty
                 icon="megaphone-simple"
@@ -1852,6 +1919,9 @@ function Who({ address, name }: { address: string; name: string }) {
   return <span className={name ? "strong" : "mono"}>{name || short(address)}</span>;
 }
 const RULING = ["", "Objection", "Sustained", "Overruled", "Void"];
+/** "No objection filed", "1 objection filed", "3 objections filed": every objection a closed case had. */
+const filedText = (p: Plea) =>
+  `${p.objections?.length ? plural(p.objections.length, "objection") : "No objection"} filed`;
 function ObjectionLines({ p }: { p: Plea }) {
   const { s, now } = useApp(),
     name = useNames((p.objections || []).map((o) => o.objector));

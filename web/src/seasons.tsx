@@ -616,6 +616,8 @@ function SeasonBody({
                       <>
                         <a
                           href={`${r.network.explorer}/tx/${closedLog!.transactionHash}`}
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           {clock(closer.data.time)}
                         </a>{" "}
@@ -1382,7 +1384,11 @@ function PastSeasons() {
                   <>
                     {" "}
                     Closed{" "}
-                    <a href={`${r.network.explorer}/tx/${l.transactionHash}`}>
+                    <a
+                      href={`${r.network.explorer}/tx/${l.transactionHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       {clock(block.timestamp)}
                     </a>{" "}
                     by{" "}

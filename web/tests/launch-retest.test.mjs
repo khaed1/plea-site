@@ -318,3 +318,34 @@ test("F2: the projection says which unrecorded pleas it counts", () => {
   assert.equal(closeCounts({ pleas: [], mult: "1.2" }), "");
   assert.match(closeCounts({ pleas: [], mult: "1.2", historyError: true }), /not counted until the history is read/);
 });
+
+test("N1, N2, N4: countdowns read 6m 05s; no 'yet' for a plea number that never comes; an Intake's no answer is not an expiry", () => {
+  // N1: under an hour a countdown is minutes and seconds, never a clock-like 06:51.
+  assert.equal(chain.duration(411), "6m 51s");
+  assert.equal(chain.duration(5), "0m 05s");
+  assert.equal(chain.duration(3599), "59m 59s");
+  assert.equal(chain.duration(4 * 3600 + 12 * 60), "4h 12m");
+  // N2: #0 and #abc never exist; after the death no new plea does either.
+  const alive = { v: { "CabalGate.diedAt": 0n } },
+    dead = { v: { "CabalGate.diedAt": 1793361296n } };
+  assert.equal(chain.missingPleaTitle("19", alive), "No plea #19 yet");
+  assert.equal(chain.missingPleaTitle("0", alive), "No plea #0");
+  assert.equal(chain.missingPleaTitle("abc", alive), "No plea #abc");
+  assert.equal(chain.missingPleaTitle("19", dead), "No plea #19");
+  // N4: plea #10 on the testers' fork: the Intake reported no answer (status 2, 0 answered).
+  const V = 1792600000,
+    s = {
+      constants: { "CabalGate.PENDING_EXPIRY": 1200, "CabalGate.QUORUM": 17 },
+      logs: [{ eventName: "PleaFailed", args: { id: 10n } }],
+      v: {},
+      timestamp: V + 30,
+    },
+    p = { id: 10n, status: 6, submittedAt: BigInt(V), failure: { status: 2, answered: 0, agreed: 0 } };
+  const n = chain.noVerdict(p, s, V + 30);
+  assert.equal(n.kind, "no answer");
+  assert.equal(n.sentence, "The panel gave no answer.");
+  assert.equal(n.detail, "Cleared at once by the Intake.");
+  // Without the Intake's report the expiry is what ended it.
+  const expired = chain.noVerdict({ ...p, failure: undefined }, { ...s, logs: [] }, V + 1300);
+  assert.equal(expired.sentence, `No answer within ${chain.span(1200)}.`);
+});

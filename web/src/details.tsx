@@ -363,6 +363,8 @@ export function LetterDetails() {
           <a
             className="btn btn--sm"
             href={`${r.network.explorer}/address/${r.addresses.Letterbox}#readContract`}
+            target="_blank"
+            rel="noreferrer"
           >
             Open Read Contract <Icon name="arrow-right" />
           </a>

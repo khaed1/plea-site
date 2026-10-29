@@ -154,7 +154,7 @@ export function Home() {
               "Season prize pot",
               tokenAmount(potOf(s), s, true),
               season
-                ? `${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? `+ ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}; ` : ""}${dead ? (season.current.closed ? `Season ${season.displayed + 1n} was the last.` : `close season ${season.displayed + 1n} from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`) : `season ${season.displayed + 1n} ends in ${timeLeft(Number(season.current.bounds[2]) - now)}`}${season.awaiting !== undefined && season.awaiting < season.displayed ? `; plus what season ${season.displayed} rolls over at its close` : ""}`
+                ? `${season.displayed < BigInt(con(s, "Seasons.BONUS_SEASONS")) ? `+ ${tokenAmount(con(s, "Seasons.BONUS_PER_SEASON"), s)}; ` : ""}${dead ? (season.current.closed ? `Season ${season.displayed + 1n} was the last.` : now >= Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")) ? `anyone can close season ${season.displayed + 1n} now` : `close season ${season.displayed + 1n} from ${clock(Number(season.current.bounds[2]) + Number(con(s, "Seasons.CLOSE_GRACE")))}`) : `season ${season.displayed + 1n} ends in ${timeLeft(Number(season.current.bounds[2]) - now)}`}${season.awaiting !== undefined && season.awaiting < season.displayed ? `; plus what season ${season.displayed} rolls over at its close` : ""}`
                 : "The first season begins when trading opens",
             ],
             [
@@ -1274,6 +1274,8 @@ function ClaimReceipt({ index, amount }: { index: string; amount?: string }) {
     <a
       className="nowrap"
       href={`${r.network.explorer}/tx/${log.transactionHash}`}
+      target="_blank"
+      rel="noreferrer"
     >
       View the receipt<span className="sr-only">: the Claimed event</span>
     </a>

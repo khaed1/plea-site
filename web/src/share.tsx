@@ -20,6 +20,7 @@ import {
   soldFor,
   sharePercent,
   type Plea,
+  missingPleaTitle,
 } from "./chain";
 import {
   shareSentence,
@@ -102,7 +103,9 @@ export function ShareCard({ p }: { p?: Plea }) {
       aria-label={
         p
           ? `Share card for plea #${p.id} by ${p.name || short(p.seller)}${p.seat ? ", seat holder" : ""}${p.flags & 1 ? ", by letter" : ""}${p.isAppeal ? `, the appeal of #${p.originalId}` : ""}: “${p.text}” ${shareSentence(p, s!, now, { rank: extra.data?.rank, season: extra.data?.season, originalScore: extra.data?.original?.score })} ${cardUrl}`
-          : "PLEA: buying is open, selling needs a plea."
+          : dead
+            ? "PLEA: buying is open, selling is open forever."
+            : "PLEA: buying is open, selling needs a plea."
       }
     >
       <article
@@ -129,7 +132,11 @@ export function ShareCard({ p }: { p?: Plea }) {
             </span>
           )}
           <span className={p ? "share-card__id" : ""}>
-            {p ? `Plea #${p.id}` : "The Cabal is in session."}
+            {p
+              ? `Plea #${p.id}`
+              : dead
+                ? "The Cabal is dead."
+                : "The Cabal is in session."}
           </span>
         </div>
         {p ? (
@@ -165,11 +172,13 @@ export function ShareCard({ p }: { p?: Plea }) {
               <span className="stamp stamp--approved">APPROVED</span>
               <span className="stamp stamp--denied">DENIED</span>
             </div>
+            {/* After the death the link card says what Home says (F4). */}
             <h2 className="share-card__title">
               Buying is open.
               <br />
-              Selling needs
-              <br />a plea.
+              {dead ? "Selling is open" : "Selling needs"}
+              <br />
+              {dead ? "forever." : "a plea."}
             </h2>
           </>
         )}
@@ -299,8 +308,12 @@ export function ShareCard({ p }: { p?: Plea }) {
                   <span>score</span>
                 </div>
                 <div>
-                  <b>{Number(con(s, "CabalGate.EXECUTE_WINDOW")) / 60} min</b>
-                  <span>to sell</span>
+                  <b>
+                    {dead
+                      ? "No plea"
+                      : `${Number(con(s, "CabalGate.EXECUTE_WINDOW")) / 60} min`}
+                  </b>
+                  <span>{dead ? "needed to sell" : "to sell"}</span>
                 </div>
               </>
             )}
@@ -344,7 +357,9 @@ export function Share({
     : "Plead your case:";
   const statusText = p
     ? shareStatus(p, s!, now, subject)
-    : "Buying is open. Selling needs a plea.";
+    : s?.v["CabalGate.diedAt"]
+      ? "Buying is open. Selling is open forever."
+      : "Buying is open. Selling needs a plea.";
   let quote =
     p?.text
       .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
@@ -451,7 +466,7 @@ export function Share({
               BigInt(id || "0") <= 0n ||
               BigInt(id || "0") >= s.v["CabalGate.nextId"]))) ? (
         <Empty
-          title={`No plea #${id} yet`}
+          title={missingPleaTitle(id, s)}
           action={{ href: "#/wall", label: "See the Wall" }}
           actions={
             val(s, "CabalGate.cabalAlive") && val(s, "PleaHook.seeded")
