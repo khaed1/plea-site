@@ -1045,9 +1045,6 @@
 .dg-addrs dd {
   min-width: 0;
 }
-.dg-addrs .addr {
-  display: inline;
-}
 /* audit-timeline: the site's timeline, one day a step; each audit a line with its findings as badges
    that name their severity in words (the colour only repeats it). */
 .docs-body .dg-audits {

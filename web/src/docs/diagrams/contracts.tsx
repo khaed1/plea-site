@@ -54,7 +54,7 @@ function AddressRow({ name, address, what, sourcify }: { name: string; address: 
         <b>{name}</b>
       </dt>
       <dd className="stack stack--sm">
-        <AddressView address={address} label={name} explorer="https://etherscan.io" />
+        <AddressView address={address} label={who} explorer="https://etherscan.io" />
         {what && <span className="small text-2">{what}</span>}
         {sourcify && (
           <span className="small">
