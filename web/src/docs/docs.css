@@ -818,3 +818,25 @@
 .dg .costs .icon {
   vertical-align: -0.2em;
 }
+/* need: the table's row heads read like cells and wrap; the caption is the table's title. */
+.dg .table tbody th {
+  padding: var(--space-3);
+  border-bottom: var(--bw-thin) solid var(--line-soft);
+  background: none;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  white-space: normal;
+}
+.dg .table tbody tr:last-child th {
+  border-bottom: 0;
+}
+.dg .table thead th[scope="colgroup"] {
+  border-bottom-width: var(--bw-thin);
+}
+.dg-caption {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--bw-thin) solid var(--line-soft);
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: var(--w-bold);
+}

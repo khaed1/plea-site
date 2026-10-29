@@ -12,17 +12,21 @@ export function Figure({
   title,
   alt,
   children,
+  lead,
   after,
 }: {
   title: ReactNode;
   alt: string;
   children: ReactNode;
+  /** Words before the drawing (what it shows). */
+  lead?: ReactNode;
   after?: ReactNode;
 }) {
   const id = "dg-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   return (
     <figure className="docs-figure panel stack stack--md dg">
       <figcaption className="docs-figure__title">{title}</figcaption>
+      {lead}
       <div className="dg-art" role="img" aria-labelledby={id}>
         <span id={id} className="sr-only">
           {alt}
