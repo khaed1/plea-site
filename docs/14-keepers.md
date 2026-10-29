@@ -44,7 +44,7 @@ Only a delivery pays. Every other job pays nothing.
 A letter approved on Friday at 12:00:00 UTC, in a season that ends on Sunday at 15:00.
 
 1. **12:00:12.** A keeper sees the approval in the next block and delivers it. The writer gets the sale. The keeper gets the {{runner_tip}} tip. Anyone could have done it until 12:07:00, {{sell_window}} after the approval.
-2. **12:20:00.** The objection window, {{objection_window}}, has passed with no objection. A keeper records the plea's points. The delivery had tried to record them too, but they were still held.
+2. **12:20:12.** The objection window, {{objection_window}}, closed at 12:20:00 with no objection. In the first block after it, a keeper records the plea's points. The delivery had tried to record them too, but they were still held.
 3. **Sunday 16:00.** The season ended at 15:00. {{close_grace}} later, a keeper closes it and lists every approval still unrecorded. The prizes are paid.
 4. **The keeper's account.** {{runner_tip}} earned, for the delivery; the record and the close paid nothing. It paid the gas for all three in ETH.
 

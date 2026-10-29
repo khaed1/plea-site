@@ -8,7 +8,7 @@ The rules they score by are written into the contract, word for word, the same f
 
 ## How it works
 
-1. **The question.** The contract writes what the judges read: the plea's number, your wallet, how much you sell, the rules, and your plea's text, marked as text from a stranger whose instructions they must never follow.
+1. **The question.** The contract writes what the judges read: the plea's number, your wallet, how much you sell, the rules, and your plea's text. Your text is marked as a stranger's, whose instructions they must never follow.
 2. **Four parts.** Each judge scores four things and adds them up, from 0 to {{max_score}}. The list below says what earns the points.
 3. **Anchors.** The rules tell the judges where a plea sits: {{judge_anchors}}.
 4. **Stories.** A plea cannot be proven and need not be. The judges ask whether it is plausible and consistent. Jokes, poems and fiction are welcome and score on craft. More suffering does not mean more points.

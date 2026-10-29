@@ -72,7 +72,7 @@ The words in the order you meet them.
 - **sIMD.** Staked IMD, the form your cashback takes. [Fees](11-fees.md).
 - **Stake.** The {{objection_stake}} an objector puts down: back if the objection is sustained or void, to the pot if overruled. [Objection!](09-objection.md).
 - **Sustained, overruled, void.** An objection's three endings: the plea loses its points; the plea keeps them, at the lower score; no ruling came. [Objection!](09-objection.md).
-- **Tick.** The pool's smallest price step, {{tick_size}}. [The pool](12-pool.md).
+- **Tick.** A {{tick_size}} price step: the unit the pool's price ranges are set in. [The pool](12-pool.md).
 - **Tip.** The {{runner_tip}} paid to whoever delivers a letter's sale. [Letters](07-letters.md).
 - **Trim.** The burn of PLEA that a sale pushed above the cap. [The pool](12-pool.md).
 - **Verdict.** The judges' signed answer: approved or denied. [The judges](05-judges.md).

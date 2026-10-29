@@ -617,7 +617,7 @@ test("heartbeat: the Cabal dies the dead-man's hours after the last verdict; a m
   assert.match(nameOf(quiet(() => draw("heartbeat", { "CabalGate.DEADMAN": 18000n }))), /Hour 35: 5 hours since the last verdict/);
 });
 
-test("contracts: the eight addresses and the owner's, each linked to Etherscan, the contracts to Sourcify too", () => {
+test("contracts: the eight addresses, the owner's and the outside ones, each linked to Etherscan, the eight to Sourcify too", () => {
   const out = draw("contracts");
   const keys = ["addr_plea", "addr_gate", "addr_letterbox", "addr_tribunal", "addr_hook", "addr_seasons", "addr_launch", "addr_distributor"];
   for (const k of keys) {
@@ -628,6 +628,13 @@ test("contracts: the eight addresses and the owner's, each linked to Etherscan, 
   }
   assert.ok(out.includes(`href="https://etherscan.io/address/${NUMBERS.owner.text}"`));
   assert.equal((out.match(/href="https:\/\/repo\.sourcify\.dev\//g) || []).length, 8);
+  // Outside PLEA, under the eight: IMD, the Intake, the oracle's signing key (05-judges and the
+  // glossary point here for them), the PoolManager, the Stacker and the seat NFT, on Etherscan.
+  for (const k of ["addr_imd", "addr_intake", "addr_oracle_signer", "addr_pool_manager", "addr_stacker", "addr_seat"]) {
+    const a = NUMBERS[k].text;
+    assert.match(a, /^0x[0-9a-fA-F]{40}$/, k);
+    assert.ok(out.includes(`href="https://etherscan.io/address/${a}"`), k);
+  }
   // The links sit under the drawing, never inside the image.
   const image = out.slice(out.indexOf('role="img"'), out.indexOf('<dl class="addr-list dg-addrs">'));
   assert.ok(image.length > 1000 && !image.includes("<a "), "no link inside the image");

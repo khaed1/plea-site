@@ -8,7 +8,7 @@ Audits lower the risk but are no guarantee: code that many have read can still h
 
 ## How it works
 
-1. **Swarm rounds.** A round is three IMD audit jobs, one for each part of the code: the game (CabalGate, the Tribunal, Seasons), letters and the launch (the Letterbox, PleaLaunch, PLEA, PleaDistributor and the launch settings), and the market (PleaHook). In each job, four specialists read the code for math, permissions, economics and control flow. A judge then reproduces their findings and ranks them.
+1. **Swarm rounds.** A round is three IMD audit jobs, one for each part of the code. The game: CabalGate, the Tribunal and Seasons. Letters and the launch: the Letterbox, PleaLaunch, PLEA, PleaDistributor and the launch settings. The market: PleaHook. In each job, four specialists read the code for math, permissions, economics and control flow. A judge then reproduces their findings and ranks them.
 2. **Severity.** Critical: anyone could steal or freeze funds, sell without a plea, remove the locked liquidity or mint PLEA. High: a real loss, or a broken rule. Medium: a limited loss or a nuisance. Low: an edge case with no real loss. Info: wording, style, tests.
 3. **Fix, then audit again.** Every finding goes into a public ledger as fixed, documented or accepted. A Critical or High is always fixed. A Medium is fixed, or accepted by the owner in writing with the reason. Then the next round audits the new code. A round may skip a part whose code has not changed.
 4. **IMD's launch audit.** Every IMD launch job audits the code once more before deploying it: an import audit, an adaptation step, four specialists, a test writer and a judge.
@@ -31,7 +31,7 @@ Rounds 1 to 8 audited the code of the Sepolia test runs. Rounds 9 to 12 audited 
 
 - **Round 1**, 15 Oct 2026, commit cd88136, all three parts: {{audit_r1}}. Both Mediums fixed; every Low fixed or documented.
 - **Round 2**, 15 Oct, 4b14d13, all three parts: {{audit_r2}}. Three Mediums fixed. The fourth was accepted by the owner in writing: anyone may buy PLEA in another wallet's name, which moves that wallet's average buy time toward now.
-- **Round 3**, 15 Oct, 3766112, all three parts: {{audit_r3}}. The High and the Medium fixed, and checked by round 4's judges; the rest fixed or documented. The High is the example below.
+- **Round 3**, 15 Oct, 3766112, all three parts: {{audit_r3}}. The High and the Medium fixed, and checked by round 4's judges; the rest fixed, documented or accepted. The High is the example below.
 - **Round 4**, 15 Oct, e41e426, all three parts: {{audit_r4}}. All fixed or documented.
 - **Round 5**, 15 Oct, 9b89d98, all three parts: {{audit_r5}}. The Medium fixed: a sham objection in the window's last second could block a real one, so two objections may now wait at once. The rest fixed or documented.
 - **Round 6**, 16 Oct, f6b1e9a, the game and the letters: {{audit_r6}}. All fixed.
@@ -49,7 +49,7 @@ Rounds 1 to 8 audited the code of the Sepolia test runs. Rounds 9 to 12 audited 
 - **Run 7**, 15 Oct, e1755aa, live on Sepolia as launch #1843: {{audit_imd_run7}}. Both fixed.
 - **Run 8**, 16 Oct, dc3826b: {{audit_imd_run8}}, both noted. The job stopped at IMD's test step on a platform limit, and the same code went again as run 8.5.
 - **Run 8.5**, 16 Oct, af57f6d, live on Sepolia as launch #1981: {{audit_imd_run85}}. One Low fixed and one accepted by the owner in writing; the Info fixed.
-- **Launch {{launch_id}}**, 28 Oct, 42e0f85, the launch on Ethereum: {{audit_imd_launch}}. The import audit's three notes were each already in the ledger. The adaptation changed no code and added regression tests; the four specialists found nothing; the test writer added tests and found no defect; the judge found no reproducible defect. Then IMD deployed it. The [delivered repository](https://github.com/identity-md-launches/launch-2647-src-cabalgate-sol-src-tribunal-sol-src-p) keeps the contracts, scripts and launch settings exactly as at 42e0f85; its [ADAPTATION.md](https://github.com/identity-md-launches/launch-2647-src-cabalgate-sol-src-tribunal-sol-src-p/blob/bc2fda914058b6d5e489eb70dc3d0d4254dbcf0c/ADAPTATION.md) records the import audit's notes and the tests.
+- **Launch {{launch_id}}**, 28 Oct, 42e0f85, the launch on Ethereum: {{audit_imd_launch}}. Two of the import audit's three notes were already in the ledger (R1-A1-1 and R4-A2-4); the third was a note on test coverage. The adaptation changed no code and added regression tests; the four specialists found nothing; the test writer added tests and found no defect; the judge found no reproducible defect. Then IMD deployed it. The [delivered repository](https://github.com/identity-md-launches/launch-2647-src-cabalgate-sol-src-tribunal-sol-src-p) keeps the contracts, scripts and launch settings exactly as at 42e0f85; its [ADAPTATION.md](https://github.com/identity-md-launches/launch-2647-src-cabalgate-sol-src-tribunal-sol-src-p/blob/bc2fda914058b6d5e489eb70dc3d0d4254dbcf0c/ADAPTATION.md) records the import audit's notes and the tests.
 
 The team also reviewed run 5's code itself (14 Oct, 20d6595). It found no High; its one new finding, a Low in a Letterbox status line, was fixed.
 
@@ -90,7 +90,8 @@ The swarm rounds' findings, added up, and the one High from start to end.
 
 - **No guarantee.** None of these audits is a manual audit by a security firm; the One Dollar Audit is an AI review. Only buy what you are happy to hold.
 - **Older code, older audits.** IMD's launch audits of runs 5 to 8.5 and the One Dollar Audit read earlier versions. What changed since is listed at the end of FINDINGS.md. The final code was audited by rounds 9 to 12 and by IMD's launch audit.
-- **Known limits, accepted in writing.** A buy made in your name moves your average buy time. Buying more PLEA before you plead lowers the share you sell. Whoever records your points first fixes your seat bonus. Two wallets working with a seller can use up a plea's objections early. The judges' answer is matched to its plea by IMD's Intake. Each is in FINDINGS.md with the reason.
+- **Known limits, accepted in writing.** A buy made in your name moves your average buy time. Buying more PLEA before you plead lowers the share you sell. Two wallets working with a seller can use up a plea's objections early. The judges' answer is matched to its plea by IMD's Intake. Each is in FINDINGS.md with the reason.
+- **A known limit, documented.** Whoever records your points first fixes your seat bonus. FINDINGS.md lists it as documented, with the choice still open for the owner.
 - **Counting the ledger.** Some ledger rows group several Infos, so counting rows gives other totals than the judges' counts above.
 - **The README is behind.** The repository's README still says eight rounds; there have been {{audit_rounds}}.
 - **Found something?** The code is public. Read the threat model first: it lists what is deliberate.

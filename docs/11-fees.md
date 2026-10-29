@@ -39,7 +39,7 @@ A sale works the other way round. Say the pool pays out 50 IMD for your PLEA. Th
 
 - **Fixed for good.** Every rate here is a constant in the code. No one, the owner included, can change a fee.
 - **No pool fee on top.** The pool's own trading fee is {{lp_fee}}. Every fee is the one on this page.
-- **The very first buys.** While the pool's own IMD plus a buy's fee is under {{payout_reserve}}, and the pool cannot pay out yet, that buy's cashback, owner and prize shares stay in the pool, for the buy wall.
+- **Every buy pays its shares.** Every buy, even the first, pays its cashback, owner and prize shares. The hook pays them out of Uniswap's PoolManager, which holds the IMD of every Uniswap v4 pool: far more than a buy's shares.
 - **No buyer, no cashback.** After the Cabal dies, a trade through a router that does not name its trader pays no cashback. That share stays in the pool.
 - **If staking fails.** If imd/acc cannot stake your cashback, you get it as plain IMD in the same trade.
 - **Enough gas.** A trade must still have {{swap_min_gas}} gas when it reaches the pool's hook, for the cashback. With less, it fails and the site says: "The swap needs more gas for cashback. Retry with a fresh estimate." Let your wallet estimate the gas.

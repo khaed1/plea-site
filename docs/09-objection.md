@@ -24,9 +24,9 @@ An objection costs {{objection_total}}: the {{objection_fee}} oracle fee and a {
 
 ## Example
 
-A real objection from Sepolia test run 9 (test token, 5-hour seasons). Plea #21 asked to sell 70,000 PLEA on Sat 24 Oct at 16:12 UTC. It was approved at 33 against a need of 33, exactly at its bar; today's rules give the same need: {{pass_mark}} − ({{fact_share_top}} + {{held_points_3d}} + {{profit_points_loss}} + {{trend_flat}}) = 33.
+A real objection from Sepolia test run 9 (test token, 5-hour seasons). Plea #21 asked to sell 70,000 PLEA on Sat 24 Oct at 16:13 UTC. It was approved at 16:15, at 33 against a need of 33, exactly at its bar; today's rules give the same need: {{pass_mark}} − ({{fact_share_top}} + {{held_points_3d}} + {{profit_points_loss}} + {{trend_flat}}) = 33.
 
-At 16:17, five minutes later, another wallet objected:
+At 16:17, a minute and a half after the approval, another wallet objected:
 
 > "Plea #21 is honest and polite, but thin: this week's gas is its only reason, with no detail, and it leans on its own near misses for sympathy. It was approved exactly at its need of 33."
 

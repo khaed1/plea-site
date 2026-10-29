@@ -40,15 +40,15 @@ At the very open the whole fee is {{launch_open_fee}} of what reaches the pool. 
 - **"Get exactly this much PLEA" is refused.** While the Cabal lives you choose how much IMD to spend, never how much PLEA to get. The site says: "Exact-output buys are unavailable while the Cabal lives. Use the exact-input Buy control."
 - **No buyer, no buy.** While the Cabal lives, a buy that names no buyer fails. The site says: "The buy needs your wallet as recipient. Reconnect in the top bar and try again."
 - **Too big for the launch window.** A buy that would take more than {{launch_max_buy}} in the window fails. The site says: "This buy exceeds the launch cap. Lower the amount or wait for the launch window to end."
-- **Too early.** Before trading opens, every buy fails. The site says: "Trading is not open yet. Wait until the pool is seeded."
-- **The very first buys.** While the pool holds almost none of its own IMD (under {{payout_reserve}}, with the buy's fee), a buy's cashback, owner and prize shares stay in the pool instead.
+- **Too early.** Before trading opens, the pool does not exist yet, so no buy can work. The [Buy](#/buy) page says "Trading is not open yet." and keeps its button off.
+- **Every buy pays its shares.** Every buy, even the first, pays its cashback, owner and prize shares.
 - **Your record moves with you.** A sale takes its share out of your record, so the rest keeps its cost and age. PLEA you received, not bought, has no record: it counts as held since trading opened.
 - **After the Cabal dies.** Buys work like on any pool: other apps can route to it once they list it. A buy that names no buyer gets no cashback.
 
 ::: builders
 The fee and the launch rules live in the pool's hook, `PleaHook`: `beforeSwap` and `afterSwap`, `launchExtraBps()`, the constants `LAUNCH_WINDOW`, `LAUNCH_EXTRA_BPS`, `LAUNCH_MAX_BUY` and `IMD_FEE_BPS`, and the event `FeesTaken`. `basisOf(wallet)` returns a wallet's buy record: IMD spent, PLEA held and the average buy time.
 
-The buyer is read from `hookData` (`abi.encode(address)`), else from the router's `msgSender()`, else from a plain wallet calling the pool manager. Refusals: `RecipientRequired`, `ExactOutputBuyRefused`, `BuyTooLarge`, `NotSeeded`, and `NotEnoughGas` when a trade reaches the hook with less than {{swap_min_gas}} gas. The site buys through Uniswap's Universal Router with Permit2.
+The buyer is read from `hookData` (`abi.encode(address)`), else from the router's `msgSender()`, else from a plain wallet calling the pool manager. Refusals: `RecipientRequired`, `ExactOutputBuyRefused`, `BuyTooLarge`, and `NotEnoughGas` when a trade reaches the hook with less than {{swap_min_gas}} gas. Before trading opens the pool is not initialized (only `seed()` creates it), so the PoolManager refuses a swap with `PoolNotInitialized` before the hook is called. The site buys through Uniswap's Universal Router with Permit2.
 
 Source: [PleaHook.sol](https://github.com/khaed1/plea/blob/42e0f855875786a953e945e528e9d7f2724a5352/src/PleaHook.sol), at the commit IMD deployed.
 :::

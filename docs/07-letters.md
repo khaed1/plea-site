@@ -50,7 +50,9 @@ At another price the PLEA counts change, but {{letter_min_value}} stays the leas
 - **Points.** An approved letter's score counts for the season like any other. Its points can be recorded once the objection window has passed. See [Seasons and prizes](10-seasons.md).
 - **After the Cabal dies.** New letters are refused. PLEA still waiting in a letter comes back through settle.
 
-What a wallet or Etherscan shows when a letter would fail, in plain words:
+### What a wallet or Etherscan shows
+
+When a letter would fail, a wallet or Etherscan names the error. In plain words:
 
 - `LetterTooLong`: over {{max_plea_bytes}} bytes. Shorten it.
 - `LetterTooSmall`: {{letter_share}} of your PLEA is under {{min_letter}}, so you need at least {{letter_min_balance}}.

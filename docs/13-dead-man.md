@@ -29,9 +29,9 @@ Trading has been open for some days. On Monday at 10:00 UTC, the Cabal denies a 
 1. **Mon 10:00.** A verdict. The Cabal now dies at Tue 19:00, {{deadman}} later, unless another verdict comes first.
 2. **Tue 14:00.** A plea is sent, but no verdict comes by 14:20, {{pending_expiry}} later. It is closed with no verdict. The clock does not move: still Tue 19:00.
 3. **Tue 18:50.** A verdict, approved: the clock restarts. Tue 18:50 + {{deadman}} = Thu 03:50.
-4. **Thu 03:50.** No plea has been judged since. The Cabal is dead.
+4. **Thu 03:50.** No plea has been judged since. The Cabal is dead. From this second PLEA sells on the [Buy](#/buy) page like any token.
 5. **Thu 04:50.** The season that was running ended at 03:50. {{close_grace}} later, anyone may close it and pay its prizes.
-6. **After that close.** Anyone may send what is left of the pot to the buy wall. From now on PLEA sells on the [Buy](#/buy) page like any token.
+6. **After that close.** Anyone may send what is left of the pot to the buy wall.
 
 Had one more plea been judged before Thu 03:50, approved or denied, the clock would have restarted from that verdict.
 
@@ -44,7 +44,7 @@ Had one more plea been judged before Thu 03:50, approved or denied, the clock wo
 - **A plea sent after the death.** The site says: "The Cabal is not taking pleas. Check whether trading has opened or the Cabal has died."
 - **Waiting letters come back.** A letter's PLEA still in escrow is returned with its tip by "Return escrow and tip". See [Letters](07-letters.md).
 - **Points still count.** Approved pleas can be recorded until the last season is closed. Prizes are paid as usual.
-- **No more buy records.** Your cost and holding time only ever fed the fact score. With no pleas, they no longer matter.
+- **Buy records no longer matter.** Your cost and holding time only ever fed the fact score. With no pleas, they no longer matter.
 - **Cashback needs a name.** A trade through a router that does not name its trader pays no cashback; that share stays in the pool. See [Fees](11-fees.md).
 
 ::: builders

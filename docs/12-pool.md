@@ -2,7 +2,7 @@
 
 ## In short
 
-PLEA trades in one pool, against IMD, and the pool's liquidity is locked forever.
+While the Cabal lives, PLEA trades in one pool, against IMD, and the pool's liquidity is locked forever.
 
 A cap follows the pool's PLEA down as people buy, and PLEA sold back above it is burned. The IMD the pool keeps from fees and burns becomes a buy wall just below the price.
 
@@ -44,7 +44,7 @@ And the wall's climb: if the price doubles in a day, the wall's top needs about 
 - **The rebalance button.** When the wall has work, Home's Fees and supply panel shows "Rebalance buy wall". If there is nothing to do, the site says: "The buy wall has no work ready. Wait for more fees or a market move."
 - **Not the Wall page.** The site's [Wall](#/wall) page lists every plea and its verdict. It has nothing to do with the buy wall.
 - **A reference price.** The pool's contract also keeps a reference price that moves at most {{ref_step}} ticks a block. The wall sits below the lowest of the price now, the reference and its slow top, so one block's pump cannot reach it.
-- **The opening price.** The pool's prices come in steps of {{tick_spacing}} ticks. The opening is rounded up to the next step, so it is {{seed_price_rounding}} above {{seed_price}}.
+- **The opening price.** The pool's liquidity is placed in steps of {{tick_spacing}} ticks, and the opening price sits at the edge of the first step, so it is {{seed_price_rounding}} above {{seed_price}}.
 - **After the Cabal dies.** The same cap, trims and wall, with anyone free to sell. See [The dead-man](13-dead-man.md).
 
 ::: builders

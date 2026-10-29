@@ -30,12 +30,12 @@ The risks, one by one.
 
 The costs of a hard start, worked out. You buy with 100 IMD, 30 minutes after trading opens.
 
-1. **The buy.** The launch fee has fallen to 46.66%, so the fee is 2% + 46.66% = 48.66% of what reaches the pool: 100 × 100 ÷ 148.66 = 67.27 IMD reaches the pool, and 32.73 IMD is fee.
+1. **The buy.** The launch fee has fallen to 46.66%, so the fee is {{fee_imd}} + 46.66% = 48.66% of what reaches the pool. Then 100 × 100 ÷ 148.66 = 67.27 IMD reaches the pool, and 32.73 IMD is fee.
 2. **A denied plea.** The next day you plead to sell a fifth. Denied: {{oracle_fee}} spent.
 3. **A denied appeal.** You appeal within {{appeal_window}}. Denied again: {{appeal_total}} spent.
 4. **An approval.** After the {{cooldown}} cooldown you plead again. Approved: {{oracle_fee}} more. Pleading has cost 0.5 + 0.85 + 0.5 = 1.85 IMD.
-5. **The sale.** At an unchanged price, a fifth of your PLEA is worth about 67.27 ÷ 5 = 13.45 IMD in the pool. The {{fee_imd}} fee leaves you about 13.45 × 0.98 = 13.18 IMD, before the price moves under your own sale.
-6. **The account.** 101.85 IMD spent, 13.18 IMD back, and four fifths of your PLEA still held, worth about 53.82 IMD at that price. The rest went to fees: the launch fee to the buy wall, the oracle fees to the judges.
+5. **The sale.** At an unchanged price, your PLEA is worth what reached the pool, less the {{fee_burn}} burned on its way to you: 67.27 × 0.9975 = 67.10 IMD. A fifth is about 13.42 IMD. A sale pays the {{fee_total}} too: {{fee_burn}} of the PLEA burned, then {{fee_imd}} of the IMD. That leaves you about 13.42 ÷ 1.0025 × 0.98 = 13.12 IMD, before the price moves under your own sale.
+6. **The account.** 101.85 IMD spent, 13.12 IMD back, and four fifths of your PLEA still held, worth about 67.10 × 4 ÷ 5 = 53.68 IMD at that price. The rest went to fees: the launch fee to the buy wall, the oracle fees to the judges.
 
 Buy after the launch window and the same 100 IMD puts 98.04 IMD into the pool instead.
 

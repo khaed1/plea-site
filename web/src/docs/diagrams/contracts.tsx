@@ -9,12 +9,54 @@
  * the Stacker and keeps the wall's share; Seasons reads the gate's result and the seat, flushToWall
  * funds the wall; PleaDistributor pays the owner's Merkle root; PleaLaunch wired PLEA, deployed the
  * hook, the Letterbox and the Tribunal from committed code, and opens trading. Under the drawing,
- * each address with its Etherscan and Sourcify links (the addresses are numbers.json's). */
+ * each address with its Etherscan and Sourcify links, the owner's, and the outside contracts' and the
+ * oracle's signing key's with their Etherscan links (the addresses are numbers.json's: launch.json's
+ * arguments, checked on chain). */
 import { Icon } from "../../components";
 import { useNumbers } from "../numbers-context";
 import { Figure } from "../dg";
 
 type Card = { name: string; key: string; what: string; links: string[] };
+/** Outside PLEA, under the eight: launch.json's CabalGate, Seasons and PleaLaunch arguments. */
+const OUTSIDE: { name: string; key: string }[] = [
+  { name: "IMD", key: "addr_imd" },
+  { name: "IMD's Intake", key: "addr_intake" },
+  { name: "The oracle's signing key", key: "addr_oracle_signer" },
+  { name: "Uniswap v4's PoolManager", key: "addr_pool_manager" },
+  { name: "imd/acc's Stacker", key: "addr_stacker" },
+  { name: "The IMD seat NFT", key: "addr_seat" },
+];
+
+/** One address row with its Etherscan link (and Sourcify's, for PLEA's own contracts). */
+function AddressRow({ name, address, sourcify }: { name: string; address: string; sourcify?: boolean }) {
+  const who = name.replace(/^The /, "the ");
+  return (
+    <div>
+      <dt>
+        <b>{name}</b>
+      </dt>
+      <dd className="stack stack--sm">
+        <span className="addr">
+          <span className="addr__text mono">{address}</span>
+        </span>
+        <span className="cluster cluster--sm small">
+          <a href={`https://etherscan.io/address/${address}`} target="_blank" rel="noreferrer" className="docs-ext nowrap">
+            Etherscan
+            <Icon name="arrow-square-out" />
+            <span className="sr-only"> for {who} (opens in a new tab)</span>
+          </a>
+          {sourcify && (
+            <a href={`https://repo.sourcify.dev/1/${address}`} target="_blank" rel="noreferrer" className="docs-ext nowrap">
+              Sourcify
+              <Icon name="arrow-square-out" />
+              <span className="sr-only"> for {who} (opens in a new tab)</span>
+            </a>
+          )}
+        </span>
+      </dd>
+    </div>
+  );
+}
 
 export default function Contracts() {
   const n = useNumbers(),
@@ -131,65 +173,18 @@ export default function Contracts() {
             owner's wallet.
           </p>
           <dl className="addr-list dg-addrs">
-            {cards.map((c) => {
-              const a = t(c.key);
-              return (
-                <div key={c.name}>
-                  <dt>
-                    <b>{c.name}</b>
-                  </dt>
-                  <dd className="stack stack--sm">
-                    <span className="addr">
-                      <span className="addr__text mono">{a}</span>
-                    </span>
-                    <span className="cluster cluster--sm small">
-                      <a
-                        href={`https://etherscan.io/address/${a}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="docs-ext"
-                      >
-                        Etherscan
-                        <Icon name="arrow-square-out" />
-                        <span className="sr-only"> for {c.name} (opens in a new tab)</span>
-                      </a>
-                      <a
-                        href={`https://repo.sourcify.dev/1/${a}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="docs-ext"
-                      >
-                        Sourcify
-                        <Icon name="arrow-square-out" />
-                        <span className="sr-only"> for {c.name} (opens in a new tab)</span>
-                      </a>
-                    </span>
-                  </dd>
-                </div>
-              );
-            })}
-            <div>
-              <dt>
-                <b>The owner</b>
-              </dt>
-              <dd className="stack stack--sm">
-                <span className="addr">
-                  <span className="addr__text mono">{t("owner")}</span>
-                </span>
-                <span className="cluster cluster--sm small">
-                  <a
-                    href={`https://etherscan.io/address/${t("owner")}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="docs-ext"
-                  >
-                    Etherscan
-                    <Icon name="arrow-square-out" />
-                    <span className="sr-only"> for the owner (opens in a new tab)</span>
-                  </a>
-                </span>
-              </dd>
-            </div>
+            {cards.map((c) => (
+              <AddressRow key={c.name} name={c.name} address={t(c.key)} sourcify />
+            ))}
+            <AddressRow name="The owner" address={t("owner")} />
+          </dl>
+          <p className="small text-2">
+            Outside PLEA: the contracts it works with, and the key that signs the judges' answers.
+          </p>
+          <dl className="addr-list dg-addrs">
+            {OUTSIDE.map((o) => (
+              <AddressRow key={o.key} name={o.name} address={t(o.key)} />
+            ))}
           </dl>
         </div>
       }
