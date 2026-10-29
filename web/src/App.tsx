@@ -5,7 +5,7 @@ import { resetHealth } from "./config";
 import { NO_ANSWER, readErrorTitle } from "./rpc-health";
 import { Profile } from "./profile";
 import { Seasons } from "./seasons";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { useApp } from "./context";
 import {
   con,
@@ -28,6 +28,9 @@ import { Buy, Plead } from "./pages-trade";
 import { Home, Letters, Claim } from "./pages-info";
 import { Wall, PleaPage, Objections } from "./pages-court";
 import { Share } from "./share";
+import { pageOf } from "./docs/order";
+// The Docs section is its own chunk: static text, shown before the chain answers.
+const Docs = lazy(() => import("./docs/Docs"));
 const PAGES = [
   "Buy",
   "Plead",
@@ -36,6 +39,7 @@ const PAGES = [
   "Letters",
   "Objections",
   "Claim",
+  "Docs",
 ];
 export default function App() {
   const { r, s, error, refresh, now, receipts } = useApp();
@@ -52,6 +56,8 @@ export default function App() {
     const handle = () => {
       setHash(location.hash || "#/");
       setMenu(false);
+      // A docs heading link (#/docs/<slug>/<heading-id>) scrolls to its heading (docs/Docs.tsx).
+      if (/^#\/docs\/[^/?]+\/[^/?]+/.test(location.hash)) return;
       document.getElementById("main")?.focus({ preventScroll: true });
       window.scrollTo(0, 0);
     };
@@ -94,8 +100,10 @@ export default function App() {
       "share-cards": "Share cards",
     };
     document.title =
-      (page === "p" ? `Plea #${path[1]}` : titles[page] || "Page not found") +
-      " · PLEA";
+      page === "docs"
+        ? `${pageOf(path[1])?.title ?? "Page not found"} · Docs · PLEA`
+        : (page === "p" ? `Plea #${path[1]}` : titles[page] || "Page not found") +
+          " · PLEA";
     const anchor =
       page === "how"
         ? "how"
@@ -277,7 +285,7 @@ export default function App() {
         </div>
       )}
       <main id="main" className="page main" tabIndex={-1}>
-        {error && (
+        {error && page !== "docs" && (
           <div className="app-error error-box" role="alert">
             <p className="error-box__title">
               <Icon name="plugs" />
@@ -286,7 +294,7 @@ export default function App() {
             <p className="small">{error}</p><div className="btn-row"><button className="btn btn--sm" type="button" onClick={()=>{resetHealth();void refresh();}}><Icon name="arrow-clockwise"/>Try again</button></div>
           </div>
         )}
-        {s?.historyError && (
+        {s?.historyError && page !== "docs" && (
           <div className="app-error">
             <Notice kind="warn" title="History is incomplete">
               <p>{s.historyError}</p>
@@ -296,8 +304,23 @@ export default function App() {
             </Notice>
           </div>
         )}
-        <PageBoundary key={hash}>
-        {!s && error ? (<PageHeading page={page} id={path[1]}/>) : !s ? (<PageLoading page={page} id={path[1]}/>
+        <PageBoundary key={page === "docs" ? `docs/${pageOf(path[1])?.slug ?? path[1]}` : hash}>
+        {page === "docs" ? (
+          // Docs need no chain state: they show at once (numbers bound to the chain fill in later).
+          <Suspense
+            fallback={
+              <div className="page-loading stack stack--lg" aria-busy="true">
+                <Title title={pageOf(path[1])?.title ?? "Docs"} />
+                <p className="loading-label">
+                  <Icon name="hourglass" />
+                  Loading the docs…
+                </p>
+              </div>
+            }
+          >
+            <Docs slug={path[1] || undefined} heading={path[2] || undefined} />
+          </Suspense>
+        ) : !s && error ? (<PageHeading page={page} id={path[1]}/>) : !s ? (<PageLoading page={page} id={path[1]}/>
         ) : page === "buy" ? (
           <Buy />
         ) : page === "plead" ? (
@@ -364,6 +387,9 @@ export default function App() {
             <ul>
               <li>
                 <a href="#/how">How it works</a>
+              </li>
+              <li>
+                <a href="#/docs">Docs</a>
               </li>
               <li>
                 <a href="#/contracts">Contracts</a>

@@ -8,6 +8,7 @@ import { Icon } from "./components";
 import "./design/tokens.css";
 import "./design/components.css";
 import "./site.css";
+import "./docs/docs.css";
 // The first paint ("Loading the Sepolia deployment…") is index.html's own, named for the build's
 // chain (vite.config.ts): it shows before this script runs, until the deployment has loaded.
 const root = createRoot(document.getElementById("root")!);
