@@ -2,7 +2,7 @@
 
 ## In short
 
-Every trade, buy or sale, pays {{fee_total}}: {{fee_imd}} of its IMD and {{fee_burn}} of its PLEA. The fee is taken inside the trade itself. There is nothing to claim later.
+Every trade, buy or sale, pays {{fee_total}}: {{fee_imd}} of its IMD and {{fee_burn}} of its PLEA, taken inside the trade, with nothing to claim later.
 
 The IMD part has four shares: {{fee_cashback}} back to you, {{fee_owner}} to the owner, {{fee_prize}} to the season's prize pot and {{fee_pool}} to the buy wall. The PLEA part is burned.
 

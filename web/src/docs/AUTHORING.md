@@ -38,7 +38,7 @@ theme; GitHub shows the same files. This note is for whoever writes them.
 
 Every page has the same five parts, as `##` headings, in this order:
 
-1. `## In short`: two or three plain sentences.
+1. `## In short`: two or three plain sentences (the unit tests count them).
 2. `## How it works`: numbered steps (`1.`, `2.`, …).
 3. `## In a picture`: the page's one diagram (`::: diagram <name>`, below). You may rename this
    heading, or put the diagram inside How it works and drop the heading. Every page has exactly

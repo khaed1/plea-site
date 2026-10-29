@@ -2,9 +2,9 @@
 
 ## In short
 
-While the Cabal lives, the only way to sell PLEA is a plea. You write why you want to sell, choose how much, and pay the {{oracle_fee}} oracle fee.
+While the Cabal lives, the only way to sell PLEA is a plea: you write why, choose how much, and pay the {{oracle_fee}} oracle fee.
 
-The Cabal usually answers within minutes. Approved: you have {{sell_window}} to sell. Denied: you may appeal once, or wait and try again.
+The Cabal usually answers within minutes. Approved, you have {{sell_window}} to sell; denied, you may appeal once, or wait and try again.
 
 ## How it works
 

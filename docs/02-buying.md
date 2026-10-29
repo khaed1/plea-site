@@ -2,11 +2,9 @@
 
 ## In short
 
-Anyone can buy PLEA, from the moment trading opens. You pay IMD and the pool sends the PLEA straight to your wallet.
+Anyone can buy PLEA with IMD, from the moment trading opens. Buy on the site's [Buy](#/buy) page: while the Cabal lives, many other apps cannot.
 
 The first {{launch_window}} are the launch window: buys pay an extra fee that falls from {{launch_extra}} to 0%, and one buy may take at most {{launch_max_buy}}.
-
-Buy on the site's [Buy](#/buy) page. While the Cabal lives, many other apps cannot buy PLEA.
 
 ## How it works
 

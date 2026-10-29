@@ -2,9 +2,9 @@
 
 ## In short
 
-The Cabal is a panel of {{panel_size}} judges from IMD's oracle. Each reads your plea and scores it from 0 to {{max_score}}.
+The Cabal is a panel of {{panel_size}} judges from IMD's oracle, each scoring your plea from 0 to {{max_score}}. A verdict needs at least {{quorum}} of them to agree on the score.
 
-A verdict needs at least {{quorum}} of them to agree on the score. The rules they score by are written into the contract, word for word, and they are the same for everyone.
+The rules they score by are written into the contract, word for word, the same for everyone.
 
 ## How it works
 
@@ -52,7 +52,7 @@ Thu 22 Oct, 18:25 UTC, 90,000 PLEA, the run's top score. Its need today: {{pass_
 
 > "Dear judges, today your server took a long lunch and my plea came back from it with a 33. No complaint: I bought a day ago, I am still under water, and I need 90,000 PLEA, about 3%, to pay the fees of staying in this game. Everything else I hold stays for the seasons."
 
-A clear reason, a joke, respect and a promise to keep the rest. Two holders then objected to it; see [Objection!](09-objection.md).
+A clear reason, a joke, respect and a promise to keep the rest. Two holders then objected to it, asking a second panel to score it again; how that works is on [Objection!](09-objection.md).
 
 ## Good to know
 

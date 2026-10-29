@@ -2,7 +2,7 @@
 
 ## In short
 
-A denied plea gets one appeal. You send it within {{appeal_window}} of the denial, for the same amount or less, with a new text.
+A denied plea gets one appeal: within {{appeal_window}} of the denial, for the same amount or less, with a new text.
 
 It costs {{appeal_total}}: the {{oracle_fee}} oracle fee and {{appeal_wall_share}} for the buy wall. The judges score it on its own, against a fresh need.
 

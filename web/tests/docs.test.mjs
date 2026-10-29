@@ -122,6 +122,10 @@ test("every page passes the build's checks, and the skeletons keep the five part
     const text = docFiles[fileOf(p)];
     assert.equal((text.match(/^::: diagram /gm) || []).length, 1, `${fileOf(p)}: one diagram`);
     assert.match(text.split(/^## How it works$/m)[1].split(/^## /m)[0], /^1\. /m, `${fileOf(p)}: numbered steps`);
+    // In short: two or three plain sentences (the brief).
+    const short = text.split(/^## In short$/m)[1].split(/^## /m)[0].replace(/\{\{[a-z0-9_]+\}\}/g, "N").trim();
+    const sentences = (short.match(/[.!?](\s|$)/g) || []).length;
+    assert.ok(sentences >= 2 && sentences <= 3, `${fileOf(p)}: In short has ${sentences} sentences`);
   }
 });
 

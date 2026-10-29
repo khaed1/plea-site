@@ -4,7 +4,7 @@
 
 PLEA's code was checked many times before it was launched: {{audit_rounds}} rounds by IMD's audit swarm, IMD's own audit in each launch job, an outside AI review, {{tests_count}} tests and live test runs on Sepolia. Every finding, and what was done about it, is public.
 
-Audits lower the risk. They are no guarantee: code that many have read can still hold a mistake that nobody saw.
+Audits lower the risk but are no guarantee: code that many have read can still hold a mistake that nobody saw.
 
 ## How it works
 

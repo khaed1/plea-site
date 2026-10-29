@@ -2,9 +2,9 @@
 
 ## In short
 
-Every plea has a bar: the need. The judges' score must reach it.
+Every plea has a bar, the need, and the judges' score must reach it.
 
-Your need is {{pass_mark}} minus your fact score. The contract reads the fact score from four facts about your sale. Better facts, a lower need.
+Your need is {{pass_mark}} minus your fact score, which the contract reads from four facts about your sale. Better facts, a lower need.
 
 ## How it works
 

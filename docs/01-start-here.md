@@ -2,9 +2,9 @@
 
 ## In short
 
-PLEA is a token anyone can buy. Selling is the hard part: to sell, you write a plea, and a panel of {{panel_size}} judges, the Cabal, decides.
+PLEA is a token anyone can buy. To sell, you write a plea, and a panel of {{panel_size}} judges, the Cabal, decides.
 
-If the Cabal ever goes {{deadman}} without a verdict, it dies. From then on PLEA trades freely, forever.
+If the Cabal ever goes {{deadman}} without a verdict, it dies, and from then on PLEA trades freely, forever.
 
 ## How it works
 

@@ -2,9 +2,9 @@
 
 ## In short
 
-PLEA needs a little upkeep: selling approved letters, returning escrows, closing seasons. Every one of these jobs is a call that anyone may make.
+PLEA needs a little upkeep, such as selling approved letters, returning escrows and closing seasons, and anyone may do it. A keeper is whoever does.
 
-A keeper is whoever does them. Delivering a letter's sale pays a {{runner_tip}} tip. The other jobs pay nothing, and none of them gives any power.
+Delivering a letter's sale pays a {{runner_tip}} tip; the other jobs pay nothing, and none of them gives any power.
 
 ## How it works
 

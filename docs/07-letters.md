@@ -2,9 +2,9 @@
 
 ## In short
 
-You can plead without the site. Send your plea as a plain text message to the Letterbox, from Etherscan or your wallet. That message is a letter.
+You can plead without the site: send your plea as a plain text message, a letter, to the Letterbox, from Etherscan or your wallet.
 
-A letter pleads {{letter_share}} of your PLEA. Its fees are paid in PLEA, in the same transaction, and the PLEA it pleads waits in escrow. If the Cabal approves, anyone may sell it for you within {{sell_window}}, and the sale is yours.
+A letter pleads {{letter_share}} of your PLEA, pays its fees in PLEA, and keeps the PLEA it pleads in escrow. If the Cabal approves, anyone may sell it for you within {{sell_window}}, and the sale is yours.
 
 ## How it works
 

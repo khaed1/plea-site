@@ -2,9 +2,9 @@
 
 ## In short
 
-For {{objection_window}} after a plea is approved, anyone else may object that its score was too high. A second panel of {{panel_size}} judges scores the plea again.
+For {{objection_window}} after a plea is approved, anyone else may object that its score was too high, and a second panel of {{panel_size}} judges scores it again.
 
-An objection costs {{objection_total}}: the {{objection_fee}} oracle fee and a {{objection_stake}} stake. It can take away the plea's season points, or lower them. It never touches the sale.
+An objection costs {{objection_total}}: the {{objection_fee}} oracle fee and a {{objection_stake}} stake. It can take away or lower the plea's season points, but it never touches the sale.
 
 ## How it works
 

@@ -2,9 +2,9 @@
 
 ## In short
 
-PLEA is an experiment with unusual rules. Buying is open to everyone, but while the Cabal lives you can sell only with an approved plea, and you may be denied.
+PLEA is an experiment with unusual rules: buying is open to everyone, but while the Cabal lives you can sell only with an approved plea, and you may be denied.
 
-Read this page before you buy. Only buy what you are happy to hold. Nothing here is financial advice.
+Read this page before you buy, and only buy what you are happy to hold. Nothing here is financial advice.
 
 ## How it works
 

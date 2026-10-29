@@ -2,7 +2,7 @@
 
 ## In short
 
-While the Cabal lives, approved pleas compete in seasons of {{season_length}}. Each approved plea earns its score as points, and your best {{best_count}} count.
+While the Cabal lives, approved pleas compete in seasons of {{season_length}}: each earns its score as points, and your best {{best_count}} count.
 
 When a season ends, the top {{top}} wallets with at least {{min_points}} points share its IMD prize pot. The first {{bonus_seasons}} seasons also share {{bonus_per_season}} each.
 

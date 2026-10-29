@@ -2,7 +2,7 @@
 
 ## In short
 
-The Cabal lives as long as verdicts keep coming. Every verdict, approved or denied, restarts a clock of {{deadman}}.
+The Cabal lives as long as verdicts keep coming: every verdict, approved or denied, restarts a clock of {{deadman}}.
 
 If that clock runs out, the Cabal dies, for good. From then on there are no pleas, and PLEA trades like any other token.
 

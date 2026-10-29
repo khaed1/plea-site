@@ -2,7 +2,7 @@
 
 ## In short
 
-PLEA is eight contracts on Ethereum. None of them has an admin, and none can be upgraded: the code that runs is the code that was launched.
+PLEA is eight contracts on Ethereum, with no admin and no upgrades: the code that runs is the code that was launched.
 
 The owner has a few small powers and receives the {{fee_owner}} fee. The owner cannot change a fee, a time limit, a prize or any other rule, and does not play the seasons.
 

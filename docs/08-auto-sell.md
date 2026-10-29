@@ -2,9 +2,9 @@
 
 ## In short
 
-On the [Plead](#/plead) page, the box "Sell automatically if approved" lets anyone sell your plea for you. You do not have to be there in the {{sell_window}} after the verdict.
+On the [Plead](#/plead) page, the box "Sell automatically if approved" lets anyone sell your plea for you, so you need not be there in the {{sell_window}} after the verdict.
 
-It works like a [letter](07-letters.md): the fees are paid in PLEA and the amount waits in escrow. You choose any valid amount, and {{auto_sell_fee}} of a delivered sale goes to the season's prize pot. Selling by hand costs nothing extra.
+It works like a [letter](07-letters.md), with fees in PLEA and the amount in escrow, but for any valid amount. A delivered sale gives {{auto_sell_fee}} to the season's prize pot; selling by hand costs nothing extra.
 
 ## How it works
 
