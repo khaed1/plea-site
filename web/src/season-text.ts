@@ -37,6 +37,32 @@ export function roundingNote(pair: string, prizes: number) {
   }.`;
 }
 
+/** The note under "What the close pays" naming the approved pleas nobody recorded that it counts:
+ * closeSeason records them first (Seasons._tryRecord), each at its points now (the lower score after
+ * an overruled objection, × the seat multiplier while the seller holds a seat). `held`: objections
+ * may still be filed or are pending; a sustained one drops the plea. With incomplete history they
+ * are not known, and the projection is the recorded board's. */
+export function closeCounts(o: {
+  pleas: { id: bigint; points: number; held: boolean; seat: boolean }[];
+  mult: string;
+  historyError?: boolean;
+}) {
+  if (o.historyError)
+    return "Approved pleas nobody recorded are not counted until the history is read; the close records them first.";
+  if (!o.pleas.length) return "";
+  const items = o.pleas.map(
+      (p) =>
+        `#${p.id} (+${p.points}${p.seat ? `, seat × ${o.mult}` : ""}${p.held ? ", if no objection is sustained" : ""})`,
+    ),
+    list =
+      items.length === 1
+        ? `plea ${items[0]}`
+        : `pleas ${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  return `Counts ${list}, approved and not recorded: the close records ${items.length === 1 ? "it" : "them"} first.${
+    o.pleas.some((p) => p.seat) ? " The close reads the seat again as it records." : ""
+  }`;
+}
+
 /** Your standing for a wallet with no recorded plea in the season. A running season gets the band's
  * pitch; an ended or waiting one says nothing more can be pleaded for it (r2S-N7); the last season
  * after the death says pleas are closed. `current`: the running season, while the Cabal lives. */

@@ -69,6 +69,110 @@ export function carriedRollover(
   }
   return carry;
 }
+/** A leaderboard row (Seasons.Entry: the wallet's points and the newest of its counted pleas) and a
+ * wallet's counted pleas in a season (Seasons._best and _bestPleaIds, three each). */
+export type SeasonEntry = { wallet: string; points: number; pleaId: bigint };
+export type SeasonBest = { points: number[]; ids: bigint[] };
+const sameWallet = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** Seasons._record's best-three step: plea `pleaId` worth `points` replaces the lowest counted
+ * points (the newest plea among equal lowest) when it is worth more, or as much and is older.
+ * Returns the wallet's new board entry, or undefined when its best three did not change. */
+export function recordBest(
+  best: SeasonBest,
+  wallet: string,
+  pleaId: bigint,
+  points: number,
+): SeasonEntry | undefined {
+  const b = best.points,
+    ids = best.ids;
+  let mi = 0;
+  for (let i = 1; i < 3; i++)
+    if (b[i] < b[mi] || (b[i] === b[mi] && ids[i] > ids[mi])) mi = i;
+  if (!(points > b[mi] || (points === b[mi] && pleaId < ids[mi]))) return undefined;
+  b[mi] = points;
+  ids[mi] = pleaId;
+  return {
+    wallet,
+    points: b[0] + b[1] + b[2],
+    pleaId: ids.reduce((a, x) => (x > a ? x : a), 0n),
+  };
+}
+/** Seasons._insertWallet on a board of at most `size` rows (topOf without its empty rows): a wallet
+ * already on it moves up to its new place; a new one enters only if it beats the last row of a
+ * full board. Equal points: the older newest counted plea ranks higher. */
+export function insertEntry(board: SeasonEntry[], e: SeasonEntry, size: number) {
+  const better = (a: SeasonEntry, b?: SeasonEntry) =>
+    !b || a.points > b.points || (a.points === b.points && a.pleaId < b.pleaId);
+  const t: (SeasonEntry | undefined)[] = Array.from({ length: size }, (_, i) => board[i]);
+  let pos = t.findIndex((x) => !!x && sameWallet(x.wallet, e.wallet));
+  if (pos < 0) {
+    if (!better(e, t[size - 1])) return board;
+    pos = size - 1;
+  }
+  let i = pos;
+  while (i > 0 && better(e, t[i - 1])) {
+    t[i] = t[i - 1];
+    i--;
+  }
+  t[i] = e;
+  return t.filter((x): x is SeasonEntry => !!x);
+}
+/** The board Seasons.closeSeason pays from: the recorded board after the close's own _tryRecord of
+ * `pleas` (approved, unrecorded, in the season, no sustained objection, not an excluded seller's:
+ * each at the points Seasons.pointsFor gives its lower score now), in the order the close lists
+ * them. `records`: the season's Recorded logs in chain order, each with the points Seasons counted
+ * (SeatMultiplier's where it multiplied), to rebuild the sellers' best three. */
+export function closeBoard(
+  board: SeasonEntry[],
+  records: { pleaId: bigint; wallet: string; points: number }[],
+  pleas: { id: bigint; seller: string; points: number }[],
+  size: number,
+) {
+  const bests = new Map<string, SeasonBest>(),
+    bestOf = (w: string) => {
+      const k = w.toLowerCase();
+      if (!bests.has(k)) bests.set(k, { points: [0, 0, 0], ids: [0n, 0n, 0n] });
+      return bests.get(k)!;
+    };
+  for (const x of records) recordBest(bestOf(x.wallet), x.wallet, x.pleaId, x.points);
+  let next = board;
+  for (const p of pleas) {
+    const e = recordBest(bestOf(p.seller), p.seller, p.id, p.points);
+    if (e) next = insertEntry(next, e, size);
+  }
+  return next;
+}
+/** What a close pays from `board`: each row at or over `minPoints` whose wallet is not excluded gets
+ * its rank's share of the pot and of the PLEA bonus, each rounded down (Seasons.closeSeason,
+ * _payBonus); an excluded wallet's rank is paid to no one. */
+export function closePayout(
+  board: SeasonEntry[],
+  o: {
+    shares: (bigint | number)[];
+    pot: bigint;
+    bonus: bigint;
+    minPoints: number;
+    excluded: (wallet: string) => boolean;
+  },
+) {
+  const paidBps: bigint[] = [];
+  let paid = 0n,
+    bonusPaid = 0n;
+  board.forEach((e, i) => {
+    if (e.points < o.minPoints || o.excluded(e.wallet)) return;
+    const share = BigInt(o.shares[i] ?? 0);
+    paidBps.push(share);
+    paid += (o.pot * share) / 10000n;
+    bonusPaid += (o.bonus * share) / 10000n;
+  });
+  return {
+    wallets: paidBps.length,
+    bps: paidBps.reduce((a, b) => a + b, 0n),
+    paidBps,
+    paid,
+    bonusPaid,
+  };
+}
 export function clampAppeal(
   original: bigint,
   balance: bigint,

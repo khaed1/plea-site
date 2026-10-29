@@ -3,11 +3,54 @@
 // pages after the death (F4), and the cheap nits.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { factParts, factTerms, factMax, heldPoints, Q96 } from "../src/models.ts";
+import { build } from "esbuild";
+import { createRequire } from "node:module";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  factParts,
+  factTerms,
+  factMax,
+  heldPoints,
+  recordBest,
+  insertEntry,
+  closeBoard,
+  closePayout,
+  Q96,
+} from "../src/models.ts";
 import { siteFrom } from "../src/site.ts";
 import { loadNetwork } from "../scripts/network.mjs";
 import { manifestFor, useNetwork } from "./site-setup.mjs";
 
+const require = createRequire(import.meta.url),
+  dir = await mkdtemp(path.join(tmpdir(), "plea-launch-retest-"));
+after(() => rm(dir, { recursive: true, force: true }));
+async function load(name) {
+  const outfile = path.join(dir, name + ".mjs");
+  await build({
+    entryPoints: [fileURLToPath(new URL("../src/" + name + ".ts", import.meta.url))],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    plugins: [
+      {
+        name: "locked",
+        setup(b) {
+          b.onResolve({ filter: /^(viem|wagmi)(\/.*)?$/ }, (a) => ({
+            path: require.resolve(a.path),
+            external: true,
+          }));
+        },
+      },
+    ],
+  });
+  return import(pathToFileURL(outfile));
+}
+const chain = await load("chain"),
+  seasonText = await load("season-text");
 after(() => useNetwork("sepolia-run9"));
 const E = 10n ** 18n,
   DAY = 86400,
@@ -149,4 +192,129 @@ test("F1: buy records and mixed pleas match each source on a grid of cases", () 
           }
         }
   assert.ok(n > 1000);
+});
+
+// Seasons.SHARES: 4.50% for rank 1 down to 3.50% for rank 25, two bytes a rank.
+const SHARES = "01c201be01ba01b601b101ad01a901a501a1019c019801940190018c01880184017f017b01770173016f016a01660162015e"
+  .match(/..../g)
+  .map((h) => BigInt(parseInt(h, 16)));
+const [p1, p2, p3, p4, p5, owner] = ["0x01", "0x02", "0x03", "0x04", "0x05", "0x5bf3597216f9019cf10cf680783289efc8639bf0"].map(
+  (w) => w.padEnd(42, "0"),
+);
+
+test("F2: Seasons._record's best three: the lowest goes, the newest of equal lowest first, an older equal plea takes its place", () => {
+  const best = { points: [0, 0, 0], ids: [0n, 0n, 0n] };
+  assert.deepEqual(recordBest(best, p1, 4n, 30), { wallet: p1, points: 30, pleaId: 4n });
+  assert.deepEqual(recordBest(best, p1, 7n, 20), { wallet: p1, points: 50, pleaId: 7n });
+  assert.deepEqual(recordBest(best, p1, 9n, 20), { wallet: p1, points: 70, pleaId: 9n });
+  // Full: a lower plea changes nothing (Recorded with points 0).
+  assert.equal(recordBest(best, p1, 10n, 19), undefined);
+  // Equal to the lowest and newer: nothing; older: it replaces the newest of the equal lowest (#9).
+  assert.equal(recordBest(best, p1, 11n, 20), undefined);
+  assert.deepEqual(recordBest(best, p1, 8n, 20), { wallet: p1, points: 70, pleaId: 8n });
+  assert.deepEqual(best, { points: [30, 20, 20], ids: [4n, 7n, 8n] });
+  // More than the lowest: the newer of the two 20s (#8) drops.
+  assert.deepEqual(recordBest(best, p1, 12n, 25), { wallet: p1, points: 75, pleaId: 12n });
+  assert.deepEqual(best, { points: [30, 20, 25], ids: [4n, 7n, 12n] });
+});
+
+test("F2: Seasons._insertWallet: moves a wallet up, ties go to the older newest plea, a full board keeps out a lower one", () => {
+  const e = (wallet, points, pleaId) => ({ wallet, points, pleaId });
+  let board = [e(p1, 60, 3n), e(p2, 50, 5n)];
+  board = insertEntry(board, e(p3, 50, 4n), 3);
+  assert.deepEqual(board.map((x) => x.wallet), [p1, p3, p2], "50 with #4 ranks over 50 with #5");
+  board = insertEntry(board, e(p4, 49, 1n), 3);
+  assert.deepEqual(board.map((x) => x.wallet), [p1, p3, p2], "a full board keeps out a lower one");
+  board = insertEntry(board, e(p4, 51, 9n), 3);
+  assert.deepEqual(board.map((x) => [x.wallet, x.points]), [[p1, 60], [p4, 51], [p3, 50]], "the last row drops");
+  board = insertEntry(board, e(p3, 70, 11n), 3);
+  assert.deepEqual(board.map((x) => [x.wallet, x.points]), [[p3, 70], [p1, 60], [p4, 51]], "an entry moves up, not twice");
+});
+
+test("F2: the close's projection: the tester's fork, where the close recorded #16 and paid p1 rank 1's share", () => {
+  // dead.hex: p1's #1 recorded at 40 (overruled at 40), p5's #11 at 52 (44 × 1.2); #16 (p1, 43),
+  // #13 (p3, 44), #14 (p2, 43) and #17 (p4, 42) approved and unrecorded. The recorded board pays no
+  // one (52 and 40 are under 60); the close records the four first and p1 reaches 83.
+  const board = [
+      { wallet: p5, points: 52, pleaId: 11n },
+      { wallet: p1, points: 40, pleaId: 1n },
+    ],
+    records = [
+      { pleaId: 1n, wallet: p1, points: 40 },
+      { pleaId: 11n, wallet: p5, points: 52 },
+    ],
+    pending = [
+      { id: 13n, seller: p3, points: 44 },
+      { id: 14n, seller: p2, points: 43 },
+      { id: 16n, seller: p1, points: 43 },
+      { id: 17n, seller: p4, points: 42 },
+    ],
+    pot = 951111111111111111n,
+    bonus = 10_000_000n * E,
+    o = { shares: SHARES, pot, bonus, minPoints: 60, excluded: () => false };
+  const before = closePayout(board, o);
+  assert.deepEqual([before.wallets, before.paid, before.bonusPaid], [0, 0n, 0n], "what the site said: paid to 0 wallets");
+  const after = closeBoard(board, records, pending, 25);
+  assert.deepEqual(
+    after.map((x) => [x.wallet, x.points, x.pleaId]),
+    [
+      [p1, 83, 16n],
+      [p5, 52, 11n],
+      [p3, 44, 13n],
+      [p2, 43, 14n],
+      [p4, 42, 17n],
+    ],
+  );
+  const paid = closePayout(after, o);
+  assert.equal(paid.wallets, 1);
+  assert.equal(paid.bps, 450n);
+  assert.equal(paid.paid, (pot * 450n) / 10000n, "0.0428 IMD");
+  assert.equal(paid.bonusPaid, 450_000n * E, "450,000 PLEA, as the close paid p1");
+  // The owner's rank is paid to no one (_dropOwner): rank 2 keeps rank 2's share.
+  const owned = [{ wallet: owner, points: 90, pleaId: 2n }, ...after],
+    dropped = closePayout(owned, { ...o, excluded: (w) => w === owner });
+  assert.deepEqual(dropped.paidBps, [SHARES[1]]);
+  // Only the top 25 are paid: a 26th wallet is not on the board.
+  const many = Array.from({ length: 26 }, (_, i) => ({ id: BigInt(100 + i), seller: `0x${(i + 16).toString(16)}`.padEnd(42, "0"), points: 61 }));
+  const full = closeBoard([], [], many, 25);
+  assert.equal(full.length, 25);
+  assert.equal(full.at(-1).pleaId, 124n, "equal points: the older newest plea ranks higher, #125 stays out");
+  assert.equal(closePayout(full, o).bps, 10000n);
+});
+
+test("F2: the close's records come from the Recorded logs with the seat's points, in chain order", () => {
+  const log = (eventName, blockNumber, logIndex, args) => ({ eventName, blockNumber, logIndex, args });
+  const s = {
+    logs: [
+      log("Recorded", 20n, 3, { pleaId: 11n, season: 0n, wallet: p5, score: 44, points: 52 }),
+      log("SeatMultiplier", 20n, 2, { pleaId: 11n, wallet: p5, score: 44, pleaPoints: 52 }),
+      log("Recorded", 9n, 1, { pleaId: 1n, season: 0n, wallet: p1, score: 40, points: 40 }),
+      log("Recorded", 30n, 1, { pleaId: 21n, season: 1n, wallet: p1, score: 41, points: 41 }),
+    ],
+  };
+  assert.deepEqual(chain.seasonRecords(s, 0n), [
+    { pleaId: 1n, wallet: p1, points: 40 },
+    { pleaId: 11n, wallet: p5, points: 52 },
+  ]);
+});
+
+test("F2: the projection says which unrecorded pleas it counts", () => {
+  const { closeCounts } = seasonText;
+  assert.equal(
+    closeCounts({ pleas: [{ id: 16n, points: 43, held: false, seat: false }], mult: "1.2" }),
+    "Counts plea #16 (+43), approved and not recorded: the close records it first.",
+  );
+  assert.equal(
+    closeCounts({
+      pleas: [
+        { id: 13n, points: 44, held: false, seat: false },
+        { id: 16n, points: 51, held: true, seat: true },
+        { id: 17n, points: 42, held: false, seat: false },
+      ],
+      mult: "1.2",
+    }),
+    "Counts pleas #13 (+44), #16 (+51, seat × 1.2, if no objection is sustained) and #17 (+42), approved and not recorded: the close records them first. The close reads the seat again as it records.",
+  );
+  assert.equal(closeCounts({ pleas: [], mult: "1.2" }), "");
+  assert.match(closeCounts({ pleas: [], mult: "1.2", historyError: true }), /not counted until the history is read/);
 });

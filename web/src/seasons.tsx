@@ -1,6 +1,12 @@
 import { soFar } from "./site";
-import { potFor, carriedRollover, LETTERBOX } from "./models";
-import { resetHealth } from "./config";
+import {
+  potFor,
+  carriedRollover,
+  closeBoard,
+  closePayout,
+  LETTERBOX,
+} from "./models";
+import { resetHealth, type Runtime } from "./config";
 import { getAddress } from "viem";
 import { Fragment, useState } from "react";
 import { useAccount } from "wagmi";
@@ -20,6 +26,7 @@ import {
   short,
   getPlea,
   type Plea,
+  type Snapshot,
   amount,
   verdictSeason,
   plural,
@@ -28,8 +35,10 @@ import {
   judgesRow,
   pointsHeld,
   nameOf,
+  seasonRecords,
 } from "./chain";
 import {
+  closeCounts,
   closingCopy,
   flushCopy,
   noPleaText,
@@ -235,8 +244,37 @@ function WaitingSeason({ season }: { season: bigint }) {
   );
 }
 
+/** The approved pleas no Recorded log names, read from the chain (getPlea). */
+const unrecorded = (r: Runtime, s: Snapshot) =>
+  Promise.all(
+    s.logs
+      .filter(
+        (l) =>
+          l.eventName === "Verdict" &&
+          l.args.approved &&
+          !s.logs.some((x) => x.eventName === "Recorded" && x.args.pleaId === l.args.id),
+      )
+      .map((l) => getPlea(r, l.args.id, s.logs)),
+  );
+const pleaSeason = (p: Plea, s: Snapshot) =>
+  verdictSeason(
+    p.verdictAt,
+    BigInt(val(s, "CabalGate.startedAt")),
+    BigInt(con(s, "Seasons.SEASON")),
+  );
+/** What closeSeason records first (_tryRecord), and the close is sent with: the season's approvals
+ * nobody recorded, not an excluded seller's, with no sustained objection. */
+const closingPleas = (pleas: Plea[], s: Snapshot, season: bigint) =>
+  pleas.filter(
+    (p) =>
+      pleaSeason(p, s) === season &&
+      !p.recorded &&
+      !p.excluded &&
+      !p.standing?.[1],
+  );
 /** What the waiting seasons before `season` roll into it at their closes, which come first
- * (Seasons.nextToClose): estimated from their boards as they stand (carriedRollover). Not read for
+ * (Seasons.nextToClose): estimated from their boards as they stand plus the approvals each close
+ * records first (closeBoard, carriedRollover). Not read for
  * nextToClose itself, whose rollover is Seasons.rollover. */
 function useCarry(season: bigint) {
   const { r, s } = useApp(),
@@ -244,6 +282,7 @@ function useCarry(season: bigint) {
     minPoints = Number(con(s, "Seasons.MIN_POINTS"));
   return useRead(
     async () => {
+      const pleas = s!.historyError ? [] : await unrecorded(r, s!);
       const waiting = await Promise.all(
         Array.from({ length: Number(season - next) }, async (_, i) => {
           const j = next + BigInt(i);
@@ -257,13 +296,22 @@ function useCarry(season: bigint) {
           const excluded = await Promise.all(
             entries.map((e) => chainRead(r, "Seasons", "excluded", [e.wallet])),
           );
+          // Each close records its season's approvals nobody recorded first (closeBoard).
+          const board = closeBoard(
+            entries.map((e) => ({ wallet: e.wallet, points: Number(e.points), pleaId: BigInt(e.pleaId) })),
+            seasonRecords(s!, j),
+            closingPleas(pleas, s!, j).map((p) => ({ id: p.id, seller: p.seller, points: Number(p.points || 0) })),
+            Number(con(s, "Seasons.TOP")),
+          );
           return {
             fees: BigInt(fees),
-            paidBps: entries.flatMap((e, k) =>
-              !excluded[k] && Number(e.points) >= minPoints
-                ? [BigInt(s!.v.shares[k])]
-                : [],
-            ),
+            paidBps: closePayout(board, {
+              shares: s!.v.shares,
+              pot: 0n,
+              bonus: 0n,
+              minPoints,
+              excluded: (w) => entries.some((e, k) => equal(e.wallet, w) && excluded[k]),
+            }).paidBps,
           };
         }),
       );
@@ -406,27 +454,8 @@ function SeasonBody({
             read("Seasons", "holdsSeat", [address]),
           ])
         : [[0, 0, 0], false];
-      const eligibleLogs = s!.logs.filter(
-        (l) => l.eventName === "Verdict" && l.args.approved,
-      );
-      const ids = eligibleLogs
-        .filter(
-          (l) =>
-            !s!.logs.some(
-              (x) => x.eventName === "Recorded" && x.args.pleaId === l.args.id,
-            ),
-        )
-        .map((l) => l.args.id);
-      const pleas = await Promise.all(ids.map((id) => getPlea(r, id, s!.logs)));
-      const closeIds = pleas
-        .filter(
-          (p) =>
-            seasonOf(p) === season &&
-            !p.recorded &&
-            !p.excluded &&
-            !p.standing?.[1],
-        )
-        .map((p) => p.id);
+      const pleas = await unrecorded(r, s!),
+        closing = closingPleas(pleas, s!, season);
       const own = pleas.filter(
         (p) =>
           equal(p.seller, address) &&
@@ -438,7 +467,7 @@ function SeasonBody({
         rows,
         best: [...best].sort((a, b) => Number(b) - Number(a)),
         own,
-        closeIds,
+        closing,
         seatHeld,
       };
     },
@@ -457,13 +486,7 @@ function SeasonBody({
       args,
     }) as Promise<any>;
   }
-  function seasonOf(p: Plea) {
-    return verdictSeason(
-      p.verdictAt,
-      BigInt(val(s, "CabalGate.startedAt")),
-      BigInt(con(s, "Seasons.SEASON")),
-    );
-  }
+  const seasonOf = (p: Plea) => pleaSeason(p, s!);
   const fundedTx = s!.logs
     .filter((l) => l.eventName === "PrizeFunded" && l.args.season === season)
     .map((l) => l.transactionHash);
@@ -494,30 +517,33 @@ function SeasonBody({
   const qualifiesRows = rows.filter(
     (e: any) => !e.excluded && Number(e.points) >= minPoints,
   );
-  const shares = rows.reduce(
-      (n: bigint, e: any, i: number) =>
-        n +
-        (!e.excluded && Number(e.points) >= minPoints
-          ? BigInt(s!.v.shares[i])
-          : 0n),
-      0n,
+  // What the close pays: the board after it records the approvals nobody recorded (closeSeason's
+  // _tryRecord: each at its points now, into the seller's best three), the owner's rank paid to no
+  // one, the top TOP at MIN_POINTS+ by rank. With incomplete history those approvals and the best
+  // three they join are not known: the recorded board alone.
+  const closing: Plea[] = s!.historyError ? [] : query.data?.closing || [],
+    closeRows = closeBoard(
+      rows.map((e: any) => ({
+        wallet: e.wallet,
+        points: Number(e.points),
+        pleaId: BigInt(e.pleaId),
+      })),
+      seasonRecords(s!, season),
+      closing.map((p) => ({ id: p.id, seller: p.seller, points: Number(p.points || 0) })),
+      Number(con(s, "Seasons.TOP")),
     ),
-    paid = rows.reduce(
-      (n: bigint, e: any, i: number) =>
-        n +
-        (!e.excluded && Number(e.points) >= minPoints
-          ? (pot * BigInt(s!.v.shares[i])) / 10000n
-          : 0n),
-      0n,
-    ),
-    bonusPaid = rows.reduce(
-      (n: bigint, e: any, i: number) =>
-        n +
-        (!e.excluded && Number(e.points) >= minPoints
-          ? (bonus * BigInt(s!.v.shares[i])) / 10000n
-          : 0n),
-      0n,
-    );
+    {
+      wallets: paidWallets,
+      bps: shares,
+      paid,
+      bonusPaid,
+    } = closePayout(closeRows, {
+      shares: s!.v.shares,
+      pot,
+      bonus,
+      minPoints,
+      excluded: (w) => rows.some((e: any) => equal(e.wallet, w) && e.excluded),
+    });
   const seatHeld = query.data?.seatHeld,
     // While the board cannot be read (loading or a read error), nothing below shows a number as
     // fact: Your standing and "If the season ended now" show the reading or error state (r2S-N2).
@@ -712,7 +738,7 @@ function SeasonBody({
             <p className="small">
               Season {String(season)} closes first and rolls over what its
               leaderboard leaves unpaid; the estimate counts the leaderboards
-              as they stand.
+              as they stand and the approvals each close records first.
             </p>
           )}
         </Panel>
@@ -1173,7 +1199,7 @@ function SeasonBody({
                 <Costs
                   rows={[
                     [
-                      `Paid to ${plural(qualifiesRows.length, "wallet")}`,
+                      `Paid to ${plural(paidWallets, "wallet")}`,
                       `${pct(shares)} · ${smallAmount(paid, s)}`,
                     ],
                     [
@@ -1186,8 +1212,22 @@ function SeasonBody({
                     ["PLEA bonus burned", tokenAmount(bonus - bonusPaid, s)],
                   ]}
                 />
+                {(s!.historyError || closing.length > 0) && (
+                  <p className="small">
+                    {closeCounts({
+                      pleas: closing.map((p) => ({
+                        id: p.id,
+                        points: Number(p.points || 0),
+                        held: pointsHeld(p, s!, now),
+                        seat: !!p.seat,
+                      })),
+                      mult,
+                      historyError: !!s!.historyError,
+                    })}
+                  </p>
+                )}
                 <p className="small text-2">
-                  {roundingNote(pair, qualifiesRows.length)}
+                  {roundingNote(pair, paidWallets)}
                 </p>
               </>
             )}
@@ -1214,7 +1254,7 @@ function SeasonBody({
                   name="Seasons"
                   fn="closeSeason"
                   resetKey={`close:${season}`}
-                  args={[query.data?.closeIds || []]}
+                  args={[(query.data?.closing || []).map((p: Plea) => p.id)]}
                   label={`Close season ${season + 1n}`}
                   disabled={
                     now < closeAt ||

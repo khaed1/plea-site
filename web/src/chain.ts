@@ -1434,6 +1434,30 @@ export function countedPleas(
     ? undefined
     : (result as { pleaId: bigint; score: number; multiplied: boolean }[]);
 }
+/** The season's Recorded logs in chain order, each with the points Seasons counted for the plea
+ * (SeatMultiplier's pleaPoints where it multiplied, else the recorded score): closeBoard rebuilds
+ * the sellers' best three from them. */
+export function seasonRecords(s: Snapshot, season: bigint) {
+  return s.logs
+    .filter((l) => l.eventName === "Recorded" && BigInt(l.args.season) === season)
+    .sort((a, b) =>
+      a.blockNumber === b.blockNumber
+        ? Number(a.logIndex ?? 0) - Number(b.logIndex ?? 0)
+        : a.blockNumber < b.blockNumber
+          ? -1
+          : 1,
+    )
+    .map((l) => {
+      const seat = s.logs.find(
+        (x) => x.eventName === "SeatMultiplier" && x.args.pleaId === l.args.pleaId,
+      );
+      return {
+        pleaId: BigInt(l.args.pleaId),
+        wallet: String(l.args.wallet),
+        points: Number(seat?.args.pleaPoints ?? l.args.score),
+      };
+    });
+}
 export function feeInPlea(s: Snapshot | undefined, fee: bigint) {
   const price = BigInt(val(s, "PleaHook.latestPrice") || 0);
   if (!s || !val(s, "PleaHook.seeded") || !price) return undefined;
