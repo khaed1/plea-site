@@ -134,7 +134,7 @@ test("PLEA_DEPLOYMENT: an Ethereum fork's deployment fills the first block and t
   assert.equal(siteFor({ key: "x", eventStart: 5, expected: null }, { contracts: [{ blockNumber: 9 }] }).eventStart, 5);
   assert.throws(() => siteFor({ key: "x", eventStart: null }, { contracts: [{}] }), /No first block/);
   // index.html's link preview names the deployment's own URL.
-  assert.equal(htmlMeta(n.site, n.net.network).ogUrl, "https://pleaimd.imd.site/");
+  assert.equal(htmlMeta(n.site, n.net.network).ogUrl, "https://pleaimd.fun/");
   assert.equal(htmlMeta(n.site, n.net.network).chain, "Ethereum", "the first paint: Loading the Ethereum deployment…");
   const sep = loadNetwork("sepolia-run9");
   assert.equal(htmlMeta(sep.site, sep.net.network).ogUrl, "https://plea-test-run-9.sites.imd.fun/");

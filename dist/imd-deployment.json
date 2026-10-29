@@ -123,11 +123,11 @@
     },
     {
       "path": "index.html",
-      "sha256": "c1609834ad4e7f997d9947b69f0da1ae16c45be26048658c466cb7d9a48a4dce"
+      "sha256": "baf8440e156394574e956dd3128db4bf8034302a44bbfd79f5a3f12ed8a3e7b7"
     },
     {
       "path": "og.png",
-      "sha256": "1e0be66c6c70787817dda5cbafe3df7ea6e0c43d91d39a9b946582e736cc770d"
+      "sha256": "d6ca5128dec68f86b0b98617bc803812e45fa258165a88e0d188e448e76e84d7"
     },
     {
       "path": "text-check.js",
@@ -178,7 +178,7 @@
     "name": "Ethereum",
     "strip": null,
     "footer": "Any PLEA traded before launch day isn’t ours.",
-    "siteUrl": "https://pleaimd.imd.site/",
+    "siteUrl": "https://pleaimd.fun/",
     "eventStart": 26293890,
     "oracleApi": "https://api.imd.fun",
     "claimsPath": "claims.json",
