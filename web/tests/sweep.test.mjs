@@ -482,14 +482,14 @@ test("sweep R1, R12: a part that rounding would mostly hide gets more decimals",
   };
   // 0.02 imdTEST: about 0.0196 reaches the pool, not 0.008 (the owner's 0.000196 is no 0.01).
   const tiny = d("0.02");
-  assert.equal(`${tiny.reaches} + ${tiny.fees} = ${tiny.pay}`, "0.01961 + 0.00039 = 0.02");
-  assert.equal(tiny.owner, "0.00020");
-  // 1 imdTEST: the 0.0049 cashback shows as 0.004, never 0.00 (the note under the button prints
+  assert.equal(`${tiny.reaches} + ${tiny.fees} = ${tiny.pay}`, "0.0196 + 0.0004 = 0.02");
+  assert.equal(tiny.owner, "0.0002");
+  // 1 imdTEST: the 0.0049 cashback shows as 0.005, never 0.00 (the note under the button prints
   // the same figure).
-  assert.equal(d("1").cash, "0.004");
-  // Usual amounts keep buy.html's 2 and 3 decimals.
+  assert.equal(d("1").cash, "0.005");
+  // Usual amounts keep buy.html's 2 and 3 decimals, each part to its nearest (S1: the docs' sums).
   const usual = d("100");
-  assert.deepEqual([usual.cash, usual.owner, usual.prize, usual.reaches], ["0.49", "0.99", "0.246", "98.028"]);
+  assert.deepEqual([usual.cash, usual.owner, usual.prize, usual.reaches], ["0.49", "0.98", "0.245", "98.04"]);
   assert.equal(`${d("26").reaches} + ${d("26").fees}`, "25.492 + 0.508");
 });
 

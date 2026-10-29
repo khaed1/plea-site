@@ -1,8 +1,8 @@
 /** The docs' search: a small index built in the browser from the parsed pages (no service). One entry
  * per section: a page's opening (before its first heading) and each heading with the text under it.
  * A result needs every word of the query (any case, any part of a word). The whole query in the
- * heading counts most, then a heading word that starts with a query word, then the page's title, then
- * how often the words occur in the text. */
+ * heading counts most, then the whole query in the text, then a heading word that starts with a query
+ * word, then the page's title, then how often the words occur in the text. */
 import { plain, docLink, type Block, type List, type NumberText } from "./markdown.ts";
 
 export type SearchEntry = {
@@ -88,7 +88,8 @@ export function search(index: SearchEntry[], query: string, limit = 8): SearchRe
       text = norm(e.text);
     // Every word must be somewhere: the heading, the title or the text.
     if (!words.every((w) => heading.includes(w) || page.includes(w) || text.includes(w))) continue;
-    let score = words.length > 1 && heading.includes(phrase) ? 20 : 0;
+    // The whole query as typed counts most in the heading, and next in the text ("33 hours").
+    let score = words.length > 1 ? (heading.includes(phrase) ? 20 : 0) + (text.includes(phrase) ? 10 : 0) : 0;
     for (const w of words)
       score +=
         (startsWord(heading, w) ? 10 : 0) +

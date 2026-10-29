@@ -236,7 +236,7 @@ test("T2: rounded fee parts and displayed total reconcile at 100, launch values 
   const d = feeDisplay(100n * 10n ** 18n, c);
   assert.deepEqual(
     [d.cash, d.owner, d.prize, d.wall, d.fees, d.reaches, d.pay],
-    ["0.49", "0.99", "0.246", "0.246", "1.972", "98.028", "100.00"],
+    ["0.49", "0.98", "0.245", "0.245", "1.96", "98.04", "100.00"],
   );
   for (const raw of [2n, 7n, 48n]) {
     const d = feeDisplay(raw * 10n ** 18n, c, 6662n);
@@ -250,7 +250,7 @@ test("T2: rounded fee parts and displayed total reconcile at 100, launch values 
     feeDisplay(270149999999999999999n, c, 0n, false, "270.14").pay,
     "270.14",
   );
-  assert.equal(feeDisplay(100n * 10n ** 18n, c, 0n, true).wall, "0.491");
+  assert.equal(feeDisplay(100n * 10n ** 18n, c, 0n, true).wall, "0.490");
 });
 test("C1: a lapse uses verdict time, the current sale uses now", () => {
   const s = state();

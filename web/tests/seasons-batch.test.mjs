@@ -160,6 +160,11 @@ test("S7: closing copy per state and the mockup's rounding note", () => {
     closingCopy({ ...base, ready: false, last: true }),
     "The close records any approved plea nobody recorded and pays the top 25 with 60+ points in imdTEST and PLEA.",
   );
+  // L2: with incomplete history the site's close is off, and the copy says so, not "anyone can close".
+  const blind = closingCopy({ ...base, ready: true, last: true, historyError: true });
+  assert.doesNotMatch(blind, /anyone can close/);
+  assert.match(blind, /^The grace is over, but the site's close of season 2 stays off until the history is read: /);
+  assert.equal(closingCopy({ ...base, ready: false, last: false, historyError: true }), closingCopy({ ...base, ready: false, last: false }));
   // From season 7 on there is no PLEA bonus to pay or burn.
   assert.equal(
     closingCopy({

@@ -114,7 +114,11 @@ export default function Heartbeat() {
               {m.n}
             </span>
           ))}
-          <span className="dg-beat__dead">Dead: flat for good</span>
+          {/* From just after the last beat to the right edge, so a narrow figure wraps the label
+              rather than lay it over that beat. */}
+          <span className="dg-beat__dead" style={{ left: `calc(${x(last) / 10}% + 16px)` }}>
+            Dead: flat for good
+          </span>
         </div>
         <span className="dg-chart__title">Time left before the Cabal dies</span>
         <div className="dg-chart__plot dg-beat__left">

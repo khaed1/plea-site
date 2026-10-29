@@ -1334,6 +1334,13 @@ export function recordHint(
       ? `Record ${who} +${p.points} points after ${clock(f.until)}${f.objection ? `, when ${rulingWait(f.objections)}` : why ? ", when objections close" : ""}.`
       : `Record ${who} +${p.points} points now.`;
 }
+/** A pending plea in words where no verdict shows: "no verdict yet" while one can still come, "no
+ * verdict" once none can: CabalGate._stale (PENDING_EXPIRY passed, or its Intake request completed)
+ * refuses a verdict and lets anyone expire it, and after the death onOracleResult refuses one (L3). */
+export const pendingVerdictWords = (p: Plea, s: Snapshot, now = s.timestamp) =>
+  pleaState(p, now, s) === "NO VERDICT" || !val(s, "CabalGate.cabalAlive")
+    ? "no verdict"
+    : "no verdict yet";
 export const caseClosedText = (closed: string) =>
   closed.startsWith("at ")
     ? `Objections closed ${closed}`

@@ -47,6 +47,7 @@ const {
   noVerdict,
   sharePercent,
   clock,
+  pendingVerdictWords,
 } = await load("chain");
 const { shareSentence, shareStatus, shareState } = await load("share-text");
 
@@ -354,4 +355,17 @@ test("S13/r2C-V1/E3a: share labels and posts per state; 'the sale stands' only f
     shareSentence(plea({ status: 2 }), s, V + 60, { rank: 3, season: 1n }),
     "Approved, 44 vs need 37. +44 points held, season 2 rank 4.",
   );
+});
+
+test("L3: a pending plea reads 'no verdict yet' only while a verdict can still come", () => {
+  const pending = plea({ status: 1, verdictAt: 0n, submittedAt: BigInt(V - 240) });
+  assert.equal(pendingVerdictWords(pending, snap(), V), "no verdict yet");
+  // Past CabalGate.PENDING_EXPIRY (_stale) no verdict can come; anyone may expire it.
+  assert.equal(pendingVerdictWords(pending, snap(), V - 240 + 1200), "no verdict yet");
+  assert.equal(pendingVerdictWords(pending, snap(), V - 240 + 1201), "no verdict");
+  // Its Intake request completed without an answer: stale too.
+  assert.equal(pendingVerdictWords({ ...pending, completed: true }, snap(), V), "no verdict");
+  // After the death onOracleResult refuses every verdict, however fresh the plea.
+  const dead = snap({ v: { "CabalGate.cabalAlive": false, "CabalGate.diedAt": BigInt(V - 60) } });
+  assert.equal(pendingVerdictWords(pending, dead, V), "no verdict");
 });

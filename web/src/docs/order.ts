@@ -24,9 +24,10 @@ export const DOCS: DocPage[] = [
 ];
 /** The file name of a page: "11-fees.md". */
 export const fileOf = (p: DocPage) => `${p.n}-${p.slug}.md`;
-/** The page a #/docs path names: `#/docs` is the first page (Start here). */
+/** The page a #/docs path names, in any case (#/Docs/Fees is Fees): `#/docs` is the first page
+ * (Start here). */
 export const pageOf = (slug: string | undefined) =>
-  slug ? DOCS.find((p) => p.slug === slug) : DOCS[0];
+  slug ? DOCS.find((p) => p.slug === slug.toLowerCase()) : DOCS[0];
 /** The pages before and after `slug` in the sidebar, if any. */
 export function prevNext(slug: string) {
   const i = DOCS.findIndex((p) => p.slug === slug);

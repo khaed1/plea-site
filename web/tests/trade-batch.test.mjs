@@ -15,6 +15,7 @@ import {
   factTerms,
   letterMinimum,
   autoSellBlock,
+  feeSaleShort,
 } from "../src/models.ts";
 const require = createRequire(import.meta.url),
   dir = await mkdtemp(path.join(tmpdir(), "plea-trade-batch-"));
@@ -126,6 +127,21 @@ test("E1 / r2D-N4: the letter minimum is the least balance the Letterbox accepts
   assert.equal(high.minimum, 5000n * E);
   assert.equal(letter(high.minimum, 1n, price * 10n ** 6n), "ok");
   assert.equal(letter(high.minimum - 1n, 1n, price * 10n ** 6n), "LetterTooSmall");
+});
+
+test("F3: FeeTooHigh's two errors: the gate's (pleaIn above its cap) reads as the price fell, the Letterbox's never", () => {
+  const fee = 144138318330564330878184n;
+  // CabalGate.FeeTooHigh(pleaIn, maxPleaIn): the fee sale needed more PLEA than the Letterbox's cap.
+  assert.equal(feeSaleShort([fee + 1n, fee]), true);
+  assert.equal(feeSaleShort([(fee * 13n) / 10n, fee]), true);
+  // Letterbox.FeeTooHigh(maxFeePlea, balance): its 10% rule and its fit rule, at balances the site
+  // lets the box send and just under them; the fee is never above the balance there.
+  for (const bal of [fee * 10n - 1n, fee * 10n, fee * 11n, fee * 100n]) {
+    assert.equal(feeSaleShort([fee, bal]), false, String(bal));
+  }
+  assert.equal(feeSaleShort([fee, fee]), false);
+  assert.equal(feeSaleShort(undefined), false);
+  assert.equal(feeSaleShort(["not a number", 1n]), false);
 });
 
 // Letterbox.plead(amount, text) (the site's auto-sell box), testnet9.

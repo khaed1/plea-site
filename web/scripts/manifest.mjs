@@ -52,16 +52,19 @@ for (const file of files.filter(p=>p.endsWith(".js"))) {
 }
 console.log("D3: no Coinbase SDK markers in exported JavaScript");
 
-// A test network's build never names the main network: its pages, scripts and settings say "mainnet"
-// or "chain id 1" nowhere (the contracts' error name MintOnMainnet is one word, not the word).
-if (net.network.testnet) {
+// No build names the main network by its nickname: the pages, scripts and settings say "mainnet" or
+// "chain id 1" nowhere (the contracts' error name MintOnMainnet is one word, not the word). A test
+// network's build is checked byte for byte; the Ethereum build's words with its URLs left out, since
+// an RPC endpoint's host name (mainnet.gateway.tenderly.co) is an address, not text the site shows.
+{
   const texts = [
     ...files.filter((p) => /\.(js|html|css|json)$/.test(p)).map((p) => [p, fs.readFileSync(new URL(p, root), "utf8")]),
     ["imd-deployment.json", JSON.stringify(m)],
   ];
-  for (const [file, text] of texts) {
+  for (const [file, raw] of texts) {
+    const text = net.network.testnet ? raw : raw.replace(/https?:\/\/[^\s"'`)\\]+/g, "");
     const hit = text.match(/\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i);
     if (hit) throw Error(`"${hit[0]}" in ${file}: the ${site.name} build must not name the main network.`);
   }
-  console.log(`No "mainnet" or "chain id 1" in the ${site.name} build`);
+  console.log(`No "mainnet" or "chain id 1" in the ${site.name} build${net.network.testnet ? "" : "'s words"}`);
 }

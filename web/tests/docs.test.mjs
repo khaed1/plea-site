@@ -32,7 +32,7 @@ const fileText = (k) => (k === "_meta" ? undefined : NUMBERS[k]?.text);
 const entry = [
   `export { renderToStaticMarkup } from "react-dom/server";`,
   `export { createElement } from "react";`,
-  `export { Markdown } from ${JSON.stringify(path.join(SRC, "docs/render.tsx"))};`,
+  `export { Markdown, splitLast } from ${JSON.stringify(path.join(SRC, "docs/render.tsx"))};`,
   `export * as numbers from ${JSON.stringify(path.join(SRC, "docs/numbers.ts"))};`,
   `export { readerFor, NumbersProvider } from ${JSON.stringify(path.join(SRC, "docs/numbers-context.tsx"))};`,
   `export * as kit from ${JSON.stringify(path.join(SRC, "docs/kit.tsx"))};`,
@@ -305,16 +305,16 @@ test("the renderer draws every construct in the site's components, never a raw p
   assert.match(out, /<div class="page-title"><h1>Fees<\/h1><\/div>/);
   assert.match(
     out,
-    /<div class="docs-h docs-h--2"><h2 id="docs-how-it-works" tabindex="-1">How it works<\/h2><a class="docs-anchor" href="#\/docs\/fees\/how-it-works" aria-label="Link to How it works">/,
+    /<div class="docs-h docs-h--2"><h2 id="docs-how-it-works" tabindex="-1">How it works\u2060<\/h2><a class="docs-anchor" href="#\/docs\/fees\/how-it-works" aria-label="Link to How it works">/,
   );
-  assert.match(out, /<h3 id="docs-step-one" tabindex="-1">Step one<\/h3><a class="docs-anchor" href="#\/docs\/fees\/step-one" aria-label="Link to Step one">/);
+  assert.match(out, /<h3 id="docs-step-one" tabindex="-1">Step one\u2060<\/h3><a class="docs-anchor" href="#\/docs\/fees\/step-one" aria-label="Link to Step one">/);
   assert.match(out, /<h4 id="docs-small-print" tabindex="-1">Small print<\/h4>/);
   assert.match(out, /<strong><span class="nowrap">0.5 IMD<\/span><\/strong>, <em>once<\/em>, with <code>code<\/code>/);
   assert.match(out, /<a href="#\/docs\/your-bar">your bar<\/a>/);
   assert.match(out, /<a href="#\/buy">Buy<\/a>/);
   assert.match(
     out,
-    /<a href="https:\/\/imd.fun" target="_blank" rel="noreferrer" class="docs-ext">IMD<svg class="icon" aria-hidden="true"><use href="#i-arrow-square-out"><\/use><\/svg><span class="sr-only"> \(opens in a new tab\)<\/span><\/a>/,
+    /<a href="https:\/\/imd.fun" target="_blank" rel="noreferrer" class="docs-ext"><span class="nowrap">IMD<svg class="icon" aria-hidden="true"><use href="#i-arrow-square-out"><\/use><\/svg><\/span><span class="sr-only"> \(opens in a new tab\)<\/span><\/a>/,
   );
   assert.match(out, /<ol><li>one<ul><li>inner<\/li><\/ul><\/li><li>two<\/li><\/ol>/);
   assert.match(out, /<div class="table-wrap docs-table" role="region" aria-label="Table: Part, Share" tabindex="0"><table class="table">/);
@@ -417,6 +417,18 @@ test("search finds a heading and a word, best match first, and links to the head
   assert.equal(search(real, "good to know", 50).length, 18);
   assert.equal(search(real, "auto-sell")[0].entry.slug, "auto-sell");
   assert.equal(search(real, "Objection")[0].entry.page, "Objection!");
+  // The whole query in the text counts too: the dead-man's "33 hours" before a heading with "33" and "hours" apart.
+  assert.equal(search(real, "33 hours")[0].entry.slug, "dead-man");
+  // A link's last word keeps the external-link icon with it.
+  assert.deepEqual(R.splitLast([{ t: "text", v: "delivered repository" }]), {
+    head: [{ t: "text", v: "delivered " }],
+    tail: [{ t: "text", v: "repository" }],
+  });
+  assert.deepEqual(R.splitLast([{ t: "text", v: "Report" }]), { head: [], tail: [{ t: "text", v: "Report" }] });
+  assert.deepEqual(R.splitLast([{ t: "code", c: [{ t: "text", v: "Tribunal.sol" }] }]).tail.length, 1);
+  // A slug in any case names its page.
+  assert.equal(pageOf("Fees")?.slug, "fees");
+  assert.equal(pageOf("FEES")?.title, "Fees");
   assert.equal(snippet("a ".repeat(100) + "needle " + "b ".repeat(100), ["needle"]).includes("needle"), true);
 });
 

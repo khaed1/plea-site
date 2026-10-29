@@ -331,6 +331,21 @@ export function letterMinimum(
       minimum === byFee ? "fee" : minimum === byValue ? "value" : "letter",
   } as const;
 }
+/** FeeTooHigh is one selector for two errors (F3). The gate's FeeTooHigh(pleaIn, maxPleaIn)
+ * (CabalGate._unlockCallback): the fee sale needed more PLEA than the Letterbox's cap, because the
+ * spot price fell more than its 10% margin under the hourly snapshot; there pleaIn > maxPleaIn. The
+ * Letterbox's FeeTooHigh(maxFeePlea, balance) (Letterbox._plead, _appeal): the fees may take at most
+ * 10% of the balance, and the escrow and the fees must fit it; there maxFeePlea ≤ balance unless the
+ * fee alone is more than the whole balance, which the site's own checks refuse before sending. So a
+ * first argument above the second is the gate's: the price fell (errors.ts's FeeTooHigh text). */
+export function feeSaleShort(args: readonly unknown[] | undefined) {
+  if (!args || args.length < 2) return false;
+  try {
+    return BigInt(args[0] as bigint) > BigInt(args[1] as bigint);
+  } catch {
+    return false;
+  }
+}
 /** Letterbox._appeal's FeeTooHigh, for an APPEAL letter and the site's auto-sell appeal alike: the
  * fees may take 10% of the balance or, when that is more, at most the denied plea's amount + 10%
  * (FEE_CAP_BPS) ("cap"); and the escrow and the fees must fit the balance ("fit"). The balance is
@@ -380,9 +395,15 @@ export function feeDisplay(
     fee = (raw * (normal + extra)) / (10000n + normal + extra),
     reaches = raw - fee;
   const part = (key: string) => (reaches * bps(key)) / 10000n;
+  // Each part to its nearest shown digit, so a 100 IMD buy reads 98.04 reaching the pool and a 1.96
+  // fee (0.49 + 0.98 + 0.245 + 0.245), the fee being raw × rate ÷ (10,000 + rate) as PleaHook takes
+  // it (S1); "you pay" alone rounds up. The parts still add up to the fee shown, and reaches + fee
+  // to what you pay, whatever the amount (the digits grow below).
   const round = (n: bigint, d: number, up = false) => {
     const unit = 10n ** BigInt(18 - d);
-    return (n / unit + (up && n % unit ? 1n : 0n)) * unit;
+    return up
+      ? (n / unit + (n % unit ? 1n : 0n)) * unit
+      : ((n + unit / 2n) / unit) * unit;
   };
   const cleaned = payText?.replaceAll(",", "");
   const validText =
@@ -401,14 +422,10 @@ export function feeDisplay(
     launchFee = extra > 0n && residual > 0n ? residual : 0n;
   const parts = () => ({
     cash: round(part("CASHBACK_BPS"), cashDigits),
-    owner: round(part("OWNER_BPS"), cashDigits, true),
-    prize: dead ? 0n : round(part("PRIZE_BPS"), partDigits, true),
-    wall: round(
-      part("POOL_BPS") + (dead ? part("PRIZE_BPS") : 0n),
-      partDigits,
-      true,
-    ),
-    launch: round(launchFee, cashDigits, true),
+    owner: round(part("OWNER_BPS"), cashDigits),
+    prize: dead ? 0n : round(part("PRIZE_BPS"), partDigits),
+    wall: round(part("POOL_BPS") + (dead ? part("PRIZE_BPS") : 0n), partDigits),
+    launch: round(launchFee, cashDigits),
   });
   let values = parts();
   const exact: Record<string, bigint> = {

@@ -1,4 +1,4 @@
-import { LETTERBOX, Q96, appealFeeBlock, min as minBig } from "./models";
+import { LETTERBOX, Q96, appealFeeBlock, feeSaleShort, min as minBig } from "./models";
 import { letterPrecheck } from "./appeal";
 import { HowItWorks, ContractsPanel } from "./home-info";
 import { homeLead } from "./loading-text";
@@ -332,14 +332,17 @@ export function Letters() {
                 ? poolShort
                 : "";
   const letterErrors = {
+    // The gate's FeeTooHigh: the fee sale needs more PLEA than its 10% margin (the price fell).
     FeeTooHigh: (args: any) =>
-      result.kind === "appeal"
-        ? appealFeeText(
-            BigInt(args[0]),
-            BigInt(args[1]),
-            data?.appeal?.original,
-          )
-        : `A letter needs at least about ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}: its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, and you hold ${tokenAmount(BigInt(args[1]), s)}.`,
+      feeSaleShort(args)
+        ? "The price fell since the hourly snapshot, so the fees need more PLEA than their 10% margin. Nothing was paid; send the letter again after the next snapshot."
+        : result.kind === "appeal"
+          ? appealFeeText(
+              BigInt(args[0]),
+              BigInt(args[1]),
+              data?.appeal?.original,
+            )
+          : `A letter needs at least about ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}: its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, and you hold ${tokenAmount(BigInt(args[1]), s)}.`,
     TooSmallForTheFee: (args: any) =>
       `${result.kind === "appeal" ? "This appeal" : "20% of your PLEA"} is worth ${tokenAmount(BigInt(args[0]), s, true)} at the hourly price; a letter must be worth at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)}${limit && result.kind !== "appeal" ? `, so it needs a balance of about ${tokenAmount(limit.byValue, s, false, 0, "up")}` : ""}.`,
     LetterTooSmall: (args: any) =>

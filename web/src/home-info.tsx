@@ -10,6 +10,7 @@ import {
   deadmanWords,
   short,
   seasonState,
+  utc,
 } from "./chain";
 import {
   AddressView,
@@ -408,7 +409,8 @@ export function ContractsPanel() {
       PleaLaunch: "the launch and the seed",
     };
   const x = site(),
-    router = routerRow(x);
+    router = routerRow(x),
+    start = Number(con(s, "PleaLaunch.START") || 0);
   const partners: [string | undefined, string | undefined, string?][] = [
     [s?.constants.pairSymbol, r.addresses.PairToken],
     ["imd/acc Stacker", val(s, "PleaHook.stacker")],
@@ -461,7 +463,9 @@ export function ContractsPanel() {
               target="_blank"
               rel="noreferrer"
             >
-              Read the source on the {x.source.ref} branch{" "}
+              {/^[0-9a-f]{40}$/i.test(x.source.ref)
+                ? `Read the source at the launched commit, ${x.source.ref.slice(0, 7)}`
+                : `Read the source on the ${x.source.ref} branch`}{" "}
               <Icon name="arrow-square-out" />
             </a>
           </p>
@@ -485,12 +489,23 @@ export function ContractsPanel() {
         </Panel>
         <Panel title="The owner’s powers, in plain words">
           <p>
-            <b>One switch, add-only.</b> <code>PLEA.allow(account)</code> lets a
-            sender move PLEA without a plea, permanently. Accounts can be added,
-            never removed. It is for routers and the claim contract.
+            <b>Opening trading early.</b> Before{" "}
+            {start ? utc(start) : "the start time"} only the owner may open
+            trading; from then on anyone may.
+            {val(s, "PleaHook.seeded") ? " Trading is open now." : ""}
           </p>
           <p>
-            <b>Nothing else.</b> The owner cannot change the fees, the judges,
+            <b>One switch, add-only.</b> <code>PLEA.allow(account)</code> lets a
+            sender move PLEA without a plea, permanently. Accounts can be added,
+            never removed. Even an allowed sender cannot send PLEA into the pool
+            or the gate, so it cannot sell in PLEA’s pool without a plea.
+          </p>
+          <p>
+            <b>Handing over.</b> The owner may hand PLEA or the distributor to a
+            new owner, in two steps, or give ownership up.
+          </p>
+          <p>
+            <b>No other power.</b> The owner cannot change the fees, the judges,
             the rules or anyone’s pleas.
           </p>
           <p>

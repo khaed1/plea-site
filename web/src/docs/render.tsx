@@ -25,6 +25,18 @@ function numberText(key: string, ctx: RenderContext) {
   if (text === undefined) throw Error(`The docs name an unknown number {{${key}}}.`);
   return text;
 }
+/** A link's words split before its last word: the last word (or last non-text part) goes with the icon. */
+export function splitLast(nodes: Inline[]): { head: Inline[]; tail: Inline[] } {
+  const last = nodes[nodes.length - 1];
+  if (!last) return { head: [], tail: [] };
+  if (last.t !== "text") return { head: nodes.slice(0, -1), tail: [last] };
+  const m = /^([\s\S]*?)(\S+)$/.exec(last.v);
+  if (!m) return { head: nodes, tail: [] };
+  return {
+    head: [...nodes.slice(0, -1), ...(m[1] ? [{ t: "text" as const, v: m[1] }] : [])],
+    tail: [{ t: "text", v: m[2] }],
+  };
+}
 export function inline(nodes: Inline[], ctx: RenderContext, key = "i"): ReactNode[] {
   return nodes.map((n, i) => {
     const k = `${key}.${i}`;
@@ -50,14 +62,20 @@ export function inline(nodes: Inline[], ctx: RenderContext, key = "i"): ReactNod
         return <code key={k}>{inline(n.c, ctx, k)}</code>;
       case "link": {
         const href = docLink(n.href);
-        if (/^https?:\/\//.test(href))
+        if (/^https?:\/\//.test(href)) {
+          // The icon stays on the line of the link's last word: a phone would otherwise wrap it alone.
+          const { head, tail } = splitLast(n.c);
           return (
             <a key={k} href={href} target="_blank" rel="noreferrer" className="docs-ext">
-              {inline(n.c, ctx, k)}
-              <Icon name="arrow-square-out" />
+              {inline(head, ctx, k)}
+              <span className="nowrap">
+                {inline(tail, ctx, `${k}.t`)}
+                <Icon name="arrow-square-out" />
+              </span>
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           );
+        }
         return (
           <a key={k} href={href}>
             {inline(n.c, ctx, k)}
@@ -103,10 +121,13 @@ export function blocks(list_: Block[], ctx: RenderContext, key = "b"): ReactNode
           );
         const H = b.level === 2 ? "h2" : "h3";
         const words = plain(b.c, (x) => numberText(x, ctx));
+        // The heading is inline, so its link icon follows the last word when the heading wraps; the
+        // word joiner keeps the icon on that word's line.
         return (
           <div key={k} className={`docs-h docs-h--${b.level}`}>
             <H id={headingElementId(b.id)} tabIndex={-1}>
               {content}
+              {"\u2060"}
             </H>
             <a className="docs-anchor" href={docHref(ctx.slug, b.id)} aria-label={`Link to ${words}`}>
               <Icon name="link" />

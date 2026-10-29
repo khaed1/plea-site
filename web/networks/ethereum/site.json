@@ -48,7 +48,7 @@
   },
   "letterMessagePage": {
     "url": "https://etherscan.io/idm",
-    "network": "Ethereum mainnet"
+    "network": "Ethereum"
   },
   "indexer": {
     "graphql": "https://indexer.pleaimd.fun/graphql"
@@ -62,11 +62,11 @@
   "pairSymbol": "IMD",
   "source": {
     "repo": "https://github.com/khaed1/plea",
-    "ref": "mainnet"
+    "ref": "42e0f855875786a953e945e528e9d7f2724a5352"
   },
   "contracts": {
-    "meta": "Ethereum mainnet",
-    "launch": null
+    "meta": "Ethereum",
+    "launch": "Launch #2647 \u00b7 commit 42e0f85"
   },
   "meta": {
     "title": "Selling needs a plea \u00b7 PLEA",

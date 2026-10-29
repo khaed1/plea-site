@@ -53,7 +53,8 @@ export type SiteSettings = {
   explorerName: string;
   /** The pool currency's symbol until the chain has said it. */
   pairSymbol: string;
-  /** PLEA's source code: repo and the branch or tag this deployment was built from. */
+  /** PLEA's source code: repo and the branch, tag or commit this deployment was built from (Ethereum:
+   * the launched commit, 42e0f85; IMD's delivered copy bc2fda9 has the same src/). */
   source: { repo: string; ref: string };
   /** The Contracts section's meta and PLEA's contracts panel meta (null: the source commit). */
   contracts: { meta: string; launch: string | null };

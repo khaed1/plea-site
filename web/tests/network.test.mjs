@@ -115,7 +115,7 @@ test("PLEA_DEPLOYMENT: an Ethereum fork's deployment fills the first block and t
   assert.equal(n.site.cashback.simdDecimals, 24);
   assert.equal(n.site.seat.address, "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d");
   assert.equal(n.site.seat.name, "identity.md seat");
-  assert.deepEqual(n.site.letterMessagePage, { url: "https://etherscan.io/idm", network: "Ethereum mainnet" }, "the mockup's '(Ethereum mainnet only)'");
+  assert.deepEqual(n.site.letterMessagePage, { url: "https://etherscan.io/idm", network: "Ethereum" }, "'(Ethereum only)': never the network's nickname (S3)");
   assert.equal(n.net.walletAddChain, null, "Ethereum is switched to, never added");
   assert.equal(n.net.network.rpcUrls.at(-1), "https://mainnet.gateway.tenderly.co", "Tenderly last (429 on bursts)");
   assert.equal(n.site.logRanges["https://rpc.flashbots.net"], 0, "Flashbots answers old ranges with []");
@@ -162,7 +162,8 @@ test("network words: Sepolia keeps its test-run words, Ethereum says none of the
   assert.equal(sepolia.footer, "Sepolia test tokens have no value.");
   assert.equal(eth.footer, "Any PLEA traded before launch day isn’t ours.");
   assert.equal(site.sourceLink("src/CabalGate.sol", sepolia), "https://github.com/khaed1/plea/blob/testnet9/src/CabalGate.sol");
-  assert.equal(site.sourceLink("src/CabalGate.sol", eth), "https://github.com/khaed1/plea/blob/mainnet/src/CabalGate.sol");
+  // Ethereum's source is the launched commit, not a branch name (S3, S4).
+  assert.equal(site.sourceLink("src/CabalGate.sol", eth), "https://github.com/khaed1/plea/blob/42e0f855875786a953e945e528e9d7f2724a5352/src/CabalGate.sol");
   assert.deepEqual(site.routerRow(sepolia), { name: "Uniswap v4 PoolSwapTest", note: "the swap router this test run trades through" });
   assert.equal(site.routerRow(eth).name, "Uniswap Universal Router");
   assert.equal(sepolia.explorerName, "Sepolia Etherscan");
@@ -170,7 +171,10 @@ test("network words: Sepolia keeps its test-run words, Ethereum says none of the
   assert.equal(sepolia.pairSymbol, "imdTEST");
   assert.equal(eth.pairSymbol, "IMD");
   assert.equal(sepolia.contracts.launch, "Sepolia test run 9 · launch #2234");
-  assert.equal(eth.contracts.meta, "Ethereum mainnet");
+  assert.equal(eth.contracts.meta, "Ethereum");
+  assert.equal(eth.contracts.launch, "Launch #2647 · commit 42e0f85");
+  // The Ethereum site's settings say "mainnet" nowhere but in an RPC endpoint's host name.
+  assert.doesNotMatch(JSON.stringify(eth).replace(/https?:\/\/[^\s"]+/g, ""), /\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i);
   assert.equal(sepolia.seat.note, "a test NFT on Sepolia");
   assert.equal(eth.seat.note, null);
   assert.equal(sepolia.letterMessagePage, null, "Sepolia keeps the message-page card hidden");

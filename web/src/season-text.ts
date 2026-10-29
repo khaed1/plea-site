@@ -13,11 +13,16 @@ export function closingCopy(o: {
   top: number | bigint;
   minPoints: number;
   pair: string;
+  /** Incomplete history: the approvals the close must be sent are not known, so the site's close
+   * stays off (L2). */
+  historyError?: boolean;
 }) {
   const n = o.season + 1n,
     paysIn = `in ${o.pair}${o.bonus ? " and PLEA" : ""}`,
     grace = o.ready
-      ? `The grace is over: anyone can close season ${n} now. `
+      ? o.historyError
+        ? `The grace is over, but the site's close of season ${n} stays off until the history is read: the close must be sent every approved plea nobody recorded. `
+        : `The grace is over: anyone can close season ${n} now. `
       : "";
   if (o.last)
     return `${grace}The close records any approved plea nobody recorded and pays the top ${o.top} with ${o.minPoints}+ points ${paysIn}.`;
@@ -48,7 +53,7 @@ export function closeCounts(o: {
   historyError?: boolean;
 }) {
   if (o.historyError)
-    return "Approved pleas nobody recorded are not known until the history is read, so this counts the recorded leaderboard only. The close records the ones it is sent, so it stays off until then.";
+    return "Approved pleas nobody recorded are not known until the history is read, and the close records them before it pays, so what it pays is not known yet. The close records the ones it is sent, so it stays off until then.";
   if (!o.pleas.length) return "";
   const items = o.pleas.map(
       (p) =>

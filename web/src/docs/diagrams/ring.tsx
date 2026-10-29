@@ -7,7 +7,7 @@ import { Figure } from "../dg";
 
 const C = 150,
   R = 118,
-  SEAT = 11;
+  SEAT = 9.5; // 30 seats on R = 118 sit 24.7 apart; 2 × (9.5 + 1.25 stroke) leaves a 3-unit gap
 
 /** One seat: agreeing seats are filled and ticked; the rest are dashed rings with a dash. */
 function Seat({ x, y, agrees }: { x: number; y: number; agrees: boolean }) {

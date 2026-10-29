@@ -13,6 +13,7 @@ import {
   amount,
   caseState,
   caseClosedText,
+  pendingVerdictWords,
   noVerdict,
   blockTime,
   feeInPlea,
@@ -1387,7 +1388,7 @@ export function ObjectionForm({ p }: { p: Plea }) {
     closedText = (closed: string) =>
       approved
         ? caseClosedText(closed)
-        : `No objections: plea #${p.id} ${p.status === 1 ? "has no verdict yet" : p.status === 3 ? "was denied" : "got no verdict"}.`;
+        : `No objections: plea #${p.id} ${p.status === 1 ? `has ${pendingVerdictWords(p, s!, now)}` : p.status === 3 ? "was denied" : "got no verdict"}.`;
   const cost =
       BigInt(con(s, "Tribunal.ORACLE_FEE")) + BigInt(con(s, "Tribunal.STAKE")),
     // A void or stale objection does not count against its objector: object() voids a stale one first.
@@ -1657,7 +1658,7 @@ export function Objections() {
           <p className="meta">
             {specific
               ? selected
-                ? `Plea #${selected.id}${shown ? "" : selected.status === 1 ? " · no verdict yet" : selected.status === 3 ? " · denied" : " · not approved"}`
+                ? `Plea #${selected.id}${shown ? "" : selected.status === 1 ? ` · ${pendingVerdictWords(selected, s!, now)}` : selected.status === 3 ? " · denied" : " · not approved"}`
                 : exists || !s
                   ? `Plea #${specific}`
                   : `${s.historyError ? "" : `${open.length} open now · `}plea #${specific} not found`

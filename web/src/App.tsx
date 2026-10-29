@@ -318,7 +318,7 @@ export default function App() {
               </div>
             }
           >
-            <Docs slug={path[1] || undefined} heading={path[2] || undefined} />
+            <Docs slug={path[1]?.toLowerCase() || undefined} heading={path[2]?.toLowerCase() || undefined} />
           </Suspense>
         ) : !s && error ? (<PageHeading page={page} id={path[1]}/>) : !s ? (<PageLoading page={page} id={path[1]}/>
         ) : page === "buy" ? (

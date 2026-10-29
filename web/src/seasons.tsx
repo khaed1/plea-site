@@ -790,6 +790,19 @@ function SeasonBody({
             readError("below")
           ) : !board ? (
             reading
+          ) : query.data?.ownExcluded ? (
+            // The owner never ranks or earns (Seasons.excluded, record's OwnerExcluded, _dropOwner):
+            // no rank, points, bar or season pitch, only the line that says so (L1).
+            <p className="small">
+              {noPleaText({
+                excluded: true,
+                season,
+                ended: ended || !!bounds[3],
+                last,
+                minPoints,
+                mult,
+              })}
+            </p>
           ) : (
             <>
               <div className="cluster standing">
@@ -811,27 +824,40 @@ function SeasonBody({
                     <span className="stat__label">
                       {data.closed ? "Prize" : "Prize now"}
                     </span>
-                    <span className="stat__value">
-                      {smallAmount(
-                        !qualifies
-                          ? 0n
-                          : data.closed
-                            ? paidTo(address)
-                            : (pot * share) / 10000n,
-                        s,
-                      )}
-                    </span>
-                    <span className="stat__note">
-                      +{" "}
-                      {tokenAmount(
-                        !qualifies
-                          ? 0n
-                          : data.closed
-                            ? paidTo(address, "BonusPaid")
-                            : (bonus * share) / 10000n,
-                        s,
-                      )}
-                    </span>
+                    {/* Incomplete history: the approvals nobody recorded (which the close records
+                        first) and the close's payouts are not known, so neither is the prize (L2). */}
+                    {s!.historyError ? (
+                      <>
+                        <span className="stat__value">Not known</span>
+                        <span className="stat__note">
+                          until the history is read
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="stat__value">
+                          {smallAmount(
+                            !qualifies
+                              ? 0n
+                              : data.closed
+                                ? paidTo(address)
+                                : (pot * share) / 10000n,
+                            s,
+                          )}
+                        </span>
+                        <span className="stat__note">
+                          +{" "}
+                          {tokenAmount(
+                            !qualifies
+                              ? 0n
+                              : data.closed
+                                ? paidTo(address, "BonusPaid")
+                                : (bonus * share) / 10000n,
+                            s,
+                          )}
+                        </span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -847,9 +873,13 @@ function SeasonBody({
                       ? ([
                           [
                             "Share at rank " + (rank + 1),
-                            qualifies
-                              ? pct(share)
-                              : `no prize (${points} of ${minPoints})`,
+                            s!.historyError
+                              ? qualifies
+                                ? `${pct(share)} on the recorded board`
+                                : `no prize yet: ${points} of ${minPoints} recorded`
+                              : qualifies
+                                ? pct(share)
+                                : `no prize (${points} of ${minPoints})`,
                           ],
                         ] as [string, string][])
                       : []),
@@ -919,7 +949,6 @@ function SeasonBody({
                 <>
                   <p className="small">
                     {noPleaText({
-                      excluded: !!query.data?.ownExcluded,
                       season,
                       ended: ended || !!bounds[3],
                       last,
@@ -1201,21 +1230,27 @@ function SeasonBody({
               reading
             ) : (
               <>
+                {/* With incomplete history the approvals the close records first are not known, so
+                    the payout is not stated: the recorded board alone would read as fact (L2). */}
                 <Costs
-                  rows={[
-                    [
-                      `Paid to ${plural(paidWallets, "wallet")}`,
-                      `${pct(shares)} · ${smallAmount(paid, s)}`,
-                    ],
-                    [
-                      last
-                        ? "Left for the buy wall"
-                        : `Rolls over to season ${season + 2n}`,
-                      `${pct(10000n - shares)} · ${tokenAmount(pot - paid, s, true)}`,
-                    ],
-                    ["PLEA bonus paid", tokenAmount(bonusPaid, s)],
-                    ["PLEA bonus burned", tokenAmount(bonus - bonusPaid, s)],
-                  ]}
+                  rows={
+                    s!.historyError
+                      ? [["Prizes and the PLEA bonus", "Not known until the history is read"]]
+                      : [
+                          [
+                            `Paid to ${plural(paidWallets, "wallet")}`,
+                            `${pct(shares)} · ${smallAmount(paid, s)}`,
+                          ],
+                          [
+                            last
+                              ? "Left for the buy wall"
+                              : `Rolls over to season ${season + 2n}`,
+                            `${pct(10000n - shares)} · ${tokenAmount(pot - paid, s, true)}`,
+                          ],
+                          ["PLEA bonus paid", tokenAmount(bonusPaid, s)],
+                          ["PLEA bonus burned", tokenAmount(bonus - bonusPaid, s)],
+                        ]
+                  }
                 />
                 {(s!.historyError || closing.length > 0) && (
                   <p className="small">
@@ -1231,9 +1266,11 @@ function SeasonBody({
                     })}
                   </p>
                 )}
-                <p className="small text-2">
-                  {roundingNote(pair, paidWallets)}
-                </p>
+                {!s!.historyError && (
+                  <p className="small text-2">
+                    {roundingNote(pair, paidWallets)}
+                  </p>
+                )}
               </>
             )}
           </Panel>
@@ -1252,6 +1289,7 @@ function SeasonBody({
                     top: con(s, "Seasons.TOP"),
                     minPoints,
                     pair,
+                    historyError: !!s!.historyError,
                   })}
                 </p>
                 <TxButton

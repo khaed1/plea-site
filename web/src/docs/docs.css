@@ -230,18 +230,21 @@
   margin-left: 0.15em;
   vertical-align: -0.125em;
 }
+/* The heading is inline in its row, so the link icon follows its last word when it wraps (a flex
+   row would push the icon to the far edge once the heading takes two lines). */
 .docs-h {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  font-family: var(--font-display);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
 }
 .docs-h > h2,
 .docs-h > h3 {
-  min-width: 0;
+  display: inline;
 }
 .docs-anchor {
-  flex: none;
   display: inline-flex;
+  vertical-align: middle;
+  margin-left: var(--space-2);
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -960,6 +963,9 @@
   position: absolute;
   right: var(--space-1);
   top: 30%;
+  width: fit-content;
+  margin-left: auto;
+  text-align: right;
   padding: 2px var(--space-2);
   border: var(--bw-thin) dashed var(--line);
   border-radius: var(--radius-sm);

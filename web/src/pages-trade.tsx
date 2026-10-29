@@ -12,6 +12,7 @@ import {
   factParts,
   factTerms,
   autoSellBlock,
+  feeSaleShort,
 } from "./models";
 import { appealClosedWhy, returnedEscrow } from "./appeal";
 import {
@@ -1688,10 +1689,13 @@ export function Plead() {
                   errors: {
                     TooSmallForTheFee: (args) =>
                       `Worth ${tokenAmount(BigInt(args[0]), s, true)} at the hourly price; auto-sell needs at least ${tokenAmount(LETTERBOX.MIN_SALE_VALUE, s, true)} (about ${tokenAmount(floor, s)}). Raise the amount or untick auto-sell.`,
+                    // The gate's FeeTooHigh (the price fell under the snapshot) reads as errors.ts says.
                     FeeTooHigh: (args) =>
-                      BigInt(args[0]) * 10n > BigInt(args[1])
-                        ? `Auto-sell’s fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}; you hold ${tokenAmount(BigInt(args[1]), s)}. ${manualInstead}`
-                        : `The plea and its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) must fit your ${tokenAmount(BigInt(args[1]), s)}. Lower the amount. Nothing was sent.`,
+                      feeSaleShort(args)
+                        ? ""
+                        : BigInt(args[0]) * 10n > BigInt(args[1])
+                          ? `Auto-sell’s fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) may take at most 10% of your PLEA, so it needs at least ${tokenAmount(BigInt(args[0]) * 10n, s, false, 0, "up")}; you hold ${tokenAmount(BigInt(args[1]), s)}. ${manualInstead}`
+                          : `The plea and its fees (at most ${tokenAmount(BigInt(args[0]), s, false, 0, "up")}) must fit your ${tokenAmount(BigInt(args[1]), s)}. Lower the amount. Nothing was sent.`,
                   },
                 })
               }
