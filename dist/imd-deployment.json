@@ -70,20 +70,20 @@
       "sha256": "3c38192084ffda92b0dc0f54fcf55cc603566c2e93335afc8e524525559d6549"
     },
     {
-      "path": "assets/ccip-DtfpCUhr.js",
-      "sha256": "42515a5ae310a6b0ab374abb0503a2d4ca2c5b17e3bb42104ddb605f8d9cdc16"
+      "path": "assets/ccip-Dl5D9xeB.js",
+      "sha256": "4e3b7ecf000006a279c70bac4246a5cd952fe357a1ab19cbe10e762c6f4b4068"
     },
     {
       "path": "assets/index-BeoRn2gJ.js",
       "sha256": "0dcde27515a3318bea6438a92001f307ec83cc50407cc75360edc0c7021d8413"
     },
     {
-      "path": "assets/index-C_S5RpXE.js",
-      "sha256": "7fc9f4127557e244e89bede6dbbe48df77657c10bf616c211b905c1cb6ea2694"
-    },
-    {
       "path": "assets/index-Clw66oOL.css",
       "sha256": "c4cf3b52e7fac17bbe8f51dfbc1442b090436b4497e61e304b1d4d8f24f7bba6"
+    },
+    {
+      "path": "assets/index-DVYOtas6.js",
+      "sha256": "62a2c976a161cd4f629702da853b5dbaeffab2e90513ea8f51eb77f33f115150"
     },
     {
       "path": "favicon.svg",
@@ -119,7 +119,7 @@
     },
     {
       "path": "index.html",
-      "sha256": "06d934420d0dec608f7debfda255d4e09ee8ccd317ce4fe42957728db4937b34"
+      "sha256": "ae17603a38318e52152805d55a5e07cff502b9adb821b6c3156d8c7933ae7df9"
     },
     {
       "path": "og.png",
@@ -182,6 +182,23 @@
       "Letterbox": "0x00423ebaed03445fc1452d9a79a51e3c0dfdab5f",
       "Tribunal": "0x1aa665eb420f28103324daaaf034de13ee6f53d9",
       "PleaHook": "0xf1122bc96adea8768cff2badf02b6d4594f928cc"
+    },
+    "facts": {
+      "held": [
+        {
+          "days": 7,
+          "points": 3
+        },
+        {
+          "days": 3,
+          "points": 2
+        },
+        {
+          "days": 1,
+          "points": 1
+        }
+      ],
+      "receivedProfit": 9
     },
     "trade": {
       "kind": "universalRouter",

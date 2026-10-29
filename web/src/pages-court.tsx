@@ -1439,7 +1439,7 @@ export function ObjectionForm({ p }: { p: Plea }) {
           <Countdown until={until} label="Objections close in" />
         </div>
       ) : (
-        <p>{closedText(closed!)}</p>
+        approved && <p>{closedText(closed!)}</p>
       )}
       {approved && (
         <div>
@@ -1660,7 +1660,7 @@ export function Objections() {
                 ? `Plea #${selected.id}${shown ? "" : " · not approved"}`
                 : exists || !s
                   ? `Plea #${specific}`
-                  : `No plea #${specific}`
+                  : `${s.historyError ? "" : `${open.length} open now · `}plea #${specific} not found`
               : s?.historyError && !list.length
                 ? "History incomplete"
                 : `${list.length} approved plea${list.length === 1 ? "" : "s"} · closing soonest first`}
@@ -1693,7 +1693,9 @@ export function Objections() {
               >
                 {exists
                   ? "The public RPC did not answer. The site tries the next one by itself."
-                  : `${/^\d+$/.test(specific) && BigInt(specific) > 0n ? `Plea #${specific} has not been submitted.` : "Plea numbers start at #1."}${s?.historyError ? "" : ` ${plural(open.length, "case")} ${open.length === 1 ? "is" : "are"} open now.`}`}
+                  : /^\d+$/.test(specific) && BigInt(specific) > 0n
+                    ? `Plea #${specific} has not been submitted.`
+                    : "Plea numbers start at #1."}
               </Empty>
             ) : s?.historyError ? (
               // The open cases come from history; with a gap in it, "none" is not known (r2S-N1).
