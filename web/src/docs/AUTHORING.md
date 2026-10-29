@@ -41,7 +41,8 @@ Every page has the same five parts, as `##` headings, in this order:
 1. `## In short`: two or three plain sentences.
 2. `## How it works`: numbered steps (`1.`, `2.`, …).
 3. `## In a picture`: the page's one diagram (`::: diagram <name>`, below). You may rename this
-   heading, or put the diagram inside How it works and drop the heading.
+   heading, or put the diagram inside How it works and drop the heading. Every page has exactly
+   one diagram, and How it works always has numbered steps (the unit tests check both).
 4. `## Example`: one worked example with real numbers. Show the arithmetic.
 5. `## Good to know`: limits, what can go wrong, and the exact error a user would see, in plain
    words.
@@ -73,7 +74,9 @@ Every number comes from `web/src/docs/numbers.json`, so one edit changes it ever
 - An entry is `key -> { text, value, chain, format, source, what }`. The page prints `text`.
 - `chain` names a contract constant the site reads at load (`"CabalGate.PASS_MARK"`). Once the chain
   has answered, the page prints the chain's value in the entry's `format` instead. If the chain ever
-  disagrees with `value`, the chain wins and the browser console says so once.
+  disagrees with `value`, the chain wins and the browser console says so once. A test build (Sepolia run 9)
+  never binds: its chain has other numbers, so its docs show the file's, under a note saying they
+  describe PLEA on Ethereum.
 - `format` is one of `int` (`69`), `imd` (`0.5 IMD`), `plea` (`2,500,000 PLEA`), `duration`
   (`7 minutes`, `33 hours`, `15 days`), `bps` (`0.25%`), `multiplier` (`×1.2`), or `text` (always the
   file's words, never the chain's).

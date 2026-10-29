@@ -1126,3 +1126,7 @@
     flex-direction: column;
   }
 }
+/* The test build's note above each page (Docs.tsx): the docs describe PLEA on Ethereum. */
+.docs__page > .notice {
+  margin-bottom: var(--space-5);
+}

@@ -1,10 +1,11 @@
 /** The Docs section (#/docs, #/docs/<slug>, #/docs/<slug>/<heading-id>): the sidebar of the 18 pages
  * with the search box, the page, "On this page", and Previous / Next. Static text: it shows at once,
- * before the chain has answered; a number bound to the chain changes to the chain's value when the
+ * before the chain has answered; on Ethereum a number bound to the chain changes to the chain's value when the
  * contracts' constants arrive (numbers.ts). Loaded as its own chunk (App.tsx). */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../context";
-import { Empty, Icon, Title } from "../components";
+import { Empty, Icon, Notice, Title } from "../components";
+import { site } from "../site";
 import { DOCS, docHref, headingElementId, pageOf, prevNext } from "./order";
 import { tocOf } from "./markdown";
 import { numberWords } from "./numbers";
@@ -15,7 +16,11 @@ import { NumbersProvider, readerFor } from "./numbers-context";
 
 export default function Docs({ slug, heading }: { slug?: string; heading?: string }) {
   const { statics, s } = useApp();
-  const constants = statics ?? s?.constants;
+  // The docs describe PLEA on Ethereum (numbers.json). A test build (Sepolia run 9) has other
+  // numbers on its chain, and the worked examples' sums follow the file's: it shows the file's
+  // numbers, never its own chain's, and says so above each page.
+  const test = site().testnet;
+  const constants = test ? undefined : (statics ?? s?.constants);
   const num = useCallback((key: string) => numberWords(NUMBERS, key, constants), [constants]);
   const reader = useMemo(() => readerFor(constants), [constants]);
   const doc = pageOf(slug);
@@ -36,6 +41,14 @@ export default function Docs({ slug, heading }: { slug?: string; heading?: strin
       <div className="docs">
         <DocsSide current={doc?.slug} />
         <article className="docs__page">
+          {page && test && (
+            <Notice title="These docs describe PLEA on Ethereum">
+              <p>
+                This site is {site().name}, whose numbers differ (the pass mark, the holding points, the
+                seasons' length, the opening). The docs show Ethereum's.
+              </p>
+            </Notice>
+          )}
           {page ? (
             <div className="docs-body">
               <Markdown tree={page.blocks} ctx={{ slug: page.slug, num, diagrams: DIAGRAMS }} />
