@@ -3,7 +3,7 @@
   "name": "Ethereum",
   "strip": null,
   "footer": "Any PLEA traded before launch day isn\u2019t ours.",
-  "siteUrl": "https://pleaimd.imd.site/",
+  "siteUrl": "https://pleaimd.fun/",
   "eventStart": 26293890,
   "oracleApi": "https://api.imd.fun",
   "claimsPath": "claims.json",
