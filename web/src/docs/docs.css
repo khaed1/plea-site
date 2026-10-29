@@ -993,3 +993,52 @@
   font-size: var(--text-xs);
   font-weight: var(--w-heavy);
 }
+/* contracts: the eight cards in five groups, side by side once the figure is wide; each card's
+   links to the others as arrowed lines. The addresses under it wrap anywhere. */
+.dg-groups {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@container (min-width: 600px) {
+  .dg-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.dg-group {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+.dg-group__title {
+  font-size: var(--text-xs);
+  font-weight: var(--w-heavy);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.docs-body .dg-links {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.docs-body .dg-links li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+}
+.dg-links .icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 0.25em;
+}
+.dg-addrs dd {
+  min-width: 0;
+}
+.dg-addrs .addr {
+  display: inline;
+}
