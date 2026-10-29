@@ -21,6 +21,16 @@ export type FactRules = {
   held: { days: number; points: number }[];
   receivedProfit: number;
 };
+/** One hop of a "Pay with" route: the v4 pool it swaps through (its name in words, its fee in
+ * millionths, tick spacing and hook, with `currency` as the pool's other currency) and the currency
+ * it ends in. */
+export type PayHop = { pool: string; currency: Address; fee: number; tickSpacing: number; hooks: Address };
+/** A way to pay for PLEA other than the pool currency: `currency` (0x0 is native ETH) swapped along
+ * `path` into IMD, then IMD into PLEA, in one Universal Router transaction. */
+export type PayRoute = { symbol: string; currency: Address; decimals: number; path: PayHop[] };
+/** The Buy page's "Pay with" routes and Uniswap's V4 Quoter that prices them; the first route is the
+ * default. Null where the network has none (Sepolia run 9): the Buy page pays IMD only. */
+export type PaySettings = { quoter: Address; routes: PayRoute[] } | null;
 export type SiteSettings = {
   key: string;
   /** The deployment in words: "Sepolia test run 9", "Ethereum". */
@@ -38,6 +48,7 @@ export type SiteSettings = {
   expected: Record<"Letterbox" | "Tribunal" | "PleaHook", string> | null;
   facts: FactRules;
   trade: TradeSettings;
+  pay?: PaySettings;
   delegateRegistry: Address;
   /** imd/acc's Stacker and its sIMD vault (null: cashback is never staked on this network). */
   cashback: { stacker: Address; simd: Address | null; simdDecimals: number };
@@ -83,6 +94,7 @@ export function siteFrom(manifest: any): Site {
   if (!s.trade?.router || !["poolSwapTest", "universalRouter"].includes(s.trade.kind))
     throw Error("The deployment file names no swap router.");
   if (!validFacts(s.facts)) throw Error("The deployment file names no fact-score rules.");
+  if (!validPay(s.pay, s.trade)) throw Error("The deployment file's payment routes are not valid.");
   return {
     ...s,
     chain: n.name,
@@ -106,6 +118,38 @@ export const validFacts = (f: any): f is FactRules =>
   ) &&
   Number.isSafeInteger(f.receivedProfit) &&
   f.receivedProfit >= 0;
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+const whole = (n: any, least = 0) => Number.isSafeInteger(n) && n >= least;
+/** Null (no routes), or the Quoter and routes that each end in the same currency, never pass it
+ * before their last hop, and run through the Universal Router (scripts/network.mjs payValid). */
+export function validPay(p: any, trade: any): boolean {
+  if (p === null || p === undefined) return true;
+  if (trade?.kind !== "universalRouter" || !ADDRESS.test(p?.quoter || "")) return false;
+  if (!Array.isArray(p.routes) || !p.routes.length) return false;
+  const end = p.routes[0]?.path?.at?.(-1)?.currency;
+  const symbols = new Set<string>();
+  return p.routes.every((r: any) => {
+    if (typeof r?.symbol !== "string" || !/^[A-Z][A-Z0-9]{1,7}$/.test(r.symbol) || symbols.has(r.symbol))
+      return false;
+    symbols.add(r.symbol);
+    if (!ADDRESS.test(r.currency || "") || !whole(r.decimals) || r.decimals > 36 || r.currency === end)
+      return false;
+    if (!Array.isArray(r.path) || !r.path.length || r.path.at(-1).currency !== end) return false;
+    return r.path.every(
+      (h: any, i: number) =>
+        typeof h?.pool === "string" &&
+        h.pool.length > 0 &&
+        ADDRESS.test(h.currency || "") &&
+        ADDRESS.test(h.hooks || "") &&
+        h.currency !== (i ? r.path[i - 1].currency : r.currency) &&
+        (i === r.path.length - 1 || h.currency !== end) &&
+        whole(h.fee) &&
+        h.fee < 1_000_000 &&
+        whole(h.tickSpacing, 1) &&
+        h.tickSpacing <= 32767,
+    );
+  });
+}
 export function setSite(manifest: any): Site {
   const site = siteFrom(manifest);
   store[KEY] = site;

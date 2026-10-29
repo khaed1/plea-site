@@ -43,6 +43,18 @@ export function sqrtAtTick(tick: number): bigint {
   return (ratio + (1n << 32n) - 1n) >> 32n;
 }
 export type Band = { tickLower: number; tickUpper: number; liquidity: bigint };
+/** The ticks in [lo, hi] where a v4 swap ends a step without an initialized tick: the ends of its
+ * tick bitmap's 256-spacing words (TickBitmap.nextInitializedTickWithinOneWord). Going down (zeroForOne)
+ * a step stops at each word's first tick, 256·k·spacing; going up at each word's last tick,
+ * (256·k + 255)·spacing. Each step rounds its amounts, so the walk stops there too. */
+export function wordEnds(lo: number, hi: number, tickSpacing: number, zeroForOne: boolean) {
+  const word = 256 * tickSpacing,
+    offset = zeroForOne ? 0 : 255 * tickSpacing,
+    ticks: number[] = [];
+  for (let k = Math.ceil((lo - offset) / word); k * word + offset <= hi; k++)
+    ticks.push(k * word + offset);
+  return ticks;
+}
 export function estimateHookOutput({
   amount,
   zeroForOne,
@@ -50,6 +62,7 @@ export function estimateHookOutput({
   bands,
   inputBps,
   outputBps,
+  tickSpacing,
 }: {
   amount: bigint;
   zeroForOne: boolean;
@@ -57,6 +70,10 @@ export function estimateHookOutput({
   bands: Band[];
   inputBps: bigint;
   outputBps: bigint;
+  /** The pool's tick spacing: the walk then also stops where v4's steps do between band edges
+   * (wordEnds), so the quote is the pool's to the wei. Without it the walk stops at the band edges
+   * only, and a swap that crosses a word end may be quoted a fraction of a wei of input high. */
+  tickSpacing?: number;
 }) {
   let remaining = amount - (amount * inputBps) / (10000n + inputBps),
     out = 0n,
@@ -69,8 +86,17 @@ export function estimateHookOutput({
       hi: sqrtAtTick(b.tickUpper),
     }));
   const boundaries = ranges.flatMap((b) => [b.lo, b.hi]);
-  // Every pass either uses up the input or moves the price to a band edge strictly further in the
-  // swap's direction, so the walk ends within one pass per edge.
+  if (tickSpacing && ranges.length)
+    boundaries.push(
+      ...wordEnds(
+        Math.min(...ranges.map((b) => b.tickLower)),
+        Math.max(...ranges.map((b) => b.tickUpper)),
+        tickSpacing,
+        zeroForOne,
+      ).map(sqrtAtTick),
+    );
+  // Every pass either uses up the input or moves the price to a band edge or word end strictly
+  // further in the swap's direction, so the walk ends within one pass per boundary.
   for (let steps = 0; steps <= boundaries.length && remaining > 0n; steps++) {
     const active = ranges.filter((b) =>
       zeroForOne
@@ -109,6 +135,18 @@ export function estimateHookOutput({
   }
   if (remaining > 0n) throw Error(LIQUIDITY_SHORT);
   return { out: out - (out * outputBps) / 10000n, gross: out, next: current };
+}
+
+/** A quote's minimum at `slipBps` slippage: what the page shows as "Minimum, N% slippage". */
+export const minimumOf = (out: bigint, slipBps: number) =>
+  (out * BigInt(10000 - slipBps)) / 10000n;
+/** The minimum a trade is sent with: the one the page showed at the click (its quote less the
+ * slippage), never one rebuilt from the quote read again at the send, which would let a price that
+ * moved since the page's quote through below what the page promised. A fresh quote below that
+ * minimum is `moved`: nothing is sent, and the page shows the new quote. */
+export function sendMinimum(shownOut: bigint, freshOut: bigint, slipBps: number) {
+  const minimum = minimumOf(shownOut, slipBps);
+  return { minimum, moved: freshOut < minimum };
 }
 
 export function integerSqrt(n: bigint) {

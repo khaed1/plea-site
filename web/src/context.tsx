@@ -547,6 +547,8 @@ export function useTx(resetKey?: string) {
         to: Address;
         data: Hex;
         value?: bigint;
+        maxFeePerGas?: bigint;
+        maxPriorityFeePerGas?: bigint;
       } | void>;
       toast?: (receipt: TransactionReceipt) => Toast;
       errors?: ErrorMap;
@@ -571,7 +573,11 @@ export function useTx(resetKey?: string) {
         transport: custom(provider as any),
       });
       const prepared = await options?.prepare?.();
-      const req = prepared ||
+      const {
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+        ...req
+      }: NonNullable<typeof prepared> = prepared ||
         raw || {
           to: r.addresses[name],
           data: encodeFunctionData({
@@ -583,8 +589,12 @@ export function useTx(resetKey?: string) {
         };
       await r.client.call({ ...req, account: address });
       const estimate = await r.client.estimateGas({ ...req, account: address });
+      // Fees a send brings (a routed ETH buy's, pay.ts routeFees) go to the wallet only: an eth_call
+      // with a max fee checks the balance against the node's whole gas cap. Otherwise the wallet
+      // picks its own.
       const h = await wallet.sendTransaction({
         ...req,
+        ...(maxFeePerGas !== undefined && { maxFeePerGas, maxPriorityFeePerGas }),
         account: address,
         chain: r.chain,
         gas: (estimate * 130n + 99n) / 100n,

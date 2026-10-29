@@ -46,6 +46,8 @@ export default function Docs({ slug, heading }: { slug?: string; heading?: strin
               <p>
                 This site is {site().name}, whose numbers differ (the pass mark, the holding points, the
                 seasons' length, the opening). The docs show Ethereum's.
+                {!site().pay &&
+                  ` Pay with ETH or USDC is Ethereum only: here the Buy page pays with ${site().pairSymbol}.`}
               </p>
             </Notice>
           )}

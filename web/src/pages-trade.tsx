@@ -1,5 +1,5 @@
 import { site } from "./site";
-import { DisplayError } from "./errors";
+import { DisplayError, NO_FUNDS } from "./errors";
 import {
   pendingState,
   feeDisplay,
@@ -25,6 +25,8 @@ import {
   unpackDelta,
   LIQUIDITY_SHORT,
   NO_LIQUIDITY,
+  minimumOf,
+  sendMinimum,
 } from "./swap-math";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
@@ -43,11 +45,31 @@ import { cashbackWords, sellGateWarning } from "./site";
 import { tradeSteps } from "./trade-text";
 import {
   encodeBuy,
+  encodeBuyVia,
   encodeSell,
   permit2Abi,
   permit2Spendable,
   universalRouterAbi,
 } from "./universal-router";
+import {
+  atPoolPrice,
+  buyPath,
+  ethMax,
+  feeWords,
+  fitFees,
+  gasReserve,
+  impactBps,
+  impactWords,
+  IMPACT_CONFIRM_BPS,
+  isNative,
+  quoteToImd,
+  rateLine,
+  readHopFees,
+  readRouteFees,
+  routeLine,
+  routeRefusal,
+} from "./pay";
+import type { PayRoute } from "./site";
 import {
   amount,
   pct,
@@ -94,6 +116,19 @@ import {
 } from "./components";
 /** How long a Permit2 allowance for the router lasts, and a router trade's deadline: 30 minutes. */
 const PERMIT_LIFE = 1800;
+/** The Buy page's "Pay with" choice, per browser (a route's symbol, or PAY_PAIR for the pool
+ * currency): a convenience only, so a blocked or empty storage falls back to the first route. */
+const PAY_KEY = "plea-pay-with",
+  PAY_PAIR = "pair";
+function storedPayWith(routes: PayRoute[]) {
+  let v: string | null = null;
+  try {
+    v = localStorage.getItem(PAY_KEY);
+  } catch {}
+  return v === PAY_PAIR || routes.some((x) => x.symbol === v)
+    ? v!
+    : routes[0]?.symbol ?? PAY_PAIR;
+}
 export function parseAmount(s: string, decimals = 18) {
   try {
     s = s.replaceAll(",", "");
@@ -217,16 +252,16 @@ export async function poolQuote(
     read(r, "PleaHook", "wall"),
     read(r, "PleaHook", "launchExtraBps"),
   ]);
-  const launchExtra = extra ?? BigInt(liveExtra);
+  const launchExtra = extra ?? BigInt(liveExtra),
+    key = val(s, "PleaHook.poolKey");
   return estimateHookOutput({
     amount: raw,
     // The pool key decides the direction: imdTEST is currency0 on Sepolia run 9, PLEA may be on
     // Ethereum (a buy is then oneForZero).
-    zeroForOne: swapZeroForOne(
-      selling,
-      pleaIsZero(val(s, "PleaHook.poolKey"), r.addresses.PLEA),
-    ),
+    zeroForOne: swapZeroForOne(selling, pleaIsZero(key, r.addresses.PLEA)),
     sqrt,
+    // v4's steps also end at its tick bitmap's word ends: the walk stops there too.
+    tickSpacing: Number(key.tickSpacing),
     bands: [bandOf(market), bandOf(wall)],
     inputBps: BigInt(
       selling
@@ -242,21 +277,78 @@ export function Buy() {
   const { r, s, now, toast } = useApp(),
     { address } = useAccount(),
     balance = WalletBalances();
+  const routes = site().pay?.routes ?? [];
   const [input, setInput] = useState(""),
     [selling, setSelling] = useState(false),
+    [payWith, setPayWith] = useState(() => storedPayWith(routes)),
+    [maxNote, setMaxNote] = useState(""),
     [slip, setSlip] = useState(100),
     [revision, setRevision] = useState(0),
     [approved, setApproved] = useState(false),
     [fill, setFill] = useState(""),
     [maxRaw, setMaxRaw] = useState<bigint>();
-  const tx = useTx(`${input}:${selling}:${slip}:${maxRaw}`),
+  // "Pay with" ETH or USDC (Ethereum): the route's currency is swapped into IMD on its own pools,
+  // then IMD into PLEA, in one router transaction; selling always takes IMD.
+  const route = selling ? undefined : routes.find((x) => x.symbol === payWith),
+    native = !!route && isNative(route.currency),
+    decimals = route ? route.decimals : 18;
+  const tx = useTx(`${input}:${selling}:${slip}:${maxRaw}:${route?.symbol ?? ""}`),
     dead = !!val(s, "CabalGate.diedAt"),
     seeded = !!val(s, "PleaHook.seeded"),
     pair = s?.constants.pairSymbol || site().pairSymbol,
-    unit = selling ? "PLEA" : pair,
-    raw = maxRaw ?? parseAmount(input);
-  const inputToken = selling ? r.addresses.PLEA : r.addresses.PairToken,
-    available = selling ? balance.data?.plea : balance.data?.pair;
+    unit = selling ? "PLEA" : route ? route.symbol : pair,
+    raw = maxRaw ?? parseAmount(input, decimals);
+  const payBalance = useRead(
+    async () =>
+      (native
+        ? r.client.getBalance({ address: address! })
+        : r.client.readContract({
+            address: route!.currency,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [address!],
+          })) as Promise<bigint>,
+    [address, route?.symbol],
+    !!address && !!s && !!route,
+  );
+  // The fees a routed ETH buy is sent with, and the ETH it leaves for gas at them (Max keeps it; a
+  // typed amount that leaves less is warned).
+  const gasFees = useRead(
+      () => readRouteFees(r.client),
+      [address, revision],
+      !!address && !!s && native,
+    ),
+    reserve = gasFees.data ? gasReserve(gasFees.data) : undefined;
+  const inputToken = selling
+      ? r.addresses.PLEA
+      : route
+        ? route.currency
+        : r.addresses.PairToken,
+    available = selling
+      ? balance.data?.plea
+      : route
+        ? payBalance.data
+        : balance.data?.pair;
+  /** An amount in the paying currency: "0.05 ETH", "150.00 USDC". */
+  const payAmount = (v: bigint | undefined, mode: "down" | "up" = "down") =>
+    route
+      ? `${amount(v, route.decimals, native ? 4 : 2, mode)} ${route.symbol}`
+      : tokenAmount(v, s, !selling, selling ? 0 : 2, mode);
+  /** The other currencies this page can pay with, for a wallet that has none of this one. */
+  const others = routes.length
+    ? [...routes.map((x) => x.symbol), pair].filter((v) => v !== unit)
+    : [];
+  function choosePay(v: string, remember = true) {
+    setPayWith(v);
+    if (remember)
+      try {
+        localStorage.setItem(PAY_KEY, v);
+      } catch {}
+    // The field's number meant the old currency: start again rather than reread it.
+    setInput("");
+    setMaxRaw(undefined);
+    setMaxNote("");
+  }
   const launch = Number(val(s, "PleaHook.launchedAt")),
     window = Number(con(s, "PleaHook.LAUNCH_WINDOW")),
     launchActive = !!val(s, "PleaHook.seeded") && now < launch + window;
@@ -271,23 +363,60 @@ export function Buy() {
     : 0n;
   const tradeDone = tx.done && !approved;
   const [frozenQuote, setFrozenQuote] = useState<any>();
+  // A route's quote: Uniswap's V4 Quoter for the part up to IMD, then the site's own walk of PLEA's
+  // pool for that IMD (the Quoter reads 0 PLEA there while the Cabal lives). `imd` is the PLEA leg's
+  // input either way.
+  const legQuote = async (launchExtra?: bigint) => {
+    const imd = route
+      ? await quoteToImd(r.client, site().pay!.quoter, route, raw, pair)
+      : raw;
+    return { ...(await poolQuote(r, s!, imd, selling, launchExtra)), imd };
+  };
   const liveQuote = useRead(
     async () => {
       const key = val(s, "PleaHook.poolKey"),
-        zeroForOne = key.currency0.toLowerCase() === inputToken.toLowerCase(),
+        zeroForOne =
+          key.currency0.toLowerCase() ===
+          (selling ? r.addresses.PLEA : r.addresses.PairToken).toLowerCase(),
         hookData = address
           ? encodeAbiParameters([{ type: "address" }], [address])
           : "0x";
-      const estimate = await poolQuote(r, s!, raw, selling, extra);
-      return { ...estimate, key, zeroForOne, hookData, at: Date.now() };
+      // A route's pools at their current prices, read with the quote: what the IMD would be without
+      // the buy's own price impact (atPoolPrice).
+      const [estimate, hops] = await Promise.all([
+        legQuote(extra),
+        route
+          ? readHopFees(r.client, r.network.uniswapV4.poolManager, route)
+          : undefined,
+      ]);
+      const atPrice = hops && route ? atPoolPrice(raw, route, hops) : undefined;
+      return { ...estimate, atPrice, key, zeroForOne, hookData, at: Date.now() };
     },
-    [raw.toString(), selling, address, slip, revision],
+    [raw.toString(), selling, address, slip, revision, route?.symbol ?? ""],
     !!s && raw > 0n && !!val(s, "PleaHook.seeded") && !tradeDone,
+  );
+  // Each hop's live fee (the pools' LP fee and Uniswap's protocol fee), for the words.
+  const hopFees = useRead(
+    () => readHopFees(r.client, r.network.uniswapV4.poolManager, route!),
+    [route?.symbol],
+    !!s && !!route,
   );
   const quote =
     tradeDone && frozenQuote
       ? { ...liveQuote, data: frozenQuote, loading: false, error: "" }
       : liveQuote;
+  /** The IMD the PLEA leg pays: the amount itself, or what the route's pools turn it into. */
+  const legRaw: bigint = route ? (quote.data?.imd ?? 0n) : raw;
+  // A route's price impact on its own pools (IMD's ETH pool is shallow): from IMPACT_CONFIRM_BPS up
+  // the buyer confirms it, for this amount in this currency.
+  const impact =
+      route && quote.data?.atPrice !== undefined
+        ? impactBps(quote.data.imd, quote.data.atPrice)
+        : 0,
+    impactKey = `${raw}:${route?.symbol ?? ""}`;
+  const [impactOk, setImpactOk] = useState(""),
+    confirmImpact = !tradeDone && impact >= IMPACT_CONFIRM_BPS,
+    impactAccepted = impactOk === impactKey;
   // On Ethereum the Universal Router takes the input through Permit2: the token approves Permit2
   // (step 1), Permit2 allows the router for 30 minutes (step 2), then the trade. A step whose
   // allowance already covers the amount (and, for Permit2, has not expired) is skipped. On
@@ -316,11 +445,13 @@ export function Buy() {
       return { token, permit };
     },
     [address, inputToken, revision],
-    !!address && !!s,
+    !!address && !!s && !native,
   );
-  // An allowance that expires within the minute is renewed rather than raced.
-  const step: "token" | "permit2" | "trade" | undefined =
-    allowance.data === undefined
+  // An allowance that expires within the minute is renewed rather than raced. Native ETH needs
+  // none: it is the transaction's value.
+  const step: "token" | "permit2" | "trade" | undefined = native
+    ? "trade"
+    : allowance.data === undefined
       ? undefined
       : allowance.data.token < raw
         ? "token"
@@ -331,7 +462,7 @@ export function Buy() {
   const needsApproval = step === "token" || step === "permit2";
   // "Step 2 of 3": the steps this amount needed when it was entered, so the count holds while
   // the steps are done one by one.
-  const planKey = `${address}:${selling}:${raw}`,
+  const planKey = `${address}:${selling}:${raw}:${unit}`,
     [plan, setPlan] = useState<{ key: string; total: number }>();
   const remaining =
     step === "token" ? (universal ? 3 : 2) : step === "permit2" ? 2 : 1;
@@ -348,7 +479,7 @@ export function Buy() {
       !selling &&
       quote.data &&
       quote.data.gross > cap
-        ? `This buy would take ${tokenAmount(quote.data.gross, s)} before the burn. Until ${clock(launch + window)} one buy can take at most ${tokenAmount(cap, s)}. Pay less ${pair}, or split the buy in two.`
+        ? `This buy would take ${tokenAmount(quote.data.gross, s)} before the burn. Until ${clock(launch + window)} one buy can take at most ${tokenAmount(cap, s)}. Pay less ${unit}, or split the buy in two.`
         : "";
   const invalid =
     !tradeDone && ((available !== undefined && raw > available) || !!capError);
@@ -357,8 +488,16 @@ export function Buy() {
     : raw <= 0n
       ? `Enter how much ${unit} to ${selling ? "sell" : "pay"}, or press Max. The quote and the fees show once there is an amount.`
       : available !== undefined && raw > available
-        ? `You have ${tokenAmount(available, s, !selling)}. Lower the amount or press Max.`
+        ? available === 0n
+          ? // Max cannot help: another currency, or adding this one, can.
+            selling
+            ? "You have no PLEA to sell."
+            : `You have ${payAmount(0n)}. Add ${unit}${others.length ? `, or pay with ${others.join(" or ")}` : ""}.`
+          : `You have ${payAmount(available)}. Lower the amount or press Max.`
         : capError ||
+          // A route the Quoter refused (a pool on the way cannot fill it): only another amount or
+          // currency helps.
+          (route && routeRefusal(quote.error) ? quote.error : "") ||
           // The pool cannot fill this amount at any price: no approval can help, so none is offered.
           (quote.error === LIQUIDITY_SHORT
             ? `Lower the amount: the pool cannot fill ${selling ? "this sale" : "this buy"}.`
@@ -367,21 +506,35 @@ export function Buy() {
                 ? `The pool has no ${pair} left to pay for a sale; nothing can be sold until someone buys.`
                 : "The pool has no PLEA left to buy; nothing can be bought until someone sells."
               : "");
-  const poolBlocked = quote.error === LIQUIDITY_SHORT || quote.error === NO_LIQUIDITY;
+  const poolBlocked =
+    quote.error === LIQUIDITY_SHORT ||
+    quote.error === NO_LIQUIDITY ||
+    (!!route && routeRefusal(quote.error));
+  // Native ETH also pays the gas: an amount that leaves less than the reserve is warned (the send
+  // lowers its max fee to what is left while the chain still takes it, fitFees), Max never takes it.
+  const gasLeft =
+    native && available !== undefined && raw > 0n && raw <= available
+      ? available - raw
+      : undefined;
+  const gasNote =
+    !tradeDone && gasLeft !== undefined && reserve !== undefined && gasLeft < reserve
+      ? `This leaves ${amount(gasLeft, 18, 4)} ETH; the wallet needs about ${amount(reserve, 18, 4, "up")} ETH free for the gas. Lower the amount or press Max.`
+      : "";
   const reason = tradeDone
     ? ""
     : amountReason ||
+      (confirmImpact && !impactAccepted
+        ? `Tick “Buy anyway” above to get ${impactWords(route!, pair, impact)}, or lower the amount.`
+        : "") ||
       (!needsApproval
         ? quote.error ||
           (!quote.data ? "Waiting for the quote from the pool." : "")
         : "");
-  const minOut = quote.data
-    ? (quote.data.out * BigInt(10000 - slip)) / 10000n
-    : undefined;
+  const minOut = quote.data ? minimumOf(quote.data.out, slip) : undefined;
   const normal = BigInt(con(s, "PleaHook.IMD_FEE_BPS") || 0),
     rate = normal + extra,
-    fee = (raw * rate) / (10000n + rate),
-    reaches = raw - fee;
+    fee = (legRaw * rate) / (10000n + rate),
+    reaches = legRaw - fee;
   const feePart = (key: string) =>
       (reaches * BigInt(con(s, `PleaHook.${key}`) || 0)) / 10000n,
     cashbackNow = feePart("CASHBACK_BPS");
@@ -409,12 +562,12 @@ export function Buy() {
           ? "pool"
           : "claims";
     },
-    [raw.toString(), selling],
-    !!s && raw > 0n && !selling,
+    [legRaw.toString(), selling],
+    !!s && legRaw > 0n && !selling,
   );
   const capMessage = {
     title: `Not bought: more than ${tokenAmount(cap, s)} in one buy.`,
-    body: `Until ${clock(launch + window)} one buy can take at most ${tokenAmount(cap, s)}. Pay less ${pair}, or split the buy in two. Nothing was bought.`,
+    body: `Until ${clock(launch + window)} one buy can take at most ${tokenAmount(cap, s)}. Pay less ${unit}, or split the buy in two. Nothing was bought.`,
   };
   const priceMessage = {
     title: `The price moved more than ${slip / 100}%.`,
@@ -424,13 +577,16 @@ export function Buy() {
     BuyTooLarge: capMessage,
     PriceLimitAlreadyExceeded: priceMessage,
   };
-  const display = s
-    ? feeDisplay(raw, s.constants, extra, dead, input || undefined)
-    : undefined;
+  // A route's fee parts are of the IMD its pools deliver (no typed IMD amount to keep).
+  const display =
+    s && (!route || quote.data)
+      ? feeDisplay(legRaw, s.constants, extra, dead, route ? undefined : input || undefined)
+      : undefined;
   // What the field shows for this amount: Max fills the field rounded down; a typed amount is
   // shown as typed (feeDisplay's "you pay").
-  const shownPay =
-    maxRaw !== undefined
+  const shownPay = route
+    ? exactAmount(raw, route.decimals, 2)
+    : maxRaw !== undefined
       ? amount(maxRaw, 18, selling ? 0 : 2)
       : display && !selling
         ? display.pay
@@ -439,6 +595,17 @@ export function Buy() {
     title: "Your Permit2 allowance for the router ran out.",
     body: `Press the button to allow the router again (it lasts 30 minutes), then ${selling ? "sell" : "buy"}. Nothing was ${selling ? "sold" : "bought"}.`,
   };
+  /** The price moved past the slippage between the page's quote and the click (sendMinimum). */
+  const movedMessage = (fresh: bigint, minimum: bigint) => ({
+    title: `The price moved: the new quote is ≈ ${tokenAmount(fresh, s, selling)}.`,
+    body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, selling)}, so nothing was sent and your ${unit} stays in your wallet. The quote above is the new one: press ${selling ? "Sell" : "Buy"} again to ${selling ? "sell" : "buy"} at it.`,
+  });
+  // Native ETH pays the gas too: the wallet's "insufficient funds", or the send's own check
+  // (fitFees, with the ETH left and the reserve at the fees read then), in the gas reserve's words.
+  const fundsMessage = (left = gasLeft, need = reserve) => ({
+    title: "Not bought: too little ETH is left for the gas.",
+    body: `${left !== undefined ? `Paying ${payAmount(raw)} leaves ${amount(left, 18, 4)} ETH; the` : "The"} wallet needs ${need !== undefined ? `about ${amount(need, 18, 4, "up")} ETH` : "ETH"} free for the gas. Lower the amount or press Max. Nothing was sent.`,
+  });
   const routerErrors: Record<string, { title: string; body: string }> = universal
     ? {
         BalanceTooLow: priceMessage,
@@ -468,7 +635,7 @@ export function Buy() {
             prepare:
               launchActive && !selling
                 ? async () => {
-                    const q = await poolQuote(r, s!, raw, false);
+                    const q = await legQuote();
                     if (q.gross > BigInt(cap))
                       throw new DisplayError(capMessage);
                   }
@@ -486,7 +653,7 @@ export function Buy() {
           errors: swapErrors,
           prepare: async () => {
             if (launchActive && !selling) {
-              const q = await poolQuote(r, s!, raw, false);
+              const q = await legQuote();
               if (q.gross > BigInt(cap)) throw new DisplayError(capMessage);
             }
             // Exactly this amount, for 30 minutes from the chain's clock.
@@ -510,25 +677,64 @@ export function Buy() {
         setRevision((n) => n + 1);
       return;
     }
+    // The quote this click was made on: the trade is sent with its minimum, the one the page shows.
+    const shown = quote.data;
     setApproved(false);
     await tx.send("", "swap", [], undefined, {
-      errors: { ...swapErrors, ...routerErrors },
+      errors: {
+        ...swapErrors,
+        ...routerErrors,
+        ...(native ? { [NO_FUNDS]: fundsMessage() } : {}),
+      },
       prepare: async () => {
-        const q = await poolQuote(r, s!, raw, selling),
+        if (!shown)
+          throw new DisplayError({ title: "Waiting for the quote from the pool." });
+        const q = await legQuote(),
           key = val(s, "PleaHook.poolKey");
+        // A price that moved more than the slippage since the page's quote: nothing is sent, and
+        // the page reads the new quote for the next press.
+        const { minimum, moved } = sendMinimum(shown.out, q.out, slip);
+        if (moved) {
+          setRevision((n) => n + 1);
+          throw new DisplayError(movedMessage(q.out, minimum));
+        }
         if (trade.kind === "universalRouter") {
           // The quote is the site's own walk of the pool (the v4 Quoter sees 0 PLEA while the
-          // Cabal lives); the router enforces the minimum: a balance check on the buyer's PLEA
-          // for a buy, the IMD it takes for a sale.
-          const minimum = (q.out * BigInt(10000 - slip)) / 10000n,
-            router = { address: trade.router, minHopPrice: trade.minHopPrice },
-            [block, held] = await Promise.all([
+          // Cabal lives); the router enforces the page's minimum: a balance check on the buyer's
+          // PLEA for a buy, the IMD it takes for a sale.
+          const router = { address: trade.router, minHopPrice: trade.minHopPrice },
+            [block, held, fees, eth] = await Promise.all([
               r.client.getBlock(),
               selling
                 ? Promise.resolve(0n)
                 : read(r, "PLEA", "balanceOf", [address]),
+              native ? readRouteFees(r.client) : undefined,
+              native ? r.client.getBalance({ address: address! }) : undefined,
             ]);
-          const encoded = selling
+          // Native ETH: the fees go with the buy, fitted to the ETH it leaves, so the most the wallet
+          // holds for gas is what Max kept. Too little left for the fees the chain takes now (a typed
+          // amount that leaves too little, or the base fee more than doubled since Max): nothing is
+          // sent, and the page rereads the fees, so Max keeps enough again.
+          const fit = fees && eth !== undefined ? fitFees(fees, eth - raw) : undefined;
+          if (native && !fit) {
+            setRevision((n) => n + 1);
+            throw new DisplayError(
+              fundsMessage(eth! - raw, fees ? gasReserve(fees) : undefined),
+            );
+          }
+          const encoded = route
+            ? // ETH or USDC: the route's pools into IMD, then PLEA's pool, in the same execute.
+              encodeBuyVia({
+                router,
+                currencyIn: route.currency,
+                path: buyPath(route, key, r.addresses.PLEA, address!),
+                plea: r.addresses.PLEA,
+                buyer: address!,
+                amountIn: raw,
+                minPleaOut: minimum,
+                pleaBalance: BigInt(held),
+              })
+            : selling
             ? encodeSell({
                 router,
                 key,
@@ -557,6 +763,12 @@ export function Buy() {
                 encoded.inputs,
                 block.timestamp + BigInt(PERMIT_LIFE),
               ],
+            }),
+            // Native ETH is the transaction's value; every other currency comes through Permit2.
+            value: (encoded as { value?: bigint }).value ?? 0n,
+            ...(fit && {
+              maxFeePerGas: fit.maxFeePerGas,
+              maxPriorityFeePerGas: fit.maxPriorityFeePerGas,
             }),
           };
         }
@@ -611,13 +823,16 @@ export function Buy() {
               return [];
             }
           }) as any[];
-        let spent = transfers
-          .filter(
-            (l) =>
-              l.address.toLowerCase() === inputToken.toLowerCase() &&
-              l.args.from.toLowerCase() === address?.toLowerCase(),
-          )
-          .reduce((n, l) => n + l.args.value, 0n);
+        // Native ETH leaves no Transfer log: an exact-input route spends all of it.
+        let spent = native
+          ? raw
+          : transfers
+              .filter(
+                (l) =>
+                  l.address.toLowerCase() === inputToken.toLowerCase() &&
+                  l.args.from.toLowerCase() === address?.toLowerCase(),
+              )
+              .reduce((n, l) => n + l.args.value, 0n);
         const refund = events
           .filter(
             (e) =>
@@ -625,7 +840,19 @@ export function Buy() {
               e.args.trader?.toLowerCase() === address?.toLowerCase(),
           )
           .reduce((n, e) => n + BigInt(e.args.amount || 0n), 0n);
-        spent -= refund;
+        // A route's refund (a wei of the hook's fee) comes back in IMD, not in the paying currency.
+        if (!route) spent -= refund;
+        // The IMD the route's pools delivered to PLEA's pool: the hook's FeesTaken (what reached the
+        // pool and its fee) plus any refund.
+        const taken = events.find(
+            (e) =>
+              e.eventName === "FeesTaken" &&
+              e.args.buy &&
+              e.args.trader?.toLowerCase() === address?.toLowerCase(),
+          )?.args,
+          leg = taken
+            ? BigInt(taken.imdBasis) + BigInt(taken.imdFee) + refund
+            : undefined;
         const outToken = selling ? r.addresses.PairToken : r.addresses.PLEA;
         const received = transfers
           .filter(
@@ -639,12 +866,12 @@ export function Buy() {
           .reduce((n, l) => n + l.args.value, 0n);
         // A full fill names the amount the field, Balance and sum line showed (r2T-N6).
         const paid =
-          spent === raw
-            ? `${shownPay} ${unit}`
-            : tokenAmount(spent, s, !selling, selling ? 0 : 2, "up");
+          spent === raw ? `${shownPay} ${unit}` : payAmount(spent, "up");
         const text = selling
           ? `Sold ${paid} for ${tokenAmount(received, s, true)}.`
-          : `Bought ${tokenAmount(received, s)} for ${paid}.`;
+          : route
+            ? `Bought ${tokenAmount(received, s)} for ${paid}${leg ? ` (${tokenAmount(leg, s, true, 3)} through ${route.path[route.path.length - 1].pool})` : ""}.`
+            : `Bought ${tokenAmount(received, s)} for ${paid}.`;
         const cash = events
           .filter((e) =>
             [
@@ -659,7 +886,7 @@ export function Buy() {
           : `${smallAmount(cash, s)} cashback ${events.some((e) => e.eventName === "CashbackPaidClaims") ? "paid as a PoolManager claim (see Profile)" : events.some((e) => e.eventName === "CashbackStacked") ? "staked" : "paid to you"}.`;
         const short =
           spent < raw
-            ? ` ${tokenAmount(raw - spent, s, !selling)} did not fill and stayed in your wallet: the price reached your ${slip / 100}% limit.`
+            ? ` ${payAmount(raw - spent)} did not fill and stayed in your wallet: the price reached your ${slip / 100}% limit.`
             : "";
         setFill(text + " " + body + short);
         return { kind: "sold", text, body: body + short };
@@ -681,6 +908,8 @@ export function Buy() {
         >
           <TradingGate
             onSeed={() => {
+              // The opening buy is in IMD, whatever this browser pays with.
+              choosePay(PAY_PAIR, false);
               setInput(formatUnits(con(s, "PleaHook.PAYOUT_RESERVE"), 18));
               document.getElementById("pay")?.focus();
             }}
@@ -692,11 +921,51 @@ export function Buy() {
                   key={String(v)}
                   className="chip"
                   aria-pressed={selling === v}
-                  onClick={() => setSelling(v)}
+                  onClick={() => {
+                    if (selling === v) return;
+                    setSelling(v);
+                    // The field's number meant the other token (USDC has 6 decimals, PLEA 18):
+                    // start again rather than reread it, as choosePay does.
+                    setInput("");
+                    setMaxRaw(undefined);
+                    setMaxNote("");
+                  }}
                 >
                   {v ? "Sell" : "Buy"}
                 </button>
               ))}
+            </div>
+          )}
+          {!selling && routes.length > 0 && (
+            <div className="field">
+              <div className="field__top">
+                <p className="field__label" id="pay-with-label">
+                  Pay with
+                </p>
+              </div>
+              <div
+                className="chips"
+                role="group"
+                aria-labelledby="pay-with-label"
+                aria-describedby="pay-with-route"
+              >
+                {[...routes.map((x) => x.symbol), PAY_PAIR].map((v) => (
+                  <button
+                    className="chip"
+                    key={v}
+                    aria-pressed={payWith === v}
+                    disabled={tx.busy}
+                    onClick={() => payWith !== v && choosePay(v)}
+                  >
+                    {v === PAY_PAIR ? pair : v}
+                  </button>
+                ))}
+              </div>
+              <p className="small text-2" id="pay-with-route">
+                {route
+                  ? `${routeLine(route, routes, pair, pct(normal + BigInt(con(s, "PleaHook.PLEA_BURN_BPS") || 0)), hopFees.data)}${native ? " No approval: the ETH is the transaction’s value." : ` ${route.symbol} needs two approvals first, each for exactly this amount.`}`
+                  : `${pair} buys PLEA directly in PLEA’s pool.`}
+              </p>
             </div>
           )}
           <AmountInput
@@ -706,26 +975,45 @@ export function Buy() {
             onChange={(v) => {
               setInput(v);
               setMaxRaw(undefined);
+              setMaxNote("");
             }}
             unit={unit}
             invalid={invalid}
-            hint={invalid ? capError || amountReason : undefined}
+            hint={invalid ? capError || amountReason : maxNote || gasNote || undefined}
             aside={
               address ? (
                 <>
-                  <span>Balance {tokenAmount(available, s, !selling)}</span> ·{" "}
+                  <span>Balance {payAmount(available)}</span> ·{" "}
                   <button
                     className="link-btn"
-                    onClick={() =>
-                      available !== undefined &&
-                      (setInput(amount(available, 18, selling ? 0 : 2)),
-                      setMaxRaw(available))
-                    }
+                    onClick={() => {
+                      if (available === undefined) return;
+                      if (native) {
+                        // Max leaves the gas: what a routed buy may burn at today's fees.
+                        if (reserve === undefined) return;
+                        const most = ethMax(available, reserve);
+                        if (!most) {
+                          setMaxNote(
+                            `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas, and this wallet has ${amount(available, 18, 4)} ETH: too little to buy with ETH. Add ETH, or pay with another currency.`,
+                          );
+                          return;
+                        }
+                        setInput(exactAmount(most, 18, 0));
+                        setMaxRaw(most);
+                        setMaxNote(
+                          `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas.`,
+                        );
+                        return;
+                      }
+                      setInput(amount(available, decimals, selling ? 0 : 2));
+                      setMaxRaw(available);
+                    }}
                   >
                     Max
                     <span className="sr-only">
                       : {selling ? "sell" : "pay"} all{" "}
-                      {tokenAmount(available, s, !selling)}
+                      {payAmount(available)}
+                      {native ? ", less the gas" : ""}
                     </span>
                   </button>
                 </>
@@ -748,7 +1036,7 @@ export function Buy() {
               quote.loading ? (
                 <span className="loading-label">
                   <Icon name="hourglass" />
-                  Reading the pool…
+                  {route ? "Reading the pools…" : "Reading the pool…"}
                 </span>
               ) : quote.data ? (
                 `Updated ${Math.floor((Date.now() - quote.data.at) / 1000)} s ago`
@@ -757,6 +1045,21 @@ export function Buy() {
               )
             }
           />
+          {route && quote.data && (
+            <p className="small">
+              ≈ {amount(quote.data.imd, 18, 3)} {pair} on{" "}
+              {route.path[route.path.length - 1].pool}
+              {route.path.length > 1
+                ? ` (after ${route.path
+                    .slice(0, -1)
+                    .map((h) => h.pool)
+                    .join(", ")})`
+                : ""}{" "}
+              → ≈ {amount(quote.data.out, 18, 0)} PLEA.
+              {quote.data.atPrice !== undefined &&
+                ` ${rateLine(route, pair, raw, quote.data.imd, quote.data.atPrice)}`}
+            </p>
+          )}
           <div className="field">
             <div className="field__top">
               <p className="field__label" id="slip-label">
@@ -780,7 +1083,7 @@ export function Buy() {
               ))}
             </div>
           </div>
-          {raw > 0n && s && seeded && !tradeDone && display && (
+          {raw > 0n && s && seeded && !tradeDone && display && (!route || quote.data) && (
             <>
               <Costs
                 rows={[
@@ -799,6 +1102,30 @@ export function Buy() {
                         ],
                       ] as [string, string][])
                     : []),
+                  // A route's own pools first: each one's fee (live: its LP fee and Uniswap's
+                  // protocol fee), then the IMD they deliver to PLEA's pool.
+                  ...(route && quote.data
+                    ? ([
+                        ...route.path.map((h, i): [string, string] => {
+                          const f = hopFees.data?.[i],
+                            pips = f?.total ?? h.fee,
+                            split =
+                              f && f.protocol
+                                ? `: ${feeWords(f.lp)} to its liquidity, ${feeWords(f.protocol)} Uniswap’s protocol fee`
+                                : "";
+                          return [
+                            `${h.pool} fee (${feeWords(pips)})`,
+                            i === 0
+                              ? `≈ ${amount((raw * BigInt(pips) + 999_999n) / 1_000_000n, route.decimals, native ? 6 : 4, "up")} ${route.symbol}${split}`
+                              : `${feeWords(pips)} of the ETH${split}`,
+                          ];
+                        }),
+                        [
+                          `${pair} into PLEA’s pool`,
+                          `≈ ${amount(quote.data.imd, 18, 3)} ${pair}`,
+                        ],
+                      ] as [string, string][])
+                    : []),
                   [
                     `Minimum, ${slip / 100}% slippage`,
                     minOut !== undefined
@@ -814,7 +1141,7 @@ export function Buy() {
                       ][])
                     : []),
                   [
-                    `Fees, ${pct(normal + BigInt(con(s, "PleaHook.PLEA_BURN_BPS")))}`,
+                    `${route ? "PLEA’s fees" : "Fees"}, ${pct(normal + BigInt(con(s, "PleaHook.PLEA_BURN_BPS")))}`,
                     selling
                       ? `${pct(normal)} of the ${pair} + ${pct(con(s, "PleaHook.PLEA_BURN_BPS"))} of the PLEA`
                       : `${display.fees} ${pair} + ${pct(con(s, "PleaHook.PLEA_BURN_BPS"))} of the PLEA`,
@@ -884,9 +1211,12 @@ export function Buy() {
                   {pair} fees
                   {extra
                     ? ` + ${display.launch} ${pair} launch fee`
-                    : ""} = {display.pay} {pair} you pay. The{" "}
-                  {dead ? "three" : "four"} parts add up to {display.fees}{" "}
-                  {pair}.
+                    : ""} = {display.pay} {pair}{" "}
+                  {route
+                    ? `from ${route.path[route.path.length - 1].pool}, for your ${shownPay} ${unit}`
+                    : "you pay"}
+                  . The {dead ? "three" : "four"} parts add up to{" "}
+                  {display.fees} {pair}.
                 </p>
               )}
             </>
@@ -917,6 +1247,37 @@ export function Buy() {
               )}
             </Notice>
           )}
+          {confirmImpact &&
+            route &&
+            quote.data?.atPrice !== undefined &&
+            !amountReason && (
+              <>
+                <Notice
+                  kind="warn"
+                  title={`This buy gets ${impactWords(route, pair, impact)}.`}
+                >
+                  <p>
+                    {rateLine(route, pair, raw, quote.data.imd, quote.data.atPrice)}{" "}
+                    The less the pools on the way hold, the more a big buy moves
+                    their price against it: a smaller buy, or a few spread over
+                    time, gets more {pair} for each {route.symbol}.
+                  </p>
+                </Notice>
+                <label className="toggle-card">
+                  <input
+                    type="checkbox"
+                    className="box"
+                    checked={impactAccepted}
+                    onChange={(e) => setImpactOk(e.target.checked ? impactKey : "")}
+                    aria-labelledby="impact-title"
+                    disabled={tx.busy}
+                  />
+                  <span className="toggle-card__title" id="impact-title">
+                    Buy anyway, getting {pct(impact)} less {pair}
+                  </span>
+                </label>
+              </>
+            )}
           <Action
             {...tx}
             block
@@ -944,7 +1305,9 @@ export function Buy() {
             }
             connectText={`Connect in the top bar to ${selling ? "sell" : "buy"}.`}
             onRun={buy}
-            disabled={!tx.ready || !!reason || allowance.data === undefined}
+            disabled={
+              !tx.ready || !!reason || (!native && allowance.data === undefined)
+            }
             reason={invalid ? undefined : reason}
             describedBy={invalid ? "pay-hint" : undefined}
           />
@@ -963,7 +1326,7 @@ export function Buy() {
                   total,
                   universal,
                   selling,
-                  amount: `${exactAmount(raw, Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}`,
+                  amount: `${exactAmount(raw, route ? route.decimals : Number(s?.constants[selling ? "decimals" : "pairDecimals"] ?? 18), selling ? 0 : 2)} ${unit}`,
                   // The costs row's own figure: one rounding rule for both (sweep R12).
                   cashback:
                     selling || payout.data === "pool"
@@ -983,6 +1346,7 @@ export function Buy() {
                 setFill("");
                 setInput("");
                 setMaxRaw(undefined);
+                setMaxNote("");
                 setFrozenQuote(undefined);
               }}
             >
@@ -1160,7 +1524,7 @@ export function Buy() {
                   <p className="small">
                     Paid as staked {pair} through imd/acc:{" "}
                     {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
-                    {raw && seeded && !selling
+                    {legRaw > 0n && seeded && !selling
                       ? ` (${smallAmount(cashbackNow, s)} on this buy)`
                       : ""}
                     , in the same transaction. See it on{" "}
@@ -1173,7 +1537,7 @@ export function Buy() {
                   <p className="small">
                     Paid in the same transaction:{" "}
                     {pct(con(s, "PleaHook.CASHBACK_BPS") || 0)} of every trade
-                    {raw && seeded && !selling
+                    {legRaw > 0n && seeded && !selling
                       ? ` (${smallAmount(cashbackNow, s)} on this buy)`
                       : ""}
                     .{" "}

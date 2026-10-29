@@ -33,6 +33,7 @@
     "kind": "poolSwapTest",
     "router": "0x9b6b46e2c869aa39918db7f52f5557fe577b6eee"
   },
+  "pay": null,
   "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
   "cashback": {
     "stacker": "0x0457276d7b036818b3eddc1a4a3fceda61e9314d",

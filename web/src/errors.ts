@@ -285,6 +285,10 @@ export function decodeCustomError(
   }
 }
 export type ErrorMap = Record<string, ErrorValue | ((args: any) => ErrorValue)>;
+/** An ErrorMap key for the wallet's or the node's "insufficient funds" (no ETH for the value and the
+ * gas): a page that knows why says so instead of gasText(). Not a Solidity name, so it never meets a
+ * contract's error. */
+export const NO_FUNDS = "insufficient funds";
 export class DisplayError extends Error {
   display: ErrorMessage;
   constructor(display: ErrorMessage) {
@@ -312,8 +316,10 @@ export function explainError(
         messages[decoded.name] ||
         `The contract refused this action (${decoded.name}). Refresh its state before retrying.`,
     );
-  if (/insufficient funds/i.test(e?.message || ""))
-    return wrap(gasText());
+  if (/insufficient funds/i.test(e?.message || "")) {
+    const own = overrides[NO_FUNDS];
+    return wrap((typeof own === "function" ? own(undefined) : own) || gasText());
+  }
   if (e?.constructor === Error) return wrap(e.message);
   return wrap(
     "The transaction could not be simulated. Refresh the chain data and try again. Nothing was sent.",
