@@ -410,7 +410,7 @@ test("search finds a heading and a word, best match first, and links to the head
   assert.equal(snippet("a ".repeat(100) + "needle " + "b ".repeat(100), ["needle"]).includes("needle"), true);
 });
 
-test("numbers.json: the chain-bound texts are their formats applied to their values", () => {
+test("numbers.json: every text is its format applied to its value, chain-bound or not", () => {
   const N = R.numbers;
   assert.deepEqual(N.checkNumbers(NUMBERS), []);
   assert.equal(N.formatValue("int", "1000"), "1,000");
@@ -426,10 +426,24 @@ test("numbers.json: the chain-bound texts are their formats applied to their val
   assert.equal(N.formatValue("multiplier", "12000"), "×1.2");
   assert.equal(N.formatValue("text", "1"), undefined);
   for (const [key, e] of Object.entries(NUMBERS)) {
-    if (key === "_meta" || !e.chain || e.format === "text") continue;
+    if (key === "_meta" || e.format === "text" || (!e.chain && e.value === null)) continue;
     assert.equal(N.formatValue(e.format, e.value), e.text, key);
   }
   assert.match(N.checkNumbers({ x: { text: "70%, falling", value: "7000", chain: "PleaHook.LAUNCH_EXTRA_BPS", format: "bps" } })[0], /bps\(7000\) is "70%", text is "70%, falling"/);
+  // An unbound number with a value is held to the same rule (a diagram reads its value).
+  assert.match(N.checkNumbers({ y: { text: "0.70 IMD", value: "700000000000000000", chain: null, format: "imd" } })[0], /imd\(700000000000000000\) is "0.7 IMD", text is "0.70 IMD"/);
+  assert.deepEqual(N.checkNumbers({ z: { text: "about 54.6 million PLEA", value: null, chain: null, format: "text" } }), []);
+  // Chain-bound values as the launched contracts returned them (read-only calls, 2026-10-29).
+  for (const [key, chain, value] of [
+    ["pass_mark", "CabalGate.PASS_MARK", "69"],
+    ["deadman", "CabalGate.DEADMAN", "118800"],
+    ["cap_floor", "PleaHook.CAP_FLOOR", "900000000000000000000000"],
+    ["wall_guard", "PleaHook.WALL_GUARD_TICKS_PER_DAY", "700"],
+    ["launch_extra", "PleaHook.LAUNCH_EXTRA_BPS", "7000"],
+    ["seat_multiplier", "Seasons.SEAT_MULTIPLIER_BPS", "12000"],
+    ["objection_margin", "Tribunal.MARGIN", "2"],
+  ])
+    assert.deepEqual([NUMBERS[key].chain, NUMBERS[key].value], [chain, value], key);
 });
 
 test("numbers: the chain's value wins (with one console warning), a text entry never moves", () => {

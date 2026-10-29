@@ -94,7 +94,9 @@ export function numberValue(numbers: Numbers, key: string, constants?: Record<st
   }
 }
 /** Problems with numbers.json itself: an entry's shape, and `text` against `format(value)` for every
- * chain-bound entry (the unit tests run it; so does the build). */
+ * entry with a value or a chain and a format other than "text", bound or not, so a diagram's
+ * value() never disagrees with the page's words and binding a number later changes nothing on the
+ * page (the unit tests run it; so does the build). */
 export function checkNumbers(numbers: Numbers) {
   const problems: string[] = [];
   for (const [key, e] of Object.entries(numbers)) {
@@ -109,7 +111,7 @@ export function checkNumbers(numbers: Numbers) {
     if (e.value !== null && typeof e.value !== "string") problems.push(`${key}: value is a decimal string or null`);
     if (e.chain !== null && !/^[A-Z][A-Za-z]*\.[A-Z][A-Z0-9_]*$/.test(e.chain ?? ""))
       problems.push(`${key}: chain is "Contract.NAME" or null`);
-    if (e.chain && e.format !== "text") {
+    if (e.format !== "text" && (e.chain || e.value !== null)) {
       const f = formatValue(e.format, e.value);
       if (f !== e.text) problems.push(`${key}: ${e.format}(${e.value}) is "${f}", text is "${e.text}"`);
     }

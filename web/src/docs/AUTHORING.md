@@ -77,10 +77,17 @@ Every number comes from `web/src/docs/numbers.json`, so one edit changes it ever
 - `format` is one of `int` (`69`), `imd` (`0.5 IMD`), `plea` (`2,500,000 PLEA`), `duration`
   (`7 minutes`, `33 hours`, `15 days`), `bps` (`0.25%`), `multiplier` (`×1.2`), or `text` (always the
   file's words, never the chain's).
-- For an entry with `chain`, `format(value)` must equal `text` exactly (the unit tests check it). So
-  a unit word that is not part of the format goes in the page: `{{max_plea_bytes}} bytes`.
+- For an entry with a `value` (or a `chain`) and a format other than `text`, `format(value)` must
+  equal `text` exactly (the unit tests check it, bound or not). So a unit word that is not part of
+  the format goes in the page: `{{max_plea_bytes}} bytes`, `{{cap_decay_days}} days`. A computed or
+  rounded phrase ("about 54.6 million PLEA") is a `text` entry with its arithmetic in `source`.
 - To add a number: add an entry with its `source` (`src/File.sol:line`) and `what`; bind it to the
   chain when the site reads that constant (an upper-case view with no inputs in `web/public/abi`).
+  The Letterbox's numbers (tip, 20% share, 10% fee cap, …) are internal constants with no view, so
+  they cannot be bound: their entries carry the value and the source line only.
+- Many numbers have a raw part per band, for sums: `{{fact_share_top}}`, `{{held_points_1d}}`,
+  `{{profit_points_loss}}`, `{{trend_flat}}`, `{{received_profit}}`. Use those in worked examples
+  rather than typing 16, 1, 13, 5 or 9.
 - A worked example may print computed numbers. Each must follow from numbers.json and the contracts,
   with the sum shown: "Need = {{pass_mark}} − 34 = 35".
 - A placeholder works anywhere: text, headings, lists, tables, code. An unknown key fails the build
