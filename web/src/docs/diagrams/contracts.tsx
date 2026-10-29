@@ -18,8 +18,9 @@ import { Figure } from "../dg";
 
 type Card = { name: string; key: string; what: string; links: string[] };
 /** Outside PLEA, under the eight: launch.json's CabalGate, Seasons and PleaLaunch arguments, and the
- * contracts the site itself uses (sIMD, the router, Permit2, delegate.xyz; site.json's). This list is the
- * site's one address list since Home's Contracts section moved here. */
+ * contracts the site itself uses (sIMD, the router, Permit2, the Pay with routes' Quoter, POOL4's hook
+ * and USDC, delegate.xyz; site.json's). This list is the site's one address list since Home's Contracts
+ * section moved here. */
 const OUTSIDE: { name: string; key: string; what?: string }[] = [
   { name: "IMD", key: "addr_imd", what: "the token PLEA trades against, and the fees' currency" },
   { name: "IMD's Intake", key: "addr_intake", what: "takes the oracle fee and brings back the judges' answers" },
@@ -30,6 +31,9 @@ const OUTSIDE: { name: string; key: string; what?: string }[] = [
   { name: "The IMD seat NFT", key: "addr_seat", what: "holders' season points count ×1.2" },
   { name: "Uniswap's Universal Router", key: "addr_router", what: "the router the Buy page trades through, with Permit2" },
   { name: "Permit2", key: "addr_permit2", what: "holds your approval for the router, for 30 minutes" },
+  { name: "Uniswap's V4 Quoter", key: "addr_quoter", what: "prices a buy paid with ETH or USDC, up to the IMD (a read, never a transaction)" },
+  { name: "IMD's ETH pool hook (POOL4)", key: "addr_pool4_hook", what: "the hook of IMD's own ETH/IMD pool, which ETH and USDC buys pass through" },
+  { name: "USDC", key: "addr_usdc", what: "one of the Buy page's Pay with currencies" },
   { name: "The delegate.xyz registry", key: "addr_delegate", what: "the Claim page reads delegated vaults from it" },
 ];
 /** Each of the eight in a few words, as Home's Contracts list said them. */

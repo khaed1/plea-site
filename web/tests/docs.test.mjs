@@ -641,8 +641,9 @@ test("contracts: the eight addresses, the owner's and the outside ones, each lin
   assert.ok(out.includes(`href="https://etherscan.io/address/${NUMBERS.owner.text}"`));
   assert.equal((out.match(/href="https:\/\/repo\.sourcify\.dev\//g) || []).length, 8);
   // Outside PLEA, under the eight: IMD, the Intake, the oracle's signing key (05-judges and the
-  // glossary point here for them), the PoolManager, the Stacker and the seat NFT, on Etherscan.
-  for (const k of ["addr_imd", "addr_intake", "addr_oracle_signer", "addr_pool_manager", "addr_stacker", "addr_seat"]) {
+  // glossary point here for them), the PoolManager, the Stacker and the seat NFT, and the Buy page's
+  // Pay with contracts (the V4 Quoter, IMD's ETH pool hook, USDC), on Etherscan.
+  for (const k of ["addr_imd", "addr_intake", "addr_oracle_signer", "addr_pool_manager", "addr_stacker", "addr_seat", "addr_quoter", "addr_pool4_hook", "addr_usdc"]) {
     const a = NUMBERS[k].text;
     assert.match(a, /^0x[0-9a-fA-F]{40}$/, k);
     assert.ok(out.includes(`href="https://etherscan.io/address/${a}"`), k);

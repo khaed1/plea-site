@@ -35,6 +35,46 @@
     "minHopPrice": true,
     "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
   },
+  "pay": {
+    "quoter": "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
+    "routes": [
+      {
+        "symbol": "ETH",
+        "currency": "0x0000000000000000000000000000000000000000",
+        "decimals": 18,
+        "path": [
+          {
+            "pool": "IMD\u2019s ETH pool",
+            "currency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+            "fee": 10000,
+            "tickSpacing": 60,
+            "hooks": "0xc6c965bd164c483e87d0b550671798e9a3602840"
+          }
+        ]
+      },
+      {
+        "symbol": "USDC",
+        "currency": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "decimals": 6,
+        "path": [
+          {
+            "pool": "Uniswap\u2019s USDC/ETH pool",
+            "currency": "0x0000000000000000000000000000000000000000",
+            "fee": 500,
+            "tickSpacing": 10,
+            "hooks": "0x0000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "IMD\u2019s ETH pool",
+            "currency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+            "fee": 10000,
+            "tickSpacing": 60,
+            "hooks": "0xc6c965bd164c483e87d0b550671798e9a3602840"
+          }
+        ]
+      }
+    ]
+  },
   "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
   "cashback": {
     "stacker": "0x06909f672301f28a810f78cfe7a754851269f4f0",

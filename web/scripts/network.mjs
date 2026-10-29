@@ -22,6 +22,8 @@ export function loadNetwork(key = process.env.PLEA_NETWORK || "ethereum", deploy
   if (site.key !== key) throw Error(`networks/${key}/site.json names "${site.key}".`);
   if (!factsValid(site.facts))
     throw Error(`networks/${key}/site.json: facts must give the holding bands (days and points, longest first) and receivedProfit, as its CabalGate does.`);
+  if (!payValid(site.pay, site.trade))
+    throw Error(`networks/${key}/site.json: pay must be null, or the V4 Quoter and each route's currency, decimals and v4 path to the pool currency (src/site.ts validPay).`);
   if (handoff.chainId !== net.network.chainId)
     throw Error(`The deployment is for chain ${handoff.chainId}, the network is ${net.network.chainId}.`);
   if (!Array.isArray(handoff.contracts) || !handoff.contracts.length)
@@ -40,6 +42,40 @@ export const factsValid = (f) =>
   f.held.length > 0 &&
   f.held.every((b, i) => whole(b?.days, 1) && whole(b?.points) && (i === 0 || b.days < f.held[i - 1].days)) &&
   whole(f.receivedProfit);
+
+/** site.json's "Pay with" routes (src/site.ts validPay, at load): null where the network has none
+ * (Sepolia run 9), else the V4 Quoter and, per route, a symbol, the currency (0x0 for native ETH), its
+ * decimals and the v4 path from it to the pool currency: each hop the pool's name in words, the
+ * currency it ends in, the pool's fee, tick spacing and hook. Every route ends in the same currency
+ * (IMD; config.ts discover checks it is PleaLaunch's), never passes it before the last hop, and only
+ * on the Universal Router. */
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+export const payValid = (p, trade) => {
+  if (p === null || p === undefined) return true;
+  if (trade?.kind !== "universalRouter" || !ADDRESS.test(p?.quoter || "")) return false;
+  if (!Array.isArray(p.routes) || !p.routes.length) return false;
+  const end = p.routes[0]?.path?.at?.(-1)?.currency;
+  const symbols = new Set();
+  return p.routes.every((r) => {
+    if (typeof r?.symbol !== "string" || !/^[A-Z][A-Z0-9]{1,7}$/.test(r.symbol) || symbols.has(r.symbol)) return false;
+    symbols.add(r.symbol);
+    if (!ADDRESS.test(r.currency || "") || !whole(r.decimals) || r.decimals > 36 || r.currency === end) return false;
+    if (!Array.isArray(r.path) || !r.path.length || r.path.at(-1).currency !== end) return false;
+    return r.path.every(
+      (h, i) =>
+        typeof h?.pool === "string" &&
+        h.pool.length > 0 &&
+        ADDRESS.test(h.currency || "") &&
+        ADDRESS.test(h.hooks || "") &&
+        h.currency !== (i ? r.path[i - 1].currency : r.currency) &&
+        (i === r.path.length - 1 || h.currency !== end) &&
+        whole(h.fee) &&
+        h.fee < 1_000_000 &&
+        whole(h.tickSpacing, 1) &&
+        h.tickSpacing <= 32767,
+    );
+  });
+};
 
 /** site.json as the build ships it (the manifest's `site` block). A test deployment (fork-deployment.mjs's,
  * with a `test` block) brings its own first block (its contracts' deploy block) and its own Letterbox,

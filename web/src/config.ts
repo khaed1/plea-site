@@ -195,6 +195,10 @@ export async function discover(r: Runtime) {
     throw Error("The cashback Stacker differs from this deployment’s.");
   if (String(seat).toLowerCase() !== r.site.seat.address.toLowerCase())
     throw Error("The seat NFT differs from this deployment’s.");
+  // "Pay with" routes end in the pool's IMD: PleaLaunch's, never a guess.
+  const pay = r.site.pay;
+  if (pay && pay.routes.some((route) => route.path.at(-1)!.currency !== token.toLowerCase()))
+    throw Error("The payment routes do not end in this deployment’s pool currency. Transactions are disabled.");
   const trade = r.site.trade;
   await Promise.all(
     [
@@ -202,6 +206,12 @@ export async function discover(r: Runtime) {
       trade.router,
       ...(trade.kind === "universalRouter" ? [trade.permit2] : []),
       ...(r.site.cashback.simd ? [r.site.cashback.simd] : []),
+      ...(pay
+        ? [
+            pay.quoter,
+            ...pay.routes.flatMap((route) => [route.currency, ...route.path.map((h) => h.hooks)]),
+          ].filter((a, i, all) => !/^0x0{40}$/.test(a) && all.indexOf(a) === i)
+        : []),
     ].map(async (a) => {
       const code = await r.client.getCode({ address: a });
       if (!code || code === "0x")

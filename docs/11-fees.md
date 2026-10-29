@@ -38,7 +38,8 @@ A sale works the other way round. Say the pool pays out 50 IMD for your PLEA. Th
 ## Good to know
 
 - **Fixed for good.** Every rate here is a constant in the code. No one, the owner included, can change a fee.
-- **No pool fee on top.** The pool's own trading fee is {{lp_fee}}. Every fee is the one on this page.
+- **No pool fee on top.** The pool's own trading fee is {{lp_fee}}. Every fee of a PLEA trade is the one on this page.
+- **Paying with ETH or USDC.** Those buys first turn your ETH or USDC into IMD on other pools, which keep their own fees: {{pay_imd_pool_fee}} of the ETH on IMD's own ETH pool, and for USDC first {{pay_usdc_total_fee}} on Uniswap's USDC/ETH pool ({{pay_usdc_pool_fee}} plus Uniswap's {{pay_usdc_protocol_fee}}). Then the IMD pays the fees on this page. The Buy page lists each one. See [Buying](02-buying.md#paying-with-eth).
 - **Every buy pays its shares.** Every buy, even the first, pays its cashback, owner and prize shares. The hook pays them out of Uniswap's PoolManager, which holds the IMD of every Uniswap v4 pool: far more than a buy's shares.
 - **No buyer, no cashback.** After the Cabal dies, a trade through a router that does not name its trader pays no cashback. That share stays in the pool.
 - **If staking fails.** If imd/acc cannot stake your cashback, you get it as plain IMD in the same trade.

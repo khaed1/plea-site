@@ -70,24 +70,24 @@
       "sha256": "3c38192084ffda92b0dc0f54fcf55cc603566c2e93335afc8e524525559d6549"
     },
     {
-      "path": "assets/Docs-sz27kqNx.js",
-      "sha256": "849f82bf25aa3ec0f0a2861c4a93e245ab2514b5c97643720f4e5a31d883b559"
+      "path": "assets/Docs-DeW6dd5e.js",
+      "sha256": "b17fc8950c507cdbeb3ddff0a5f20c0e48dcd18a1c06182530a07009d98bfb4d"
     },
     {
-      "path": "assets/ccip-zATzJAUr.js",
-      "sha256": "efdb678f4abc77acc9af2115a9c4c010b4e28909c01bb132e972885c772809da"
+      "path": "assets/ccip-CO_IUEW9.js",
+      "sha256": "6dfa48f786147b4c6644096c061087e7d211fbd1a994ac45060c169b702802d0"
     },
     {
       "path": "assets/index-BeoRn2gJ.js",
       "sha256": "0dcde27515a3318bea6438a92001f307ec83cc50407cc75360edc0c7021d8413"
     },
     {
-      "path": "assets/index-D45K1Kn2.css",
-      "sha256": "738524413804dc3a78d3d0b7a26320f085d7cffe0eec3d68603e85b63dc4bd84"
+      "path": "assets/index-CJHx6M4m.js",
+      "sha256": "41c584c9819873856ad8fbb10bd712715ad181c90ce54aadf0901b71d17babb2"
     },
     {
-      "path": "assets/index-DGP32G_9.js",
-      "sha256": "46f1c511d08b884ec5bbfdc6d3c07312eb508a0b7d82bdc43c7129c08e588022"
+      "path": "assets/index-D45K1Kn2.css",
+      "sha256": "738524413804dc3a78d3d0b7a26320f085d7cffe0eec3d68603e85b63dc4bd84"
     },
     {
       "path": "favicon.svg",
@@ -123,7 +123,7 @@
     },
     {
       "path": "index.html",
-      "sha256": "c1609834ad4e7f997d9947b69f0da1ae16c45be26048658c466cb7d9a48a4dce"
+      "sha256": "3262516e63ffd55f7108212f04d6a46f856012d2712b076485c59a2f3f8ce7bc"
     },
     {
       "path": "og.png",
@@ -209,6 +209,46 @@
       "router": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
       "minHopPrice": true,
       "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
+    },
+    "pay": {
+      "quoter": "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
+      "routes": [
+        {
+          "symbol": "ETH",
+          "currency": "0x0000000000000000000000000000000000000000",
+          "decimals": 18,
+          "path": [
+            {
+              "pool": "IMD’s ETH pool",
+              "currency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+              "fee": 10000,
+              "tickSpacing": 60,
+              "hooks": "0xc6c965bd164c483e87d0b550671798e9a3602840"
+            }
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "currency": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "decimals": 6,
+          "path": [
+            {
+              "pool": "Uniswap’s USDC/ETH pool",
+              "currency": "0x0000000000000000000000000000000000000000",
+              "fee": 500,
+              "tickSpacing": 10,
+              "hooks": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "pool": "IMD’s ETH pool",
+              "currency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+              "fee": 10000,
+              "tickSpacing": 60,
+              "hooks": "0xc6c965bd164c483e87d0b550671798e9a3602840"
+            }
+          ]
+        }
+      ]
     },
     "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
     "cashback": {
