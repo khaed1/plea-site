@@ -1341,7 +1341,12 @@ export function Plead() {
                 ? "Enter an amount to read your fact score and need."
                 : cannot
                   ? `Need ${need} of ${con(s, "CabalGate.MAX_PLEA_SCORE")}: cannot pass at this size. Nothing is paid.`
-                  : fact.error ||
+                  : // An approved plea the pool cannot fill can only lapse (fee spent, cooldown): refuse it here.
+                    quote.error === LIQUIDITY_SHORT
+                    ? `The pool cannot fill a sale of ${tokenAmount(raw, s)} now, so an approval could not be sold. Lower the amount, or plead after more PLEA has been bought. Nothing is paid.`
+                    : quote.error === NO_LIQUIDITY
+                      ? `The pool has no ${pair} to pay for a sale yet; nothing can be sold until someone buys. Nothing is paid.`
+                      : fact.error ||
                     (!fact.data
                       ? "Reading your fact score."
                       : !textCheck("plea", text).ok
@@ -1393,9 +1398,13 @@ export function Plead() {
         ? "enter an amount"
         : quote.loading
           ? "Reading the pool…"
-          : quote.error
-            ? "can’t read the pool"
-            : value;
+          : quote.error === LIQUIDITY_SHORT
+            ? "more than the pool can fill"
+            : quote.error === NO_LIQUIDITY
+              ? `the pool has no ${pair} yet`
+              : quote.error
+                ? "can’t read the pool"
+                : value;
   return (
     <div className="stack stack--lg">
       <Title title="Plead to sell">

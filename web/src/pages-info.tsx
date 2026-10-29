@@ -1,4 +1,4 @@
-import { LETTERBOX, Q96, appealFeeBlock } from "./models";
+import { LETTERBOX, Q96, appealFeeBlock, min as minBig } from "./models";
 import { letterPrecheck } from "./appeal";
 import { HowItWorks, ContractsPanel } from "./home-info";
 import { homeLead } from "./loading-text";
@@ -65,7 +65,8 @@ import {
   textCheck,
   Countdown,
 } from "./components";
-import { WalletBalances } from "./pages-trade";
+import { WalletBalances, poolQuote } from "./pages-trade";
+import { LIQUIDITY_SHORT, NO_LIQUIDITY } from "./swap-math";
 import { claimToast } from "./toast-text";
 export function Home() {
   const { r, s, now } = useApp(),
@@ -257,6 +258,28 @@ export function Letters() {
     [address],
     !!s && !!address,
   );
+  // A letter's sale: 20% of the PLEA it counts (within the 2.5M cap), or an APPEAL's amount. An approved
+  // letter the pool cannot fill can only be settled back, its oracle fee spent: Send letter is off then.
+  const letterSale =
+    pre.data && result.kind === "plea"
+      ? minBig(
+          (pre.data.balance * LETTERBOX.LETTER_SHARE_BPS) / 10000n,
+          BigInt(con(s, "CabalGate.MAX_SELL") || 0n),
+        )
+      : pre.data && result.kind === "appeal" && pre.data.appeal
+        ? pre.data.appeal.amount
+        : 0n;
+  const saleQuote = useRead(
+    () => poolQuote(r, s!, letterSale, true),
+    [letterSale.toString()],
+    !!s && letterSale > 0n && !!val(s, "PleaHook.seeded"),
+  );
+  const poolShort =
+    saleQuote.error === LIQUIDITY_SHORT
+      ? `The pool cannot fill this letter’s sale of ${tokenAmount(letterSale, s)} now, so an approval could not be delivered and the oracle fee would be spent. Send it after more PLEA has been bought, or plead a smaller amount on the Plead page.`
+      : saleQuote.error === NO_LIQUIDITY
+        ? `The pool has no ${s?.constants.pairSymbol || site().pairSymbol} to pay for a sale yet; nothing can be sold until someone buys.`
+        : "";
   const limit = letterLimit(s),
     feeCap = BigInt(s?.v.fees?.[1] || 0n),
     appealCap = BigInt(s?.v.appealFees?.[1] || 0n),
@@ -305,7 +328,9 @@ export function Letters() {
             ? `${appealFeeText(appealCap, data!.balance, data!.appeal!.original)}${data!.returned ? ` ${holds}` : ""}`
             : appealBlock === "fit"
               ? `An APPEAL letter needs its escrow (${tokenAmount(data!.appeal!.amount, s)}) and its fees (at most ${tokenAmount(appealCap, s, false, 0, "up")}) within your PLEA (${tokenAmount(data!.balance, s)}).`
-              : "";
+              : ["plea", "appeal"].includes(result.kind)
+                ? poolShort
+                : "";
   const letterErrors = {
     FeeTooHigh: (args: any) =>
       result.kind === "appeal"
@@ -786,7 +811,16 @@ export function Claim() {
         }
       })
       .catch((e) => {
-        if (active) setLoadError(e.message);
+        // A fetch that got no answer is a TypeError, a file that is not JSON a SyntaxError; the
+        // other messages are the checks' own.
+        if (active)
+          setLoadError(
+            e instanceof SyntaxError
+              ? "The published claims.json is not a valid claim list. Load the published list below."
+              : e instanceof TypeError
+                ? "The claim list did not load: this site did not answer. Try again, or load the published list below."
+                : e.message,
+          );
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -895,10 +929,9 @@ export function Claim() {
                       Can’t check the list
                     </p>
                     <p className="small">
-                      The claim list (claims.json) did not load, or the public
-                      RPC did not answer, so the site can’t tell what this
-                      address may claim. Nothing was sent. The site tries the
-                      next RPC by itself.
+                      {loadError
+                        ? `${loadError} Nothing was sent.`
+                        : "The public RPC did not answer, so the site can’t tell what this address may claim. Nothing was sent. The site tries the next RPC by itself."}
                     </p>
                     <div className="btn-row">
                       <button

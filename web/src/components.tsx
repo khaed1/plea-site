@@ -329,8 +329,12 @@ export function TradingGate({ onSeed }: { onSeed?: () => void } = {}) {
               {span(Number(con(s, "PleaHook.LAUNCH_WINDOW")), "adj")} launch
               window. Make your opening{" "}
               {tokenAmount(con(s, "PleaHook.PAYOUT_RESERVE"), s, true)} buy here
-              at once: its own shares join the pool, and every later buy then
-              pays cashback normally.
+              at once
+              {site().testnet
+                ? // PleaHook._payFees: the payouts join the pool only while the PoolManager cannot pay
+                  // them, as on a test run whose pool currency nobody else holds.
+                  ": its own shares join the pool, and every later buy then pays cashback normally."
+                : "; it pays the same fees and cashback as any buy."}
             </p>
             <Action
               connectText="Connect in the top bar to seed trading."
