@@ -39,9 +39,9 @@ At the very open the whole fee is {{launch_open_fee}} of what reaches the pool. 
 
 You pay 0.05 ETH, after the launch window.
 
-1. **IMD's ETH pool.** Its {{pay_imd_pool_fee}} fee is 0.05 × 1% = 0.0005 ETH. The other 0.0495 ETH buys IMD at the pool's price. On a copy of Ethereum with PLEA's own contracts, it bought 25.349 IMD.
-2. **PLEA's pool.** Those 25.349 IMD buy PLEA exactly as a 25.349 IMD buy would: 25.349 ÷ 1.02 = 24.852 IMD reaches the pool, and the fee is 0.497 IMD, of which {{fee_cashback}} of 24.852 = 0.124 IMD comes back to you as staked IMD.
-3. **What you get.** On that copy the buy brought 1,234,112 PLEA, the Buy page's quote to the last digit. Your record grows by the 25.349 IMD.
+1. **IMD's ETH pool.** Its {{pay_imd_pool_fee}} fee is 0.05 × 1% = 0.0005 ETH. The other 0.0495 ETH buys IMD at the pool's price. On a copy of Ethereum with PLEA's own contracts, it bought 25.348 IMD.
+2. **PLEA's pool.** Those 25.348 IMD buy PLEA exactly as a 25.348 IMD buy would: 25.348 ÷ 1.02 = 24.851 IMD reaches the pool, and the fee is 25.348 − 24.851 = 0.497 IMD, of which {{fee_cashback}} of 24.851 = 0.124 IMD comes back to you as staked IMD.
+3. **What you get.** On that copy the buy brought 1,234,112 PLEA, the Buy page's quote to the last digit. Your record grows by the 25.348 IMD.
 
 With USDC, the USDC/ETH pool first keeps {{pay_usdc_total_fee}} of it: {{pay_usdc_total_fee}} of 150 USDC is about 0.094 USDC. The ETH it buys then goes on as above.
 
@@ -50,9 +50,10 @@ With USDC, the USDC/ETH pool first keeps {{pay_usdc_total_fee}} of it: {{pay_usd
 - **Buy on the site.** While the Cabal lives, the pool sends the PLEA straight to the buyer. It only takes buys that say who the buyer is and spend an exact amount of IMD. Apps, aggregators and routers that expect the PLEA to come back to them, or cannot name the buyer, fail. The site's [Buy](#/buy) page is built for this pool.
 - **"Get exactly this much PLEA" is refused.** While the Cabal lives you choose how much IMD to spend, never how much PLEA to get. The site says: "Exact-output buys are unavailable while the Cabal lives. Use the exact-input Buy control."
 - **No buyer, no buy.** While the Cabal lives, a buy that names no buyer fails. The site says: "The buy needs your wallet as recipient. Reconnect in the top bar and try again."
-- **Too big for the launch window.** A buy that would take more than {{launch_max_buy}} in the window fails. The site says: "This buy exceeds the launch cap. Lower the amount or wait for the launch window to end."
+- **Too big for the launch window.** A buy that would take more than {{launch_max_buy}} in the window fails. The Buy page keeps its button off and says: "This buy would take … before the burn. Until … one buy can take at most {{launch_max_buy}}. Pay less IMD, or split the buy in two." (ETH or USDC in place of IMD when you pay with them.) A buy that still reaches the pool too big is refused: "Not bought: more than {{launch_max_buy}} in one buy."
 - **Too early.** Before trading opens, the pool does not exist yet, so no buy can work. The [Buy](#/buy) page says "Trading is not open yet." and keeps its button off.
-- **Paying with ETH or USDC.** The Buy page asks Uniswap's Quoter how much IMD your ETH or USDC buys now, then works out the PLEA itself. Your slippage sets the least PLEA you accept. If the prices move further before your buy is mined, it fails and the site says: "The price moved more than 1%. Nothing was bought; your ETH stays in your wallet." You pay only the gas.
+- **Paying with ETH or USDC.** The Buy page asks Uniswap's Quoter how much IMD your ETH or USDC buys now, then works out the PLEA itself. Your slippage sets the least PLEA you accept: the minimum the page shows is the one your buy is sent with. If the price has already moved past it when you press Buy, nothing is sent and the site says "The price moved: the new quote is …"; press Buy again to buy at the new quote. If the prices move further before your buy is mined, it fails and the site says: "The price moved more than 1%. Nothing was bought; your ETH stays in your wallet." You pay only the gas.
+- **Big buys move IMD's ETH pool.** The pool is small: on 2026-10-29, 1 ETH bought 5.7% less IMD per ETH than 0.01 ETH did. The Buy page shows the IMD per ETH (or USDC) your buy gets and how far that is below the pools' price after their fees. From {{pay_impact_confirm}} below, it asks you to tick "Buy anyway" first. Smaller buys, or a few spread over time, get more.
 - **Keep ETH for gas.** Max with ETH leaves enough for the gas. If your wallet has too little, the site says so and suggests another currency.
 - **When the route cannot quote.** If Uniswap's Quoter cannot price your ETH or USDC, the Buy page keeps its button off and says why, for example: "Uniswap's Quoter found no way to swap this ETH into IMD through IMD's ETH pool. Pay with IMD, or try again later."
 - **Every buy pays its shares.** Every buy, even the first, pays its cashback, owner and prize shares.

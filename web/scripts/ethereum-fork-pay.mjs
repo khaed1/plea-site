@@ -2,7 +2,7 @@
 // deployment on a local anvil fork of Ethereum, seeded (by the site's seed button or as the owner):
 //   node web/scripts/ethereum-fork-pay.mjs <port> [buyer]
 // The buyer (default: a fresh address) gets 2 ETH and 300 USDC (USDC from the PoolManager, impersonated).
-// For 0.05 ETH and 150 USDC: the quote is the site's (Uniswap's V4 Quoter up to IMD, then
+// For 0.05 ETH and 150 USDC (and 1.5 ETH past the launch window): the quote is the site's (Uniswap's V4 Quoter up to IMD, then
 // src/swap-math.ts's walk of PLEA's pool for that IMD, at the launch fee of the block it is mined in);
 // the buy is the site's calldata (USDC: exact approval to Permit2, exact Permit2 allowance for 30
 // minutes); the PLEA received must equal the quote. A buy whose minimum is above the quote is refused.
@@ -47,7 +47,7 @@ async function quote(route, amountIn, blockNumber, ts) {
   );
   const extra = ts < launched + window ? (extraMax * (launched + window - ts)) / window : 0n;
   const pleaFirst = key.currency0.toLowerCase() === PLEA;
-  return { imd, ...estimateHookOutput({ amount: imd, zeroForOne: !pleaFirst, sqrt, bands: [bandOf(market), bandOf(wall)], inputBps: fee + extra, outputBps: burn }) };
+  return { imd, ...estimateHookOutput({ amount: imd, zeroForOne: !pleaFirst, sqrt, bands: [bandOf(market), bandOf(wall)], inputBps: fee + extra, outputBps: burn, tickSpacing: Number(key.tickSpacing) }) };
 }
 async function buy(route, amountIn, minPleaOut) {
   if (route.currency !== "0x0000000000000000000000000000000000000000") {
@@ -61,7 +61,10 @@ async function buy(route, amountIn, minPleaOut) {
   const r = await send(BUYER, UR, encodeFunctionData({ abi: universalRouterAbi, functionName: "execute", args: [enc.commands, enc.inputs, deadline] }), enc.value);
   return { r, got: (await bal(PLEA, BUYER)) - held };
 }
-for (const [route, amountIn] of [[eth, parseEther("0.05")], [usdc, 150n * 10n ** 6n]]) {
+// Past the launch window (whose cap refuses it), 1.5 ETH too: a buy that crosses a word end of the pool's
+// tick bitmap on the seeded fork, where v4 ends a step and rounds.
+const open = (await pub.getBlock()).timestamp >= (await h("launchedAt")) + (await h("LAUNCH_WINDOW"));
+for (const [route, amountIn] of [[eth, parseEther("0.05")], [usdc, 150n * 10n ** 6n], ...(open ? [[eth, parseEther("1.5")]] : [])]) {
   // A minimum above the quote is refused by the balance check, and nothing is bought.
   const high = await buy(route, amountIn, parseEther("1000000000"));
   assert.equal(high.r.status, "reverted", `${route.symbol}: a minimum above the quote is refused`);
@@ -73,7 +76,6 @@ for (const [route, amountIn] of [[eth, parseEther("0.05")], [usdc, 150n * 10n **
   // The quote at the block before the buy, at the launch fee of the buy's own block.
   const q = await quote(route, amountIn, r.blockNumber - 1n, mined.timestamp);
   console.log(`✓ ${formatEther(route.symbol === "ETH" ? amountIn : amountIn * 10n ** 12n)} ${route.symbol} → ${formatEther(q.imd)} IMD → ${formatEther(got)} PLEA (quote ${formatEther(q.out)}, difference ${got - q.out} wei), gas ${r.gasUsed}`);
-  // v4 also ends a swap step at each 256-spacing word of its tick bitmap and rounds there; the walk
-  // does not, so a buy that crosses a word end may differ by a few hundred thousand wei of PLEA.
-  assert.ok(got - q.out <= 0n && q.out - got < 10n ** 6n, `${route.symbol}: received ${got}, quote ${q.out}`);
+  // The walk stops where v4's steps do (band edges and the tick bitmap's word ends): to the wei.
+  assert.equal(got, q.out, `${route.symbol}: received ${got}, quote ${q.out}`);
 }

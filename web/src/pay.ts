@@ -96,8 +96,9 @@ export function swapFee(slot0: bigint, zeroForOne: boolean) {
 export const feeWords = (pips: number) => `${String(+(pips / 10_000).toFixed(4))}%`;
 
 const managerAbi = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
-export type HopFee = { pool: string; lp: number; protocol: number; total: number };
-/** Each hop's live fee, read from the PoolManager. */
+/** A hop's live fee and price (Slot0's sqrtPriceX96, its low 160 bits). */
+export type HopFee = { pool: string; lp: number; protocol: number; total: number; sqrtPriceX96: bigint };
+/** Each hop's live fee and price, read from the PoolManager. */
 export async function readHopFees(
   client: { readContract: (a: any) => Promise<any> },
   poolManager: Address,
@@ -114,9 +115,55 @@ export async function readHopFees(
       });
       // An uninitialized pool's Slot0 is empty: no price, no fee to name.
       if (BigInt(word) === 0n) throw Error(`${h.pool} is not open.`);
-      return { pool: h.pool, ...swapFee(BigInt(word), zeroForOne) };
+      return {
+        pool: h.pool,
+        ...swapFee(BigInt(word), zeroForOne),
+        sqrtPriceX96: BigInt(word) & ((1n << 160n) - 1n),
+      };
     }),
   );
+}
+
+/** The IMD `amountIn` buys at the pools' current prices, after their fees: what a buy too small to
+ * move them gets. Each hop in its own direction at Slot0's price (currency0 in currency1 is
+ * (sqrtPriceX96 ÷ 2^96)²), less its fee. On a fork of PLEA's deployment 0.0001 ETH got 0.0006% less
+ * from the Quoter (POOL4's hook takes nothing on a buy): the gap the Quoter shows for a bigger amount
+ * is the buy's own price impact. */
+export function atPoolPrice(amountIn: bigint, route: PayRoute, hops: HopFee[]): bigint {
+  let num = amountIn,
+    den = 1n;
+  hops.forEach((h, i) => {
+    const square = h.sqrtPriceX96 * h.sqrtPriceX96,
+      q192 = 1n << 192n;
+    if (hopKey(route, i).zeroForOne) [num, den] = [num * square, den * q192];
+    else [num, den] = [num * q192, den * square];
+    [num, den] = [num * BigInt(1_000_000 - h.total), den * 1_000_000n];
+  });
+  return den ? num / den : 0n;
+}
+/** How much less the quote is than the pools' price (atPoolPrice), in basis points, rounded up. */
+export const impactBps = (quoted: bigint, atPrice: bigint) =>
+  atPrice > quoted ? Number(((atPrice - quoted) * 10_000n + atPrice - 1n) / atPrice) : 0;
+/** From this price impact up the Buy page asks the buyer to confirm: IMD's ETH pool is shallow (on
+ * 2026-10-29 the Quoter gave 1 ETH 5.76% less IMD than the pool's price after its fee, 0.01 ETH 0.06%). */
+export const IMPACT_CONFIRM_BPS = 300;
+/** IMD per whole unit of the route's currency (in IMD wei), at `out` for `amountIn`. */
+export const perUnit = (out: bigint, amountIn: bigint, decimals: number) =>
+  amountIn > 0n ? (out * 10n ** BigInt(decimals)) / amountIn : 0n;
+/** The rate in words: "≈ 479.92 IMD per ETH, 5.74% below the price of IMD’s ETH pool (509.13 after its
+ * fee)". Small rates (USDC's) keep four decimals. */
+export function rateLine(route: PayRoute, pair: string, amountIn: bigint, quoted: bigint, atPrice: bigint) {
+  const rate = (v: bigint) => {
+    const unit = perUnit(v, amountIn, route.decimals),
+      digits = unit >= 10n ** 19n ? 2 : 4,
+      cut = unit / 10n ** BigInt(18 - digits),
+      scale = 10n ** BigInt(digits);
+    return `${(cut / scale).toLocaleString("en-US")}.${(cut % scale).toString().padStart(digits, "0")}`;
+  };
+  const pools = route.path.map((h) => h.pool),
+    one = pools.length === 1,
+    bps = impactBps(quoted, atPrice);
+  return `≈ ${rate(quoted)} ${pair} per ${route.symbol}, ${(bps / 100).toFixed(2)}% below the ${one ? "price" : "prices"} of ${pools.join(" and ")} (${rate(atPrice)} after ${one ? "its fee" : "their fees"}).`;
 }
 
 /** A currency's name in a route's words: ETH, the pool currency, or another route's symbol. */

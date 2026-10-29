@@ -1,5 +1,5 @@
 import { site } from "./site";
-import { DisplayError } from "./errors";
+import { DisplayError, NO_FUNDS } from "./errors";
 import {
   pendingState,
   feeDisplay,
@@ -25,6 +25,8 @@ import {
   unpackDelta,
   LIQUIDITY_SHORT,
   NO_LIQUIDITY,
+  minimumOf,
+  sendMinimum,
 } from "./swap-math";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
@@ -50,12 +52,16 @@ import {
   universalRouterAbi,
 } from "./universal-router";
 import {
+  atPoolPrice,
   buyPath,
   ethMax,
   feeWords,
   gasReserve,
+  impactBps,
+  IMPACT_CONFIRM_BPS,
   isNative,
   quoteToImd,
+  rateLine,
   readHopFees,
   routeLine,
   routeRefusal,
@@ -243,16 +249,16 @@ export async function poolQuote(
     read(r, "PleaHook", "wall"),
     read(r, "PleaHook", "launchExtraBps"),
   ]);
-  const launchExtra = extra ?? BigInt(liveExtra);
+  const launchExtra = extra ?? BigInt(liveExtra),
+    key = val(s, "PleaHook.poolKey");
   return estimateHookOutput({
     amount: raw,
     // The pool key decides the direction: imdTEST is currency0 on Sepolia run 9, PLEA may be on
     // Ethereum (a buy is then oneForZero).
-    zeroForOne: swapZeroForOne(
-      selling,
-      pleaIsZero(val(s, "PleaHook.poolKey"), r.addresses.PLEA),
-    ),
+    zeroForOne: swapZeroForOne(selling, pleaIsZero(key, r.addresses.PLEA)),
     sqrt,
+    // v4's steps also end at its tick bitmap's word ends: the walk stops there too.
+    tickSpacing: Number(key.tickSpacing),
     bands: [bandOf(market), bandOf(wall)],
     inputBps: BigInt(
       selling
@@ -319,6 +325,10 @@ export function Buy() {
     route
       ? `${amount(v, route.decimals, native ? 4 : 2, mode)} ${route.symbol}`
       : tokenAmount(v, s, !selling, selling ? 0 : 2, mode);
+  /** The other currencies this page can pay with, for a wallet that has none of this one. */
+  const others = routes.length
+    ? [...routes.map((x) => x.symbol), pair].filter((v) => v !== unit)
+    : [];
   function choosePay(v: string, remember = true) {
     setPayWith(v);
     if (remember)
@@ -362,8 +372,16 @@ export function Buy() {
         hookData = address
           ? encodeAbiParameters([{ type: "address" }], [address])
           : "0x";
-      const estimate = await legQuote(extra);
-      return { ...estimate, key, zeroForOne, hookData, at: Date.now() };
+      // A route's pools at their current prices, read with the quote: what the IMD would be without
+      // the buy's own price impact (atPoolPrice).
+      const [estimate, hops] = await Promise.all([
+        legQuote(extra),
+        route
+          ? readHopFees(r.client, r.network.uniswapV4.poolManager, route)
+          : undefined,
+      ]);
+      const atPrice = hops && route ? atPoolPrice(raw, route, hops) : undefined;
+      return { ...estimate, atPrice, key, zeroForOne, hookData, at: Date.now() };
     },
     [raw.toString(), selling, address, slip, revision, route?.symbol ?? ""],
     !!s && raw > 0n && !!val(s, "PleaHook.seeded") && !tradeDone,
@@ -380,6 +398,16 @@ export function Buy() {
       : liveQuote;
   /** The IMD the PLEA leg pays: the amount itself, or what the route's pools turn it into. */
   const legRaw: bigint = route ? (quote.data?.imd ?? 0n) : raw;
+  // A route's price impact on its own pools (IMD's ETH pool is shallow): from IMPACT_CONFIRM_BPS up
+  // the buyer confirms it, for this amount in this currency.
+  const impact =
+      route && quote.data?.atPrice !== undefined
+        ? impactBps(quote.data.imd, quote.data.atPrice)
+        : 0,
+    impactKey = `${raw}:${route?.symbol ?? ""}`;
+  const [impactOk, setImpactOk] = useState(""),
+    confirmImpact = !tradeDone && impact >= IMPACT_CONFIRM_BPS,
+    impactAccepted = impactOk === impactKey;
   // On Ethereum the Universal Router takes the input through Permit2: the token approves Permit2
   // (step 1), Permit2 allows the router for 30 minutes (step 2), then the trade. A step whose
   // allowance already covers the amount (and, for Permit2, has not expired) is skipped. On
@@ -451,7 +479,12 @@ export function Buy() {
     : raw <= 0n
       ? `Enter how much ${unit} to ${selling ? "sell" : "pay"}, or press Max. The quote and the fees show once there is an amount.`
       : available !== undefined && raw > available
-        ? `You have ${payAmount(available)}. Lower the amount or press Max.`
+        ? available === 0n
+          ? // Max cannot help: another currency, or adding this one, can.
+            selling
+            ? "You have no PLEA to sell."
+            : `You have ${payAmount(0n)}. Add ${unit}${others.length ? `, or pay with ${others.join(" or ")}` : ""}.`
+          : `You have ${payAmount(available)}. Lower the amount or press Max.`
         : capError ||
           // A route the Quoter refused (a pool on the way cannot fill it): only another amount or
           // currency helps.
@@ -481,13 +514,14 @@ export function Buy() {
   const reason = tradeDone
     ? ""
     : amountReason ||
+      (confirmImpact && !impactAccepted
+        ? `Tick “Buy anyway” above to pay ${pct(impact)} below the pool’s price, or lower the amount.`
+        : "") ||
       (!needsApproval
         ? quote.error ||
           (!quote.data ? "Waiting for the quote from the pool." : "")
         : "");
-  const minOut = quote.data
-    ? (quote.data.out * BigInt(10000 - slip)) / 10000n
-    : undefined;
+  const minOut = quote.data ? minimumOf(quote.data.out, slip) : undefined;
   const normal = BigInt(con(s, "PleaHook.IMD_FEE_BPS") || 0),
     rate = normal + extra,
     fee = (legRaw * rate) / (10000n + rate),
@@ -551,6 +585,16 @@ export function Buy() {
   const permitMessage = {
     title: "Your Permit2 allowance for the router ran out.",
     body: `Press the button to allow the router again (it lasts 30 minutes), then ${selling ? "sell" : "buy"}. Nothing was ${selling ? "sold" : "bought"}.`,
+  };
+  /** The price moved past the slippage between the page's quote and the click (sendMinimum). */
+  const movedMessage = (fresh: bigint, minimum: bigint) => ({
+    title: `The price moved: the new quote is ≈ ${tokenAmount(fresh, s, selling)}.`,
+    body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, selling)}, so nothing was sent and your ${unit} stays in your wallet. The quote above is the new one: press ${selling ? "Sell" : "Buy"} again to ${selling ? "sell" : "buy"} at it.`,
+  });
+  // Native ETH pays the gas too: the wallet's "insufficient funds" in the gas reserve's words.
+  const fundsMessage = {
+    title: "Not bought: too little ETH is left for the gas.",
+    body: `${gasLeft !== undefined ? `Paying ${payAmount(raw)} leaves ${amount(gasLeft, 18, 4)} ETH; the` : "The"} wallet needs ${reserve.data !== undefined ? `about ${amount(reserve.data, 18, 4, "up")} ETH` : "ETH"} free for the gas. Lower the amount or press Max. Nothing was sent.`,
   };
   const routerErrors: Record<string, { title: string; body: string }> = universal
     ? {
@@ -623,18 +667,32 @@ export function Buy() {
         setRevision((n) => n + 1);
       return;
     }
+    // The quote this click was made on: the trade is sent with its minimum, the one the page shows.
+    const shown = quote.data;
     setApproved(false);
     await tx.send("", "swap", [], undefined, {
-      errors: { ...swapErrors, ...routerErrors },
+      errors: {
+        ...swapErrors,
+        ...routerErrors,
+        ...(native ? { [NO_FUNDS]: fundsMessage } : {}),
+      },
       prepare: async () => {
+        if (!shown)
+          throw new DisplayError({ title: "Waiting for the quote from the pool." });
         const q = await legQuote(),
           key = val(s, "PleaHook.poolKey");
+        // A price that moved more than the slippage since the page's quote: nothing is sent, and
+        // the page reads the new quote for the next press.
+        const { minimum, moved } = sendMinimum(shown.out, q.out, slip);
+        if (moved) {
+          setRevision((n) => n + 1);
+          throw new DisplayError(movedMessage(q.out, minimum));
+        }
         if (trade.kind === "universalRouter") {
           // The quote is the site's own walk of the pool (the v4 Quoter sees 0 PLEA while the
-          // Cabal lives); the router enforces the minimum: a balance check on the buyer's PLEA
-          // for a buy, the IMD it takes for a sale.
-          const minimum = (q.out * BigInt(10000 - slip)) / 10000n,
-            router = { address: trade.router, minHopPrice: trade.minHopPrice },
+          // Cabal lives); the router enforces the page's minimum: a balance check on the buyer's
+          // PLEA for a buy, the IMD it takes for a sale.
+          const router = { address: trade.router, minHopPrice: trade.minHopPrice },
             [block, held] = await Promise.all([
               r.client.getBlock(),
               selling
@@ -836,7 +894,15 @@ export function Buy() {
                   key={String(v)}
                   className="chip"
                   aria-pressed={selling === v}
-                  onClick={() => setSelling(v)}
+                  onClick={() => {
+                    if (selling === v) return;
+                    setSelling(v);
+                    // The field's number meant the other token (USDC has 6 decimals, PLEA 18):
+                    // start again rather than reread it, as choosePay does.
+                    setInput("");
+                    setMaxRaw(undefined);
+                    setMaxNote("");
+                  }}
                 >
                   {v ? "Sell" : "Buy"}
                 </button>
@@ -962,7 +1028,9 @@ export function Buy() {
                     .map((h) => h.pool)
                     .join(", ")})`
                 : ""}{" "}
-              → ≈ {amount(quote.data.out, 18, 0)} PLEA
+              → ≈ {amount(quote.data.out, 18, 0)} PLEA.
+              {quote.data.atPrice !== undefined &&
+                ` ${rateLine(route, pair, raw, quote.data.imd, quote.data.atPrice)}`}
             </p>
           )}
           <div className="field">
@@ -1152,6 +1220,37 @@ export function Buy() {
               )}
             </Notice>
           )}
+          {confirmImpact &&
+            route &&
+            quote.data?.atPrice !== undefined &&
+            !amountReason && (
+              <>
+                <Notice
+                  kind="warn"
+                  title={`This buy gets ${pct(impact)} less ${pair} than the pool’s price.`}
+                >
+                  <p>
+                    {rateLine(route, pair, raw, quote.data.imd, quote.data.atPrice)}{" "}
+                    The less the pools on the way hold, the more a big buy moves
+                    their price against it: a smaller buy, or a few spread over
+                    time, gets more {pair} for each {route.symbol}.
+                  </p>
+                </Notice>
+                <label className="toggle-card">
+                  <input
+                    type="checkbox"
+                    className="box"
+                    checked={impactAccepted}
+                    onChange={(e) => setImpactOk(e.target.checked ? impactKey : "")}
+                    aria-labelledby="impact-title"
+                    disabled={tx.busy}
+                  />
+                  <span className="toggle-card__title" id="impact-title">
+                    Buy anyway, {pct(impact)} below the pool’s price
+                  </span>
+                </label>
+              </>
+            )}
           <Action
             {...tx}
             block

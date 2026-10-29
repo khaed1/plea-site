@@ -16,8 +16,13 @@ import { NATIVE, v4QuoterAbi } from "../src/universal-router.ts";
 import { explainReadError } from "../src/rpc-health.ts";
 import { LIQUIDITY_SHORT, NO_LIQUIDITY } from "../src/swap-math.ts";
 import {
+  atPoolPrice,
   buyPath,
   ethMax,
+  impactBps,
+  IMPACT_CONFIRM_BPS,
+  perUnit,
+  rateLine,
   feeWords,
   gasReserve,
   hopKey,
@@ -148,6 +153,8 @@ test("readHopFees reads each hop's Slot0 from the PoolManager and refuses a pool
   const client = { readContract: async ({ functionName, args }) => (assert.equal(functionName, "extsload"), "0x" + (words[args[0]] ?? 0n).toString(16).padStart(64, "0")) };
   const fees = await readHopFees(client, "0x000000000004444c5dc75cb358380d2e3de08a90", USDC_ROUTE);
   assert.deepEqual(fees.map((f) => [f.pool, f.total]), [["Uniswap’s USDC/ETH pool", 625], ["IMD’s ETH pool", 10000]]);
+  // The price too (Slot0's low 160 bits), for the route's price impact.
+  assert.deepEqual(fees.map((f) => f.sqrtPriceX96), [1n, 1n]);
   await assert.rejects(readHopFees({ readContract: async () => "0x" + "0".repeat(64) }, NATIVE, ETH_ROUTE), /IMD’s ETH pool is not open/);
 });
 
@@ -237,4 +244,121 @@ test("the docs' numbers for Pay with are site.json's: the Quoter, USDC, POOL4's 
   // The Contracts page lists them among the outside contracts.
   const outside = fs.readFileSync(new URL("../src/docs/diagrams/contracts.tsx", import.meta.url), "utf8");
   for (const k of ["addr_quoter", "addr_pool4_hook", "addr_usdc"]) assert.match(outside, new RegExp(`key: "${k}"`));
+});
+
+// RT1-3: the IMD a route's pools give at their current prices after their fees, against the Quoter's
+// quote, is the buy's price impact. Slot0 words and the Quoter's IMD read on a fork of PLEA's deployment
+// (block 26,294,880, IMD's ETH pool untouched).
+test("RT1-3: the price impact is the Quoter's IMD against the pools' price after their fees; from 3% the Buy page asks", () => {
+  const hop = (route, i, word) => ({ pool: route.path[i].pool, ...swapFee(BigInt(word), hopKey(route, i).zeroForOne), sqrtPriceX96: BigInt(word) & ((1n << 160n) - 1n) });
+  const imdWord = "0x00000000271000000000f3de0000000000000016ad7c093340cb1de39b7bcfe3",
+    usdcWord = "0x0000000001f407d07dfcf7ea000000000000000000032e2502e7cfbcdc6daf82";
+  const ethHops = [hop(ETH_ROUTE, 0, imdWord)],
+    usdcHops = [hop(USDC_ROUTE, 0, usdcWord), hop(USDC_ROUTE, 1, imdWord)];
+  const E = 10n ** 18n;
+  // 0.0001 ETH: the pool's price (after its 1%) and the Quoter differ by 0.0006%, rounded up to 0.01%.
+  assert.equal(atPoolPrice(10n ** 14n, ETH_ROUTE, ethHops), 50913412405059880n);
+  assert.equal(impactBps(50913102525459520n, 50913412405059880n), 1);
+  // 0.05 ETH: 25.379 IMD against 25.457 at the pool's price, 0.31%. 1 ETH: 479.92 against 509.13, 5.74%.
+  assert.equal(atPoolPrice(5n * 10n ** 16n, ETH_ROUTE, ethHops), 25456706202529940150n);
+  assert.equal(impactBps(25379470875060206126n, 25456706202529940150n), 31);
+  const one = atPoolPrice(E, ETH_ROUTE, ethHops);
+  assert.equal(one, 509134124050598803008n);
+  assert.equal(impactBps(479923842022559961005n, one), 574);
+  // USDC goes through the USDC/ETH pool (0.0625% that way) first: 150 USDC 0.39%, 1000 USDC 2.53%.
+  assert.equal(atPoolPrice(150n * 10n ** 6n, USDC_ROUTE, usdcHops), 32410719390656882521n);
+  assert.equal(impactBps(32285072063215839881n, 32410719390656882521n), 39);
+  assert.equal(impactBps(210607176848392859922n, atPoolPrice(1000n * 10n ** 6n, USDC_ROUTE, usdcHops)), 253);
+  // A quote at or above the pools' price has no impact.
+  assert.equal(impactBps(one, one), 0);
+  assert.equal(impactBps(one + 1n, one), 0);
+  // Per whole unit, whatever the currency's decimals.
+  assert.equal(perUnit(479923842022559961005n, E, 18), 479923842022559961005n);
+  assert.equal(perUnit(32285072063215839881n, 150n * 10n ** 6n, 6), 215233813754772265n);
+  assert.equal(perUnit(1n, 0n, 18), 0n);
+  // The words: the rate, the gap and the pools' price after their fees.
+  assert.equal(
+    rateLine(ETH_ROUTE, "IMD", E, 479923842022559961005n, one),
+    "≈ 479.92 IMD per ETH, 5.74% below the price of IMD’s ETH pool (509.13 after its fee).",
+  );
+  assert.equal(
+    rateLine(USDC_ROUTE, "IMD", 150n * 10n ** 6n, 32285072063215839881n, 32410719390656882521n),
+    "≈ 0.2152 IMD per USDC, 0.39% below the prices of Uniswap’s USDC/ETH pool and IMD’s ETH pool (0.2160 after their fees).",
+  );
+  assert.doesNotMatch(rateLine(USDC_ROUTE, "IMD", 1n, 1n, 2n), /mainnet|chain id 1\b/i);
+  // The Buy page asks from 3% (the docs' number), so 1 ETH on this fork asks and 0.05 ETH does not.
+  assert.equal(IMPACT_CONFIRM_BPS, 300);
+  const N = JSON.parse(fs.readFileSync(new URL("../src/docs/numbers.json", import.meta.url)));
+  assert.equal(Number(N.pay_impact_confirm.value), IMPACT_CONFIRM_BPS);
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(src, /confirmImpact = !tradeDone && impact >= IMPACT_CONFIRM_BPS/);
+  assert.match(src, /confirmImpact && !impactAccepted\s*\?\s*`Tick “Buy anyway”/);
+  // The confirmation holds for this amount in this currency only.
+  assert.match(src, /impactKey = `\$\{raw\}:\$\{route\?\.symbol \?\? ""\}`/);
+});
+
+// RT1-1: the minimum a trade is sent with is the one the page showed at the click. The fork's case: the
+// page showed ≈ 3,044,008 PLEA (1% minimum 3,013,568); another wallet's 1 ETH buy was mined; the fresh
+// quote at the click was 2,651,744. The old code sent 1% under the fresh quote, 2,625,227.
+test("RT1-1: the send keeps the page's minimum; a fresh quote below it sends nothing and shows the new quote", async () => {
+  const { sendMinimum, minimumOf } = await import("../src/swap-math.ts");
+  const E = 10n ** 18n,
+    shown = 3_044_008n * E,
+    fresh = 2_651_744n * E;
+  assert.equal(minimumOf(shown, 100), 3_013_567_920n * 10n ** 15n);
+  assert.deepEqual(sendMinimum(shown, fresh, 100), { minimum: minimumOf(shown, 100), moved: true });
+  // A fresh quote above the minimum: sent with the page's minimum, not one rebuilt from the fresh quote.
+  assert.deepEqual(sendMinimum(shown, shown - 10n * E, 100), { minimum: minimumOf(shown, 100), moved: false });
+  assert.deepEqual(sendMinimum(shown, shown + 10n ** 24n, 100), { minimum: minimumOf(shown, 100), moved: false });
+  assert.equal(sendMinimum(shown, minimumOf(shown, 100), 100).moved, false, "exactly the minimum still buys");
+  assert.equal(sendMinimum(shown, minimumOf(shown, 100) - 1n, 100).moved, true);
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  // Every route (ETH, USDC, IMD, and a sale) builds its minimum from the quote shown at the click.
+  assert.match(src, /const shown = quote\.data;/);
+  assert.match(src, /const \{ minimum, moved \} = sendMinimum\(shown\.out, q\.out, slip\);\s*if \(moved\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*throw new DisplayError\(movedMessage\(q\.out, minimum\)\);/);
+  assert.doesNotMatch(src, /q\.out \* BigInt\(10000 - slip\)/);
+  assert.match(src, /title: `The price moved: the new quote is ≈ \$\{tokenAmount\(fresh, s, selling\)\}\.`/);
+});
+
+test("RT1-2: switching Buy and Sell clears the field and Max, as changing the currency does", () => {
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(src, /if \(selling === v\) return;\s*setSelling\(v\);[\s\S]{0,200}?setInput\(""\);\s*setMaxRaw\(undefined\);\s*setMaxNote\(""\);/);
+  assert.doesNotMatch(src, /onClick=\{\(\) => setSelling\(v\)\}/);
+});
+
+test("PAY-3: on the ETH route the wallet's insufficient funds reads in the gas reserve's words", async () => {
+  const { explainError, NO_FUNDS } = await import("../src/errors.ts");
+  const own = { title: "Not bought: too little ETH is left for the gas.", body: "…" };
+  const wallet = { message: "insufficient funds for gas * price + value: have 1000000000000000 want 3100000000000000" };
+  assert.deepEqual(explainError(wallet, [], { [NO_FUNDS]: own }), own);
+  // Without it, the plain gas words.
+  assert.match(explainError(wallet).title, /You need (Sepolia )?ETH for gas/);
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(src, /\.\.\.\(native \? \{ \[NO_FUNDS\]: fundsMessage \} : \{\}\)/);
+  assert.match(src, /title: "Not bought: too little ETH is left for the gas\."/);
+});
+
+test("RT1-7: a wallet with none of the paying currency is told to add it or pay with another", () => {
+  const src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  assert.match(src, /available === 0n\s*\?[\s\S]{0,160}?`You have \$\{payAmount\(0n\)\}\. Add \$\{unit\}\$\{others\.length \? `, or pay with \$\{others\.join\(" or "\)\}` : ""\}\.`/);
+  assert.match(src, /const others = routes\.length\s*\? \[\.\.\.routes\.map\(\(x\) => x\.symbol\), pair\]\.filter\(\(v\) => v !== unit\)/);
+});
+
+test("RT1-4/5/6: the Sepolia docs say Pay with is Ethereum's; the docs quote the Buy page's own numbers and words", () => {
+  const docs = fs.readFileSync(new URL("../src/docs/Docs.tsx", import.meta.url), "utf8");
+  assert.match(docs, /\{!site\(\)\.pay &&\s*` Pay with ETH or USDC is Ethereum only: here the Buy page pays with \$\{site\(\)\.pairSymbol\}\.`\}/);
+  const buying = fs.readFileSync(new URL("../../docs/02-buying.md", import.meta.url), "utf8"),
+    src = fs.readFileSync(new URL("../src/pages-trade.tsx", import.meta.url), "utf8");
+  // The worked example rounds the IMD down, as the Buy page and its toast do (25.3486 IMD: 25.348).
+  assert.doesNotMatch(buying, /25\.349/);
+  assert.match(buying, /it bought 25\.348 IMD/);
+  // The launch cap: the Buy page's hint and its refusal, word for word.
+  assert.match(src, /one buy can take at most \$\{tokenAmount\(cap, s\)\}\. Pay less \$\{unit\}, or split the buy in two\./);
+  assert.match(buying, /one buy can take at most \{\{launch_max_buy\}\}\. Pay less IMD, or split the buy in two\./);
+  assert.match(src, /title: `Not bought: more than \$\{tokenAmount\(cap, s\)\} in one buy\.`/);
+  assert.match(buying, /"Not bought: more than \{\{launch_max_buy\}\} in one buy\."/);
+  assert.doesNotMatch(buying, /This buy exceeds the launch cap/);
+  // The price moved before the send, and the price impact's confirmation, in the page's words.
+  assert.match(buying, /"The price moved: the new quote is …"/);
+  assert.match(buying, /From \{\{pay_impact_confirm\}\} below, it asks you to tick "Buy anyway" first\./);
 });
