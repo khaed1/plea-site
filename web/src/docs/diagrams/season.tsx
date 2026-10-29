@@ -65,7 +65,10 @@ export default function Season() {
   });
   d += ` L${W},${y(level)} L${W},${H} Z`;
   const days = Number((n.value("season_length") ?? 0n) / 86400n);
-  const ticks = [0, 1 / 3, 2 / 3, 1].map((f) => ({ f, day: Math.round(days * f) }));
+  const ticks = [0, 1 / 3, 2 / 3, 1].map((f) => ({
+    f,
+    day: Math.round(days * f),
+  }));
 
   const feeders: [ReactNode, ReactNode][] = [
     ["Every trade, while the Cabal lives", <>{t("fee_prize")} of its IMD</>],
@@ -109,7 +112,11 @@ export default function Season() {
                   </span>
                   <span className="lb__best">
                     <span className="lb__label">Best {t("best_count")}</span> {r.pts.join(" · ")}{" "}
-                    {r.seat && <span className="seatx nowrap">({r.scores.join("·")} {t("seat_multiplier")})</span>}
+                    {r.seat && (
+                      <span className="seatx nowrap">
+                        ({r.scores.join("·")} {t("seat_multiplier")})
+                      </span>
+                    )}
                   </span>
                   <span className="lb__pts">
                     <span className="lb__label">Points</span> {r.total}
@@ -121,8 +128,8 @@ export default function Season() {
                 </li>
               ))}
               <li className="lb__bar">
-                {t("min_points")}-point line · below it no prize: the IMD share rolls over to the next season and the PLEA
-                bonus share is burned
+                {t("min_points")}-point line · below it no prize: the IMD share rolls over to the next season and the
+                PLEA bonus share is burned
               </li>
               <li className="lb__row lb__row--out">
                 <span className="lb__rank">
@@ -152,9 +159,28 @@ export default function Season() {
         <span className="dg-chart__title">The season's prize pot (an illustration: it only grows until the close)</span>
         <div className="dg-pot__plot">
           <svg className="dg-chart__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-            <path d={d} vectorEffect="non-scaling-stroke" style={{ fill: "var(--pending)", stroke: "var(--ink)", strokeWidth: 2 }} />
+            <path
+              d={d}
+              vectorEffect="non-scaling-stroke"
+              style={{
+                fill: "var(--pending)",
+                stroke: "var(--ink)",
+                strokeWidth: 2,
+              }}
+            />
             <rect x="0" y={y(ROLLOVER)} width={W} height={H - y(ROLLOVER)} style={{ fill: "var(--noverdict)" }} />
-            <line x1="0" y1={y(ROLLOVER)} x2={W} y2={y(ROLLOVER)} vectorEffect="non-scaling-stroke" style={{ stroke: "var(--ink)", strokeWidth: 2, strokeDasharray: "6 4" }} />
+            <line
+              x1="0"
+              y1={y(ROLLOVER)}
+              x2={W}
+              y2={y(ROLLOVER)}
+              vectorEffect="non-scaling-stroke"
+              style={{
+                stroke: "var(--ink)",
+                strokeWidth: 2,
+                strokeDasharray: "6 4",
+              }}
+            />
           </svg>
           <span className="dg-pot__tag dg-pot__tag--low">Rolled over from the season before</span>
           <span className="dg-pot__tag dg-pot__tag--high">Added this season</span>
@@ -174,17 +200,21 @@ export default function Season() {
       </div>
       <div className="dg-flow">
         <Node icon="clock" title="The season ends">
-          <span className="dg-node__text">After {t("season_length")}, or when the Cabal dies. Pleas judged after it count in the next season.</span>
+          <span className="dg-node__text">
+            After {t("season_length")}, or when the Cabal dies. Pleas judged after it count in the next season.
+          </span>
         </Node>
         <Arrow />
         <Node icon="hourglass" title={`${t("close_grace")} later`} wait>
-          <span className="dg-node__text">Anyone may close it. Approvals still unrecorded can be listed in the close.</span>
+          <span className="dg-node__text">
+            Anyone may close it. Approvals still unrecorded can be listed in the close.
+          </span>
         </Node>
         <Arrow />
         <Node icon="trophy" title="Paid">
           <span className="dg-node__text">
-            Top {t("top")} with {t("min_points")}+ points: {t("share_first")} down to {t("share_last")}, plus the bonus in
-            the first {t("bonus_seasons")} seasons. Unpaid IMD rolls over; unpaid PLEA burns.
+            Top {t("top")} with {t("min_points")}+ points: {t("share_first")} down to {t("share_last")}, plus the bonus
+            in the first {t("bonus_seasons")} seasons. Unpaid IMD rolls over; unpaid PLEA burns.
           </span>
         </Node>
       </div>

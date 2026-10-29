@@ -900,3 +900,29 @@
     text-align: left;
   }
 }
+/* pool: the trims, marked with a flame on the cap; the wall's name on its band. */
+.dg-pool__trim {
+  position: absolute;
+  display: grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -24px 0 0 -11px;
+  border: var(--bw-thin) solid var(--night);
+  border-radius: 50%;
+  background: var(--denied);
+  color: var(--night);
+}
+.dg-pool__trim .icon {
+  width: 14px;
+  height: 14px;
+}
+.dg-pool__trim--key {
+  position: static;
+  flex: none;
+  margin: 0;
+}
+.dg-pool__walltag {
+  left: var(--space-2);
+  bottom: var(--space-2);
+}
