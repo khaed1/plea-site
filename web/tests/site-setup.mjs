@@ -1,5 +1,5 @@
 // Every unit test runs against a deployment's site settings, as the site does after loadConfig:
-// the default build's (sepolia-run9) unless a test sets another with useNetwork().
+// Sepolia run 9's unless a test sets another with useNetwork() (the Ethereum one is an Ethereum fork's).
 import { loadNetwork } from "../scripts/network.mjs";
 import { setSite } from "../src/site.ts";
 

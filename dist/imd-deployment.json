@@ -1,37 +1,37 @@
 {
   "version": 1,
-  "launchId": "544c0ace-4f80-4067-ac5f-9b7c590669c0",
-  "chainId": 11155111,
-  "sourceCommit": "9f58da6e57221261c71630fbe9d342e87395de1c",
-  "attestationHash": "77c9b695a0961815a93ddea633dd154c03f61e20b2536d4ceeddb99e4afe0f99",
+  "launchId": "1fae5a48-dbc8-4f8e-9a61-e014f787bb47",
+  "chainId": 1,
+  "sourceCommit": "bc2fda914058b6d5e489eb70dc3d0d4254dbcf0c",
+  "attestationHash": "9c13c9a04484353bf55e8bb0991fe03bb42c5bc87f19f00dc95649ac7b89bb56",
   "contracts": [
     {
       "name": "PLEA",
-      "address": "0xb9efaa7b64232d31db23ee6902972a58f492ee8b",
+      "address": "0x1f158929496162b53fb232536468948e25170ab3",
       "abiHash": "e0a4eaf3d9d87e8246437072b3a3a432d800889afc87b7f410ca42d3624baf14",
       "abiPath": "abi/PLEA.json"
     },
     {
       "name": "CabalGate",
-      "address": "0x78c77e3ddbc5a45daca98cafa2b2896da3104e4a",
+      "address": "0x39ac882a1161ea19acb6fbdd7a5835d96cf876eb",
       "abiHash": "7fa2541974c4e8a0f9be33bbbee993214bfc3d091cd43321e97bec56e42e3588",
       "abiPath": "abi/CabalGate.json"
     },
     {
       "name": "Seasons",
-      "address": "0x8dd85a978dbd7b2cff9247c7e3ad49cf8920f0c6",
+      "address": "0xf7c024f7bc96cf152a572f6e184318ff6d380738",
       "abiHash": "8bcb1b7d7e4669b9f696c7ada7d9e3afda16fd86195d0b36dcc407c06e40cc9f",
       "abiPath": "abi/Seasons.json"
     },
     {
       "name": "PleaDistributor",
-      "address": "0x2fdf098680cb4b515a8e43f09b3bec5493656a46",
+      "address": "0x97face21c7a9f3b64d0f4e0bf21861721fbbfe3e",
       "abiHash": "d916070fae0d24172c3915e33b6948ce7597d83fea4b88c2bf5ba034820b4b7d",
       "abiPath": "abi/PleaDistributor.json"
     },
     {
       "name": "PleaLaunch",
-      "address": "0x3621606cddc23e69d1115126522b53fbf788761e",
+      "address": "0x9e75eabf8d1c905a07a0c99bb9ec9430a065358f",
       "abiHash": "d9440de090267c9bf85c4b0c971b6ae9c492606fb334ed0b99221100d201def0",
       "abiPath": "abi/PleaLaunch.json"
     }
@@ -119,7 +119,7 @@
     },
     {
       "path": "index.html",
-      "sha256": "a49d27dffced3c36a0f047e9519e41edf6280cf8eaaa65238d0529b63ec380a1"
+      "sha256": "5a6e55bb205203827d7b5ff217fdfe4a9823435d9f03a7abf0056a8d1a6b7e0e"
     },
     {
       "path": "og.png",
@@ -147,100 +147,87 @@
     }
   ],
   "network": {
-    "chainId": 11155111,
-    "name": "Sepolia",
-    "testnet": true,
+    "chainId": 1,
+    "name": "Ethereum",
+    "testnet": false,
     "rpcUrls": [
-      "https://ethereum-sepolia-rpc.publicnode.com",
-      "https://rpc.sepolia.ethpandaops.io",
-      "https://sepolia.rpc.sentio.xyz"
+      "https://ethereum-rpc.publicnode.com",
+      "https://rpc.mevblocker.io",
+      "https://rpc.flashbots.net",
+      "https://mainnet.gateway.tenderly.co"
     ],
-    "explorer": "https://sepolia.etherscan.io",
+    "explorer": "https://etherscan.io",
     "nativeCurrency": {
-      "name": "Sepolia Ether",
+      "name": "Ether",
       "symbol": "ETH",
       "decimals": 18
     },
-    "faucets": [
-      "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
-      "https://www.alchemy.com/faucets/ethereum-sepolia"
-    ],
     "uniswapV4": {
-      "poolManager": "0xe03a1074c86cfedd5c142c4f04f1a1536e203543",
-      "universalRouter": "0x3a9d48ab9751398bbfa63ad67599bb04e4bdf98b",
-      "quoter": "0x61b3f2011a92d183c7dbadbda940a7555ccf9227",
-      "stateView": "0xe1dd9c3fa50edb962e442f60dfbc432e24537e4c",
-      "positionManager": "0x429ba70129df741b2ca2a85bc3a2a3328e5c09b4",
+      "poolManager": "0x000000000004444c5dc75cb358380d2e3de08a90",
+      "universalRouter": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
       "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
     }
   },
-  "walletAddChain": {
-    "chainId": "0xaa36a7",
-    "chainName": "Sepolia",
-    "rpcUrls": [
-      "https://ethereum-sepolia-rpc.publicnode.com",
-      "https://rpc.sepolia.ethpandaops.io",
-      "https://sepolia.rpc.sentio.xyz"
-    ],
-    "nativeCurrency": {
-      "name": "Sepolia Ether",
-      "symbol": "ETH",
-      "decimals": 18
-    },
-    "blockExplorerUrls": [
-      "https://sepolia.etherscan.io"
-    ]
-  },
+  "walletAddChain": null,
   "site": {
-    "key": "sepolia-run9",
-    "name": "Sepolia test run 9",
-    "strip": "Sepolia test run 9 · test tokens, no value",
-    "footer": "Sepolia test tokens have no value.",
-    "siteUrl": "https://plea-test-run-9.sites.imd.fun/",
-    "eventStart": 11948819,
+    "key": "ethereum",
+    "name": "Ethereum",
+    "strip": null,
+    "footer": "Any PLEA traded before launch day isn’t ours.",
+    "siteUrl": "https://plea.sites.imd.fun/",
+    "eventStart": 26293890,
     "oracleApi": "https://api.imd.fun",
     "claimsPath": "claims.json",
     "expected": {
-      "Letterbox": "0xbc335ae3dc12d4bf78f8e44a03f4fc62e3afd1d3",
-      "Tribunal": "0xcd6aac81882a6ae51041e8094bca0feabd3fc566",
-      "PleaHook": "0x07b4698506cf15b9a91805aa90010a47a04228cc"
+      "Letterbox": "0x00423ebaed03445fc1452d9a79a51e3c0dfdab5f",
+      "Tribunal": "0x1aa665eb420f28103324daaaf034de13ee6f53d9",
+      "PleaHook": "0xf1122bc96adea8768cff2badf02b6d4594f928cc"
     },
     "trade": {
-      "kind": "poolSwapTest",
-      "router": "0x9b6b46e2c869aa39918db7f52f5557fe577b6eee"
+      "kind": "universalRouter",
+      "router": "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85",
+      "minHopPrice": true,
+      "permit2": "0x000000000022d473030f116ddee9f6b43ac78ba3"
     },
     "delegateRegistry": "0x00000000000000447e69651d841bd8d104bed493",
     "cashback": {
-      "stacker": "0x0457276d7b036818b3eddc1a4a3fceda61e9314d",
-      "simd": null,
+      "stacker": "0x06909f672301f28a810f78cfe7a754851269f4f0",
+      "simd": "0x9efa934d9fad4ae28c998a40195646b965a97247",
       "simdDecimals": 24
     },
     "seat": {
-      "address": "0xa0443799c320e16c80801c9c1911f3571260287f",
+      "address": "0x0000ec93127baa929e58e97dd0095a2bfb38ec1d",
       "name": "identity.md seat",
-      "note": "a test NFT on Sepolia"
+      "note": null
     },
-    "letterMessagePage": null,
-    "indexer": null,
+    "letterMessagePage": {
+      "url": "https://etherscan.io/idm",
+      "network": "Ethereum mainnet"
+    },
+    "indexer": {
+      "graphql": "https://indexer.pleaimd.fun/graphql"
+    },
     "logRanges": {
-      "default": 10000
+      "default": 50000,
+      "https://ethereum-rpc.publicnode.com": 5000,
+      "https://rpc.flashbots.net": 0
     },
-    "explorerName": "Sepolia Etherscan",
-    "pairSymbol": "imdTEST",
+    "explorerName": "Etherscan",
+    "pairSymbol": "IMD",
     "source": {
       "repo": "https://github.com/khaed1/plea",
-      "ref": "testnet9"
+      "ref": "mainnet"
     },
     "contracts": {
-      "meta": "Sepolia",
-      "launch": "Sepolia test run 9 · launch #2234"
+      "meta": "Ethereum mainnet",
+      "launch": null
     },
     "meta": {
       "title": "Selling needs a plea · PLEA",
-      "description": "Buying is open. Selling needs a plea. PLEA's Sepolia test run 9: test tokens, no value.",
+      "description": "Buying is open. Selling needs a plea. PLEA is a meme token on Uniswap v4 on Ethereum: to sell, you write why, and 30 judges score it.",
       "ogTitle": "PLEA · Make your case",
-      "ogDescription": "Buying is open. Selling needs a plea. Sepolia test tokens, no value.",
-      "ogImageAlt": "PLEA: buying is open, selling needs a plea. Sepolia test run 9."
+      "ogDescription": "Buying is open. Selling needs a plea. On Ethereum.",
+      "ogImageAlt": "PLEA: buying is open, selling needs a plea."
     }
   }
 }

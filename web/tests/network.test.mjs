@@ -5,7 +5,7 @@ import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -44,25 +44,55 @@ async function load(name) {
 const fork = new URL("./fixtures/ethereum-fork-deployment.json", import.meta.url).pathname;
 after(() => useNetwork("sepolia-run9"));
 
-test("PLEA_NETWORK: sepolia-run9 by default, ethereum by name, nothing else", () => {
+test("PLEA_NETWORK: ethereum by default (launch #2647), sepolia-run9 by name, nothing else", () => {
   const saved = process.env.PLEA_NETWORK;
   delete process.env.PLEA_NETWORK;
   try {
     const n = loadNetwork();
-    assert.equal(n.key, "sepolia-run9");
-    assert.equal(n.net.network.chainId, 11155111);
-    assert.equal(n.site.eventStart, 11948819);
-    assert.equal(n.site.trade.kind, "poolSwapTest");
-    assert.equal(n.site.expected.Letterbox, "0xbc335ae3dc12d4bf78f8e44a03f4fc62e3afd1d3");
-    assert.ok(n.net.walletAddChain, "Sepolia can be added to a wallet");
+    assert.equal(n.key, "ethereum");
+    assert.equal(n.net.network.chainId, 1);
+    assert.equal(n.handoff.launchId, "1fae5a48-dbc8-4f8e-9a61-e014f787bb47");
+    assert.equal(n.site.eventStart, 26293890, "the launch's block");
+    assert.equal(n.site.trade.kind, "universalRouter");
+    assert.equal(n.net.walletAddChain, null);
+    const s = loadNetwork("sepolia-run9");
+    assert.equal(s.net.network.chainId, 11155111);
+    assert.equal(s.site.eventStart, 11948819);
+    assert.equal(s.site.trade.kind, "poolSwapTest");
+    assert.equal(s.site.expected.Letterbox, "0xbc335ae3dc12d4bf78f8e44a03f4fc62e3afd1d3");
+    assert.ok(s.net.walletAddChain, "Sepolia can be added to a wallet");
     assert.throws(() => loadNetwork("mainnet"), /PLEA_NETWORK must be one of sepolia-run9, ethereum/);
   } finally {
     if (saved !== undefined) process.env.PLEA_NETWORK = saved;
   }
 });
 
-test("the Ethereum build refuses to build without the launch's addresses ([after launch])", () => {
-  assert.throws(() => loadNetwork("ethereum", undefined), /No contract addresses for ethereum yet \(\[after launch\]\)/);
+test("the Ethereum deployment is launch #2647's: its five contracts, the deploy calls' three, the indexer", () => {
+  const n = loadNetwork("ethereum", undefined);
+  assert.equal(n.handoff.sourceCommit, "bc2fda914058b6d5e489eb70dc3d0d4254dbcf0c");
+  assert.equal(n.handoff.attestationHash, "9c13c9a04484353bf55e8bb0991fe03bb42c5bc87f19f00dc95649ac7b89bb56");
+  assert.deepEqual(
+    n.handoff.contracts.map((c) => [c.name, c.address, c.blockNumber]),
+    [
+      ["PLEA", "0x1f158929496162b53fb232536468948e25170ab3", 26293890],
+      ["CabalGate", "0x39ac882a1161ea19acb6fbdd7a5835d96cf876eb", 26293890],
+      ["Seasons", "0xf7c024f7bc96cf152a572f6e184318ff6d380738", 26293890],
+      ["PleaDistributor", "0x97face21c7a9f3b64d0f4e0bf21861721fbbfe3e", 26293890],
+      ["PleaLaunch", "0x9e75eabf8d1c905a07a0c99bb9ec9430a065358f", 26293890],
+    ],
+  );
+  assert.deepEqual(n.site.expected, {
+    Letterbox: "0x00423ebaed03445fc1452d9a79a51e3c0dfdab5f",
+    Tribunal: "0x1aa665eb420f28103324daaaf034de13ee6f53d9",
+    PleaHook: "0xf1122bc96adea8768cff2badf02b6d4594f928cc",
+  });
+  assert.deepEqual(n.site.indexer, { graphql: "https://indexer.pleaimd.fun/graphql" });
+});
+
+test("a deployment without addresses refuses to build", async () => {
+  const empty = path.join(dir, "no-contracts.json");
+  await writeFile(empty, JSON.stringify({ version: 1, chainId: 1, contracts: [] }));
+  assert.throws(() => loadNetwork("ethereum", empty), /No contract addresses for ethereum yet/);
   // A deployment for another chain is refused too.
   assert.throws(
     () => loadNetwork("ethereum", path.join(path.dirname(fork), "../../deployment-input.json")),

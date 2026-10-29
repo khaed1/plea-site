@@ -1,16 +1,16 @@
-// The deployment a build is for, chosen at build time: PLEA_NETWORK=sepolia-run9 (default) or ethereum.
+// The deployment a build is for, chosen at build time: PLEA_NETWORK=ethereum (default: launch #2647, the
+// committed dist/) or sepolia-run9.
 // networks/<key>/site.json holds the site's settings for that deployment; networks/<key>/network.json and
 // deployment.json its chain and contracts (sepolia-run9 keeps them in web/network-input.json and
 // web/deployment-input.json, the run 9 handoff files IMD's scripts read). PLEA_DEPLOYMENT=<file> replaces the
-// deployment for tests (an Ethereum fork's addresses); a deployment without contracts refuses to build: the
-// mainnet addresses stay "[after launch]" until the launch hands them over.
+// deployment for tests (an Ethereum fork's addresses); a deployment without contracts refuses to build.
 import fs from "node:fs";
 
 const web = new URL("../", import.meta.url);
 const read = (u) => JSON.parse(fs.readFileSync(u, "utf8"));
 export const NETWORKS = ["sepolia-run9", "ethereum"];
 
-export function loadNetwork(key = process.env.PLEA_NETWORK || "sepolia-run9", deploymentFile = process.env.PLEA_DEPLOYMENT) {
+export function loadNetwork(key = process.env.PLEA_NETWORK || "ethereum", deploymentFile = process.env.PLEA_DEPLOYMENT) {
   if (!NETWORKS.includes(key)) throw Error(`PLEA_NETWORK must be one of ${NETWORKS.join(", ")}, not "${key}".`);
   const dir = new URL(`networks/${key}/`, web);
   const own = (f) => fs.existsSync(new URL(f, dir));
@@ -30,20 +30,20 @@ export function loadNetwork(key = process.env.PLEA_NETWORK || "sepolia-run9", de
   return { key, net, handoff, site: siteFor(site, handoff) };
 }
 
-/** site.json as the build ships it (the manifest's `site` block): `eventStart` null means the launch's
- * deploy block (the deployment's first contract block), `expected` null takes a test deployment's
- * Letterbox, Tribunal and hook (fork-deployment.mjs's `test`), else PleaLaunch's own (read at load). */
+/** site.json as the build ships it (the manifest's `site` block). A test deployment (fork-deployment.mjs's,
+ * with a `test` block) brings its own first block (its contracts' deploy block) and its own Letterbox,
+ * Tribunal and hook; otherwise site.json's `eventStart` and `expected` hold, and where they are null the
+ * deployment's first contract block and PleaLaunch's own addresses (read at load) are used. */
 export function siteFor(site, handoff) {
   const blocks = handoff.contracts.map((c) => c.blockNumber).filter((n) => Number.isSafeInteger(n));
-  const eventStart = site.eventStart ?? (blocks.length ? Math.min(...blocks) : null);
+  const t = handoff.test;
+  const eventStart = (t ? null : site.eventStart) ?? (blocks.length ? Math.min(...blocks) : null);
   if (!Number.isSafeInteger(eventStart))
     throw Error(`No first block for ${site.key}'s history: set site.json eventStart or the contracts' blockNumber.`);
-  const t = handoff.test;
   const expected =
-    site.expected ??
-    (t?.letterbox && t?.tribunal && t?.hook
+    t?.letterbox && t?.tribunal && t?.hook
       ? { Letterbox: t.letterbox.toLowerCase(), Tribunal: t.tribunal.toLowerCase(), PleaHook: t.hook.toLowerCase() }
-      : null);
+      : site.expected ?? null;
   return { ...site, eventStart, expected };
 }
 
