@@ -555,7 +555,7 @@ function SeasonBody({
   const closes = !data.closed && (ended || !!bounds[3] || last),
     // An ended season's close records the approvals nobody recorded first (Seasons._tryRecord), so its
     // recorded board is not what the close pays: the board's figures say "recorded" then (NEW-1, round 2).
-    recordedOnly = closes && closing.length > 0,
+    recordedOnly = closes && (closing.length > 0 || !!s!.historyError),
     you = standingOn(closeRows, address, {
       shares: s!.v.shares,
       pot,
@@ -1210,7 +1210,9 @@ function SeasonBody({
                         {e.points}
                       </span>
                       <span className="lb__prize">
-                        <span className="lb__label">Prize now </span>
+                        <span className="lb__label">
+                          {recordedOnly ? "Recorded prize " : "Prize now "}
+                        </span>
                         {qualified ? (
                           <>
                             <span className="nowrap">
@@ -1250,12 +1252,14 @@ function SeasonBody({
             </ol>
           )}
           {rows.length > 0 && recordedOnly && (
-            <p className="small">
-              These are the recorded points. The close records{" "}
-              {closing.length === 1
-                ? "1 more approved plea"
-                : `${closing.length} more approved pleas`}{" "}
-              first, so the ranks and prizes it pays are in What the close pays.
+            <p className="small panel__foot">
+              {s!.historyError
+                ? "These are the recorded points. Approved pleas nobody recorded are not known until the history is read, and the close records them first."
+                : `These are the recorded points. The close records ${
+                    closing.length === 1
+                      ? "1 more approved plea"
+                      : `${closing.length} more approved pleas`
+                  } first, so the ranks and prizes it pays are in What the close pays.`}
             </p>
           )}
           <p className="panel__foot">
