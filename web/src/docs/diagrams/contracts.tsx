@@ -12,23 +12,41 @@
  * each address with its Etherscan and Sourcify links, the owner's, and the outside contracts' and the
  * oracle's signing key's with their Etherscan links (the addresses are numbers.json's: launch.json's
  * arguments, checked on chain). */
-import { Icon } from "../../components";
+import { AddressView, Icon } from "../../components";
 import { useNumbers } from "../numbers-context";
 import { Figure } from "../dg";
 
 type Card = { name: string; key: string; what: string; links: string[] };
-/** Outside PLEA, under the eight: launch.json's CabalGate, Seasons and PleaLaunch arguments. */
-const OUTSIDE: { name: string; key: string }[] = [
-  { name: "IMD", key: "addr_imd" },
-  { name: "IMD's Intake", key: "addr_intake" },
-  { name: "The oracle's signing key", key: "addr_oracle_signer" },
+/** Outside PLEA, under the eight: launch.json's CabalGate, Seasons and PleaLaunch arguments, and the
+ * contracts the site itself uses (sIMD, the router, Permit2, delegate.xyz; site.json's). This list is the
+ * site's one address list since Home's Contracts section moved here. */
+const OUTSIDE: { name: string; key: string; what?: string }[] = [
+  { name: "IMD", key: "addr_imd", what: "the token PLEA trades against, and the fees' currency" },
+  { name: "IMD's Intake", key: "addr_intake", what: "takes the oracle fee and brings back the judges' answers" },
+  { name: "The oracle's signing key", key: "addr_oracle_signer", what: "signs every verdict the gate and the Tribunal accept" },
   { name: "Uniswap v4's PoolManager", key: "addr_pool_manager" },
-  { name: "imd/acc's Stacker", key: "addr_stacker" },
-  { name: "The IMD seat NFT", key: "addr_seat" },
+  { name: "imd/acc's Stacker", key: "addr_stacker", what: "stakes your cashback" },
+  { name: "sIMD (staked IMD)", key: "addr_simd", what: "the vault your cashback is staked in" },
+  { name: "The IMD seat NFT", key: "addr_seat", what: "holders' season points count ×1.2" },
+  { name: "Uniswap's Universal Router", key: "addr_router", what: "the router the Buy page trades through, with Permit2" },
+  { name: "Permit2", key: "addr_permit2", what: "holds your approval for the router, for 30 minutes" },
+  { name: "The delegate.xyz registry", key: "addr_delegate", what: "the Claim page reads delegated vaults from it" },
 ];
+/** Each of the eight in a few words, as Home's Contracts list said them. */
+const ROLE: Record<string, string> = {
+  PLEA: "the token; transfers gated while the Cabal lives",
+  CabalGate: "pleas, verdicts, appeals, sells and the dead-man",
+  Seasons: "points, the leaderboard and payouts",
+  PleaHook: "the pool's fees, burns and buy wall",
+  Letterbox: "letters and auto-sell",
+  Tribunal: "objections and the second panel",
+  PleaDistributor: "the 12% claim list",
+  PleaLaunch: "the launch and the seed",
+};
 
-/** One address row with its Etherscan link (and Sourcify's, for PLEA's own contracts). */
-function AddressRow({ name, address, sourcify }: { name: string; address: string; sourcify?: boolean }) {
+/** One address row: the address (its Etherscan page, with a Copy button), what it is, and Sourcify's
+ * verified source for PLEA's own contracts. */
+function AddressRow({ name, address, what, sourcify }: { name: string; address: string; what?: string; sourcify?: boolean }) {
   const who = name.replace(/^The /, "the ");
   return (
     <div>
@@ -36,23 +54,17 @@ function AddressRow({ name, address, sourcify }: { name: string; address: string
         <b>{name}</b>
       </dt>
       <dd className="stack stack--sm">
-        <span className="addr">
-          <span className="addr__text mono">{address}</span>
-        </span>
-        <span className="cluster cluster--sm small">
-          <a href={`https://etherscan.io/address/${address}`} target="_blank" rel="noreferrer" className="docs-ext nowrap">
-            Etherscan
-            <Icon name="arrow-square-out" />
-            <span className="sr-only"> for {who} (opens in a new tab)</span>
-          </a>
-          {sourcify && (
+        <AddressView address={address} label={name} explorer="https://etherscan.io" />
+        {what && <span className="small text-2">{what}</span>}
+        {sourcify && (
+          <span className="small">
             <a href={`https://repo.sourcify.dev/1/${address}`} target="_blank" rel="noreferrer" className="docs-ext nowrap">
-              Sourcify
+              Verified source on Sourcify
               <Icon name="arrow-square-out" />
               <span className="sr-only"> for {who} (opens in a new tab)</span>
             </a>
-          )}
-        </span>
+          </span>
+        )}
       </dd>
     </div>
   );
@@ -169,21 +181,21 @@ export default function Contracts() {
       after={
         <div className="stack stack--sm">
           <p className="small text-2">
-            The addresses on Ethereum, each with its page on Etherscan and its verified source on Sourcify, and the
-            owner's wallet.
+            The addresses on Ethereum: each links to its page on Etherscan and has a Copy button; PLEA's own
+            contracts also link to their verified source on Sourcify. Then the owner's wallet.
           </p>
           <dl className="addr-list dg-addrs">
             {cards.map((c) => (
-              <AddressRow key={c.name} name={c.name} address={t(c.key)} sourcify />
+              <AddressRow key={c.name} name={c.name} address={t(c.key)} what={ROLE[c.name]} sourcify />
             ))}
-            <AddressRow name="The owner" address={t("owner")} />
+            <AddressRow name="The owner" address={t("owner")} what="PLEA's and the distributor's owner; receives the owner fee" />
           </dl>
           <p className="small text-2">
             Outside PLEA: the contracts it works with, and the key that signs the judges' answers.
           </p>
           <dl className="addr-list dg-addrs">
             {OUTSIDE.map((o) => (
-              <AddressRow key={o.key} name={o.name} address={t(o.key)} />
+              <AddressRow key={o.key} name={o.name} address={t(o.key)} what={o.what} />
             ))}
           </dl>
         </div>

@@ -49,8 +49,13 @@ export default function App() {
   const [theme, setTheme] = useState(
     document.documentElement.dataset.theme || "light",
   );
-  const path = hash.replace(/^#\/?/, "").split("?")[0].split("/");
+  // Home's Contracts section moved to the docs' Contracts and owner page: old #/contracts links open it.
+  const asked = hash.replace(/^#\/?/, "").split("?")[0].split("/"),
+    path = asked[0].toLowerCase() === "contracts" ? ["docs", "contracts"] : asked;
   const page = path[0].toLowerCase();
+  useEffect(() => {
+    if (asked[0].toLowerCase() === "contracts") location.replace("#/docs/contracts");
+  }, [hash]);
   const dead = s && val(s, "CabalGate.diedAt") > 0n;
   useEffect(() => {
     const handle = () => {
@@ -87,7 +92,6 @@ export default function App() {
     const titles: Record<string, string> = {
       "": "Selling needs a plea",
       how: "Selling needs a plea",
-      contracts: "Selling needs a plea",
       buy: "Buy PLEA",
       plead: "Plead to sell",
       wall: "The Wall",
@@ -107,11 +111,9 @@ export default function App() {
     const anchor =
       page === "how"
         ? "how"
-        : page === "contracts"
-          ? "contracts"
-          : page === "seasons" && location.hash.includes("seat=1")
-            ? "seat"
-            : "";
+        : page === "seasons" && location.hash.includes("seat=1")
+          ? "seat"
+          : "";
     pendingAnchor.current = anchor;
     anchorUntil.current=Date.now()+20000;
   }, [hash]);
@@ -341,7 +343,7 @@ export default function App() {
           <PleaPage id={path[1] || ""} />
         ) : page === "share" || page === "share-cards" ? (
           <Share id={path[1]} />
-        ) : ["", "how", "contracts"].includes(page) ? (
+        ) : ["", "how"].includes(page) ? (
           <Home />
         ) : (
           <>
@@ -392,7 +394,7 @@ export default function App() {
                 <a href="#/docs">Docs</a>
               </li>
               <li>
-                <a href="#/contracts">Contracts</a>
+                <a href="#/docs/contracts">Contracts</a>
               </li>
 
               <li>

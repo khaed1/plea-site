@@ -1,6 +1,6 @@
 import { LETTERBOX, Q96, appealFeeBlock, feeSaleShort, min as minBig } from "./models";
 import { letterPrecheck } from "./appeal";
-import { HowItWorks, ContractsPanel } from "./home-info";
+import { HowItWorks } from "./home-info";
 import { homeLead } from "./loading-text";
 import {
   HomeDetails,
@@ -122,7 +122,7 @@ export function Home() {
             <p>
               Other tokens called PLEA are not ours: check the address before
               you buy. All of PLEA’s contracts are on the{" "}
-              <a href="#/contracts">Contracts</a> page.
+              <a href="#/docs/contracts">Contracts and owner</a> page in the docs.
             </p>
           </Notice>
         </div>
@@ -248,7 +248,6 @@ export function Home() {
       </section>
       <HowItWorks />
       <HomeDetails />
-      <ContractsPanel />
     </>
   );
 }

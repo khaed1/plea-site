@@ -5,7 +5,7 @@ import { checkDocs } from "./src/docs/markdown.ts";
 import { loadNetwork, htmlMeta } from "./scripts/network.mjs";
 // PLEA_NETWORK picks the deployment at build time (scripts/network.mjs): its title, link previews and
 // first paint go into index.html here; its chain, contracts and site settings into dist/imd-deployment.json (manifest.mjs).
-const { site, net } = loadNetwork();
+const { key, site, net } = loadNetwork();
 const meta: Record<string, string> = htmlMeta(site, net.network);
 const keys: Record<string, string> = {
   PLEA_CHAIN: meta.chain,
@@ -52,6 +52,17 @@ export default defineConfig({
           if (!(k in keys)) throw Error(`index.html names an unknown ${m}`);
           return keys[k];
         }),
+    },
+    {
+      // The link card names its own site, so each deployment ships its own (networks/<key>/og.png).
+      name: "plea-network-og",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "og.png",
+          source: fs.readFileSync(new URL(`./networks/${key}/og.png`, import.meta.url)),
+        });
+      },
     },
     {
       name: "plea-docs",

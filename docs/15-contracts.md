@@ -11,7 +11,7 @@ The owner has a few small powers and receives the {{fee_owner}} fee. The owner c
 1. **The launch.** IMD's launch {{launch_id}} deployed five contracts in one transaction, at block {{launch_block}}: PLEA, CabalGate, Seasons, PleaDistributor and PleaLaunch.
 2. **The other three.** PleaLaunch then deployed the Letterbox, the Tribunal and PleaHook, from code fixed in the launch, so their code and settings are the same whoever makes the call. PLEA's whole supply was minted with PleaHook, at block {{hook_block}}.
 3. **No admin, no upgrades.** No contract can be paused, upgraded or swapped. Every fee, time limit and prize is fixed in the code. The Letterbox and the Tribunal have no owner at all.
-4. **The owner.** One wallet: PLEA's owner and the distributor's owner, and the receiver of the {{fee_owner}} fee. Its address is under the picture.
+4. **The owner.** One wallet: PLEA's owner and the distributor's owner, and the receiver of the {{fee_owner}} fee. Its address is in the list under the picture.
 5. **Power 1: opening trading early.** From {{start}} anyone may open trading. Before that, only the owner may.
 6. **Power 2: the claim list, once.** The owner sets the distributor's list of who may claim its {{supply_distributor}}. Once set, it can never change. See [Claim](#/claim).
 7. **Power 3: free senders.** The owner may let an address send PLEA freely while the Cabal lives. It is for good: an address can be added, never removed. Even then, it cannot send PLEA into the pool or the gate, so it cannot sell in PLEA's pool without a plea.
@@ -37,14 +37,13 @@ And the owner's fee on a 100 IMD buy: {{fee_owner}} of the 98.04 IMD that reache
 
 ## Good to know
 
-- **The source is public and matches.** Sourcify matches each contract's code on Ethereum with its source at the launch commit: seven in full, and PleaHook on its running code. The links are under the picture.
+- **The source is public and matches.** Sourcify matches each contract's code on Ethereum with its source at the launch commit: seven in full, and PleaHook on its running code. The links are in the list under the picture.
 - **Check a free sender.** Every address the owner allows is public: on Etherscan, PLEA's Read Contract tab answers for any address, and its event log lists each one. Such an address could send PLEA to another market; it can never sell in PLEA's pool without a plea.
 - **The claim list decides the {{supply_distributor}}.** The code pays whatever the list says. Until it is set, nobody can claim: the [Claim](#/claim) page says "The list is not open yet".
 - **A safety check at the open.** On Ethereum, opening trading is refused if the seasons are shorter than {{seed_check_season}}, the dead-man shorter than {{seed_check_deadman}}, or the opening market cap under {{market_cap_check}}. The launched code opens at {{market_cap}}.
 - **Before the start time.** Anyone but the owner who tries to open trading early is refused: "Trading is not open yet. Wait until the start time shown."
 - **The owner does not play.** A plea from the owner's wallets earns no points; the season's prizes skip them; they cannot object. See [Seasons and prizes](10-seasons.md).
 - **Not an IMD page.** IMD launched PLEA, and its judges are the Cabal. This site is not an official IMD page.
-- **On the site.** Home's [Contracts](#/contracts) list shows the same addresses, the outside contracts PLEA works with, and the owner's powers.
 
 ::: builders
 Owner functions: `PLEA.allow(account)` (add-only), `PleaDistributor.setMerkleRoot(root)` (once; `RootAlreadySet`, `ZeroRoot`), `PleaLaunch.seed()` before `START` (it reads `PLEA.owner()` when called; anyone after `START`), and OpenZeppelin's `Ownable2Step` on PLEA and PleaDistributor: `transferOwnership`, `acceptOwnership`, `renounceOwnership` (the distributor's refuses `RootNotSet` until the root is set). `PleaHook.owner()` is the fee receiver, immutable. Views: `PLEA.allowed(account)`, `PLEA.owner()`, `PleaDistributor.merkleRoot()`, `PleaLaunch.START()`, `opened()`, `hook()`, `letterbox()`, `tribunal()`, `hookInitCodeHash()`, `letterboxCodeHash()`, `tribunalCodeHash()`. Events: `Allowed`, `RootSet`, `OwnershipTransferStarted`, `OwnershipTransferred`, `HookDeployed`, `LetterboxDeployed`, `TribunalDeployed`, `TradingOpened`. Seed refusals: `TooEarly`, `BelowAgreedTiming`, `BelowAgreedMarketCap`, `HookNotDeployed`, `LetterboxNotDeployed`, `TribunalNotDeployed`.

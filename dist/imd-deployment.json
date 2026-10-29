@@ -70,12 +70,12 @@
       "sha256": "3c38192084ffda92b0dc0f54fcf55cc603566c2e93335afc8e524525559d6549"
     },
     {
-      "path": "assets/Docs-Cr_Oh1nK.js",
-      "sha256": "464ab984f07051e0ba86d716d9eb3299b907c51b38dc289a6d4feae48c5b5df4"
+      "path": "assets/Docs-sz27kqNx.js",
+      "sha256": "849f82bf25aa3ec0f0a2861c4a93e245ab2514b5c97643720f4e5a31d883b559"
     },
     {
-      "path": "assets/ccip-C9jyvMhc.js",
-      "sha256": "c7239ff2439c441e6cd533d7dbddd08976332c1ed98ae95ebb6f81f30abbfb83"
+      "path": "assets/ccip-zATzJAUr.js",
+      "sha256": "efdb678f4abc77acc9af2115a9c4c010b4e28909c01bb132e972885c772809da"
     },
     {
       "path": "assets/index-BeoRn2gJ.js",
@@ -86,8 +86,8 @@
       "sha256": "738524413804dc3a78d3d0b7a26320f085d7cffe0eec3d68603e85b63dc4bd84"
     },
     {
-      "path": "assets/index-Dj7Bj4FL.js",
-      "sha256": "d902a315a3540206fcf1199812dd2c69cc7790393acd8013a13c563b859ca1e1"
+      "path": "assets/index-DGP32G_9.js",
+      "sha256": "46f1c511d08b884ec5bbfdc6d3c07312eb508a0b7d82bdc43c7129c08e588022"
     },
     {
       "path": "favicon.svg",
@@ -123,11 +123,11 @@
     },
     {
       "path": "index.html",
-      "sha256": "58df7e772816e581792c5be4b4c76c8811fb094124537977f05fdc8122f18156"
+      "sha256": "c1609834ad4e7f997d9947b69f0da1ae16c45be26048658c466cb7d9a48a4dce"
     },
     {
       "path": "og.png",
-      "sha256": "072c8bf8b365e5fed3698ace2e37d69d93971f46af833165f44f38860b3c1b09"
+      "sha256": "1e0be66c6c70787817dda5cbafe3df7ea6e0c43d91d39a9b946582e736cc770d"
     },
     {
       "path": "text-check.js",
@@ -178,7 +178,7 @@
     "name": "Ethereum",
     "strip": null,
     "footer": "Any PLEA traded before launch day isn’t ours.",
-    "siteUrl": "https://plea.imd.site/",
+    "siteUrl": "https://pleaimd.imd.site/",
     "eventStart": 26293890,
     "oracleApi": "https://api.imd.fun",
     "claimsPath": "claims.json",

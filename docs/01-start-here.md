@@ -65,5 +65,5 @@ Had the judges given 37, the plea would be denied. You could appeal once within 
 ::: builders
 The loop lives in `CabalGate`: `submitSell(amount, text)` pleads, the oracle's answer arrives in `onOracleResult`, `executeSell(minOut)` sells, `appeal(originalId, amount, text)` appeals and `expire(id)` closes a plea with no verdict. Events: `PleaSubmitted`, `Verdict`, `SellExecuted`, `PleaLapsed`, `PleaExpired`. `cabalAlive()` is the dead-man.
 
-Source: [CabalGate.sol](https://github.com/khaed1/plea/blob/42e0f855875786a953e945e528e9d7f2724a5352/src/CabalGate.sol), at the commit IMD deployed. Every contract and address: [Contracts and owner](15-contracts.md) and the site's [Contracts](#/contracts) list.
+Source: [CabalGate.sol](https://github.com/khaed1/plea/blob/42e0f855875786a953e945e528e9d7f2724a5352/src/CabalGate.sol), at the commit IMD deployed. Every contract and address: [Contracts and owner](15-contracts.md).
 :::

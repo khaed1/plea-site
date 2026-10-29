@@ -89,6 +89,8 @@ assert.ok(
 const og = fs.readFileSync(path.join(root, "og.png"));
 assert.equal(og.readUInt32BE(16), 1200);
 assert.equal(og.readUInt32BE(20), 675);
+// The deployment's own link card (vite.config.ts plea-network-og), never another network's.
+assert.ok(og.equals(fs.readFileSync(path.join("web/networks", site.key, "og.png"))), "dist/og.png is not this network's card");
 console.log(
   `Export verified: ${files.length} assets, ${bytes} bytes; exact handoff/network and all eight canonical ABI hashes match.`,
 );

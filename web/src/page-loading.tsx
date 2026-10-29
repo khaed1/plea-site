@@ -10,7 +10,7 @@ export function PageHeading({ page, id }: { page: string; id?: string }) {
   const { statics } = useApp();
   const known = !!statics && statics["CabalGate.diedAt"] !== undefined,
     dead = known && !!statics!["CabalGate.diedAt"];
-  if (["", "how", "contracts"].includes(page))
+  if (["", "how"].includes(page))
     return (
       <div className="page-title">
         <h1 className="hero-title">
@@ -38,7 +38,7 @@ export function PageHeading({ page, id }: { page: string; id?: string }) {
 export function PageLoading({ page, id }: { page: string; id?: string }) {
   const { address } = useAccount();
   const { statics } = useApp();
-  const home = ["", "how", "contracts"].includes(page),
+  const home = ["", "how"].includes(page),
     wall = page === "wall",
     // Read with the constants: alive or dead decides Home's title, lead and buttons (r2X-11).
     known = !!statics && statics["CabalGate.diedAt"] !== undefined,

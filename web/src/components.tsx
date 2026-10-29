@@ -202,19 +202,23 @@ export function AddressView({
   address,
   label = "contract",
   shortDisplay = false,
+  explorer,
 }: {
   address: string;
   label?: string;
   shortDisplay?: boolean;
+  /** The explorer to link, where there is no app (the docs' diagrams render outside it in the tests). */
+  explorer?: string;
 }) {
   address = getAddress(address);
-  const { r, toast } = useApp();
+  const app = useApp() as ReturnType<typeof useApp> | null,
+    toast = app?.toast;
   const [copied, setCopied] = useState(false);
   return (
     <span className="addr">
       <a
         className="addr__text mono"
-        href={`${r.network.explorer}/address/${address}`}
+        href={`${explorer ?? app?.r.network.explorer}/address/${address}`}
         target="_blank"
         rel="noreferrer"
       >

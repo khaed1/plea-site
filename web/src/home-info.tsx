@@ -10,21 +10,17 @@ import {
   deadmanWords,
   short,
   seasonState,
-  utc,
 } from "./chain";
 import {
-  AddressView,
   Costs,
   Icon,
   Notice,
-  Panel,
   FactCells,
   Countdown,
 } from "./components";
 import {
   site,
   cashbackWords,
-  routerRow,
   sellGateWarning,
   sourceLink,
 } from "./site";
@@ -392,138 +388,6 @@ export function HowItWorks() {
             </a>
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
-export function ContractsPanel() {
-  const { r, s } = useApp(),
-    roles: Record<string, string> = {
-      PLEA: "the token; transfers gated while the Cabal lives",
-      CabalGate: "pleas, verdicts, appeals, sells and the dead-man",
-      Seasons: "points, the leaderboard and payouts",
-      PleaHook: "the pool’s fees, burns and buy wall",
-      Letterbox: "letters and auto-sell",
-      Tribunal: "objections and the second panel",
-      PleaDistributor: "the 12% claim list",
-      PleaLaunch: "the launch and the seed",
-    };
-  const x = site(),
-    router = routerRow(x),
-    start = Number(con(s, "PleaLaunch.START") || 0);
-  const partners: [string | undefined, string | undefined, string?][] = [
-    [s?.constants.pairSymbol, r.addresses.PairToken],
-    ["imd/acc Stacker", val(s, "PleaHook.stacker")],
-    ...(x.cashback.simd
-      ? ([["sIMD (staked IMD)", x.cashback.simd, "the vault your cashback is staked in"]] as [string, string, string][])
-      : []),
-    ["identity.md seat NFT", val(s, "Seasons.seat"), x.seat.note || undefined],
-    ["Uniswap v4 PoolManager", r.network.uniswapV4.poolManager],
-    [router.name, x.trade.router, router.note],
-    ...(x.trade.kind === "universalRouter"
-      ? ([["Permit2", x.trade.permit2, "holds your approval for the router, for 30 minutes"]] as [string, string, string][])
-      : []),
-    ["IMD Intake v2", val(s, "CabalGate.intake")],
-    ["delegate.xyz registry", x.delegateRegistry],
-  ];
-  return (
-    <section className="section" id="contracts">
-      <div className="section__head">
-        <h2>Contracts</h2>
-        <p className="meta">{x.contracts.meta}</p>
-      </div>
-      <div className="stack stack--lg">
-        <Panel
-          title="PLEA’s contracts"
-          flush
-          meta={
-            x.contracts.launch ||
-            (x.sourceCommit
-              ? `Launch commit ${/^[0-9a-f]{40}$/i.test(x.sourceCommit) ? x.sourceCommit.slice(0, 7) : x.sourceCommit}`
-              : x.name)
-          }
-        >
-          <dl className="addr-list">
-            {Object.entries(roles).map(([name, role]) => (
-              <div key={name}>
-                <dt>
-                  <b>{name}</b>
-                </dt>
-                <dd>
-                  <AddressView address={r.addresses[name]} label={name} />
-                  <span className="meta">· {role}</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <p className="small">
-            <a
-              className="link-btn"
-              href={`${x.source.repo}/tree/${x.source.ref}/src`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {/^[0-9a-f]{40}$/i.test(x.source.ref)
-                ? `Read the source at the launched commit, ${x.source.ref.slice(0, 7)}`
-                : `Read the source on the ${x.source.ref} branch`}{" "}
-              <Icon name="arrow-square-out" />
-            </a>
-          </p>
-        </Panel>
-        <Panel title="What PLEA works with" flush meta="Live today">
-          <dl className="addr-list">
-            {partners.map(
-              ([name, address, note]) =>
-                address &&
-                name && (
-                  <div key={name}>
-                    <dt>{name}</dt>
-                    <dd>
-                      <AddressView address={address} label={name} />
-                      {note && <span className="meta">· {note}</span>}
-                    </dd>
-                  </div>
-                ),
-            )}
-          </dl>
-        </Panel>
-        <Panel title="The owner’s powers, in plain words">
-          <p>
-            <b>Opening trading early.</b> Before{" "}
-            {start ? utc(start) : "the start time"} only the owner may open
-            trading; from then on anyone may.
-            {val(s, "PleaHook.seeded") ? " Trading is open now." : ""}
-          </p>
-          <p>
-            <b>One switch, add-only.</b> <code>PLEA.allow(account)</code> lets a
-            sender move PLEA without a plea, permanently. Accounts can be added,
-            never removed. Even an allowed sender cannot send PLEA into the pool
-            or the gate, so it cannot sell in PLEA’s pool without a plea.
-          </p>
-          <p>The distributor’s owner sets the claim list’s root once.</p>
-          <p>
-            <b>Handing over.</b> The owner may hand PLEA or the distributor to a
-            new owner, in two steps, or give ownership up. The distributor
-            cannot be given up before its claim list is set.
-          </p>
-          <p>
-            <b>No other power.</b> The owner cannot change the fees, the judges,
-            the rules or anyone’s pleas.
-          </p>
-          <p>
-            <b>The owner does not play.</b> Its pleas earn no points, no prize
-            and no bonus.
-          </p>
-          <AddressView address={val(s, "PLEA.owner")} label="PLEA owner" />
-        </Panel>
-        {!val(s, "CabalGate.diedAt") && (
-          <Notice
-            kind="warn"
-            title="While the Cabal lives you cannot sell without an approved plea."
-          >
-            <p>Only buy what you are happy to hold.</p>
-          </Notice>
-        )}
       </div>
     </section>
   );

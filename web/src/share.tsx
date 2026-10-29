@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useApp, useRead } from "./context";
+import { site } from "./site";
 import {
   amount,
   noVerdict,
@@ -136,7 +137,10 @@ export function ShareCard({ p }: { p?: Plea }) {
               ? `Plea #${p.id}`
               : dead
                 ? "The Cabal is dead."
-                : "The Cabal is in session."}
+                : // Before the seed nothing is in session yet; the still link card (og.png) is drawn then.
+                  !s?.v["PleaHook.seeded"]
+                  ? `On ${site().chain}.`
+                  : "The Cabal is in session."}
           </span>
         </div>
         {p ? (

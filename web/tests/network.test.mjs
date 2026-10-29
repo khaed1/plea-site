@@ -89,6 +89,17 @@ test("the Ethereum deployment is launch #2647's: its five contracts, the deploy 
   assert.deepEqual(n.site.indexer, { graphql: "https://indexer.pleaimd.fun/graphql" });
 });
 
+test("each deployment ships its own 1200 × 675 link card (networks/<key>/og.png)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const card = (key) => readFile(new URL(`../networks/${key}/og.png`, import.meta.url));
+  const [eth, sep] = await Promise.all([card("ethereum"), card("sepolia-run9")]);
+  for (const png of [eth, sep]) {
+    assert.equal(png.readUInt32BE(16), 1200);
+    assert.equal(png.readUInt32BE(20), 675);
+  }
+  assert.ok(!eth.equals(sep), "the Ethereum card names its own site, not run 9's");
+});
+
 test("a deployment without addresses refuses to build", async () => {
   const empty = path.join(dir, "no-contracts.json");
   await writeFile(empty, JSON.stringify({ version: 1, chainId: 1, contracts: [] }));
@@ -123,7 +134,7 @@ test("PLEA_DEPLOYMENT: an Ethereum fork's deployment fills the first block and t
   assert.equal(siteFor({ key: "x", eventStart: 5, expected: null }, { contracts: [{ blockNumber: 9 }] }).eventStart, 5);
   assert.throws(() => siteFor({ key: "x", eventStart: null }, { contracts: [{}] }), /No first block/);
   // index.html's link preview names the deployment's own URL.
-  assert.equal(htmlMeta(n.site, n.net.network).ogUrl, "https://plea.imd.site/");
+  assert.equal(htmlMeta(n.site, n.net.network).ogUrl, "https://pleaimd.imd.site/");
   assert.equal(htmlMeta(n.site, n.net.network).chain, "Ethereum", "the first paint: Loading the Ethereum deployment…");
   const sep = loadNetwork("sepolia-run9");
   assert.equal(htmlMeta(sep.site, sep.net.network).ogUrl, "https://plea-test-run-9.sites.imd.fun/");
