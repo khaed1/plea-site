@@ -482,3 +482,69 @@ test("every chain-bound number names a constant the site reads (an upper-case vi
     assert.match(name, /^[A-Z][A-Z_0-9]*$/, key);
   }
 });
+
+// Pages 1-9's diagrams (writer-a): each is one image named in words, drawn from numbers.json.
+const A_DIAGRAMS = ["loop", "launch-fee", "plea-states", "need", "ring", "appeal-window", "letter-path", "auto-sell", "objection-window"];
+const draw = (name, constants) =>
+  R.renderToStaticMarkup(
+    constants
+      ? R.createElement(R.NumbersProvider, { value: R.readerFor(constants) }, R.createElement(R.diagrams[name]))
+      : R.createElement(R.diagrams[name]),
+  );
+const nameOf = (out) => {
+  const m = out.match(/<div class="dg-art" role="img" aria-labelledby="([^"]+)"><span id="\1" class="sr-only">([^<]+)<\/span>/);
+  return m && m[2];
+};
+
+test("pages 1-9's diagrams: a figure with a title, one image named in words, no raw placeholder", () => {
+  for (const name of A_DIAGRAMS) {
+    assert.ok(R.diagrams[name], name);
+    const out = draw(name);
+    assert.match(out, /^<figure class="docs-figure panel stack stack--md dg"><figcaption class="docs-figure__title">/, name);
+    assert.ok((nameOf(out) || "").length > 80, `${name}: the image's name says what it shows`);
+    assert.ok(!/\{\{|\}\}|undefined|NaN/.test(out), name);
+    assert.ok(!/\bmain[ -]?net\b|chain[ -]?id:? ?1\b/i.test(out), name);
+    assert.ok(DOCS.some((p) => docFiles[fileOf(p)].includes(`::: diagram ${name}\n`)), `${name} is on a page`);
+  }
+});
+
+test("launch-fee: the fee every quarter hour is numbers.json's curve, rounded down to whole basis points", () => {
+  const out = draw("launch-fee");
+  const fees = [...out.matchAll(/<dd>([\d.]+%) <span class="text-2">\+ 2%<\/span><\/dd>/g)].map((m) => m[1]);
+  assert.deepEqual(fees, ["70%", "58.33%", "46.66%", "35%", "23.33%", "11.66%", "0%"]);
+  for (const f of fees) assert.ok(NUMBERS.launch_fee_curve.text.includes(f), f);
+  assert.match(nameOf(out), /at most 5,000,000 PLEA from the pool/);
+});
+
+test("need: the pass mark split into the four facts, and the need by days held", () => {
+  const out = draw("need");
+  assert.match(out, /Fact score 16 \+ 1 \+ 9 \+ 5 = 31\. Need 69 − 31 = 38\./);
+  const rows = [...out.matchAll(/<tr><th scope="row">([^<]+)<\/th>((?:<td[^>]*>\d+<\/td>)+)<\/tr>/g)].map((m) => [
+    m[1],
+    [...m[2].matchAll(/>(\d+)</g)].map((x) => Number(x[1])),
+  ]);
+  assert.deepEqual(rows, [
+    ["Bought, now at a loss", [35, 34, 33, 32]],
+    ["Bought, up at most 50%", [36, 35, 34, 33]],
+    ["Bought, up 200% to 500%", [40, 39, 38, 37]],
+    ["Received (airdrop, prizes)", [39, 38, 37, 36]],
+  ]);
+  // The chain's pass mark, if it differed, would move every need.
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.match(draw("need", { "CabalGate.PASS_MARK": 70n }), /Need 70 − 31 = 39\./);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("ring: 30 seats, 17 of them ticked; objection-window: the 7-minute sale inside the 20 minutes", () => {
+  const ring = draw("ring");
+  assert.equal((ring.match(/fill:var\(--approved\)/g) || []).length, 17 + 1); // the seats, and the key's
+  assert.equal((ring.match(/stroke-dasharray:5 3/g) || []).length, 30 - 17 + 1);
+  const obj = draw("objection-window");
+  assert.match(obj, /<span class="dg-time__fill" style="width:35%;background:var\(--executed\)">/);
+  assert.match(obj, /<span class="dg-time__fill" style="width:100%;background:var\(--objection\)">/);
+  for (const s of ["SUSTAINED", "OVERRULED", "VOID"]) assert.match(obj, new RegExp(`stamp--objection stamp--sm">${s}<`));
+});
