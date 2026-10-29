@@ -33,61 +33,61 @@ export default function Docs({ slug, heading }: { slug?: string; heading?: strin
   const { prev, next } = prevNext(doc?.slug || "");
   return (
     <NumbersProvider value={reader}>
-    <div className="docs">
-      <DocsSide current={doc?.slug} />
-      <article className="docs__page">
-        {page ? (
-          <div className="docs-body">
-            <Markdown tree={page.blocks} ctx={{ slug: page.slug, num, diagrams: DIAGRAMS }} />
-          </div>
-        ) : (
-          <div className="stack stack--lg">
-            <Title title="Page not found" />
-            <Empty title={`No docs page at #/docs/${slug}`} action={{ href: "#/docs", label: "Start here" }}>
-              Pick a page from the list, or search the docs.
-            </Empty>
-          </div>
-        )}
-        {page && (
-          <nav className="docs-pager" aria-label="Previous and next page">
-            {prev && (
-              <a className="docs-pager__link" href={docHref(prev.slug)} rel="prev">
-                <span className="label">Previous</span>
-                <span className="docs-pager__title">
-                  <span className="docs-pager__back">
+      <div className="docs">
+        <DocsSide current={doc?.slug} />
+        <article className="docs__page">
+          {page ? (
+            <div className="docs-body">
+              <Markdown tree={page.blocks} ctx={{ slug: page.slug, num, diagrams: DIAGRAMS }} />
+            </div>
+          ) : (
+            <div className="stack stack--lg">
+              <Title title="Page not found" />
+              <Empty title={`No docs page at #/docs/${slug}`} action={{ href: "#/docs", label: "Start here" }}>
+                Pick a page from the list, or search the docs.
+              </Empty>
+            </div>
+          )}
+          {page && (
+            <nav className="docs-pager" aria-label="Previous and next page">
+              {prev && (
+                <a className="docs-pager__link" href={docHref(prev.slug)} rel="prev">
+                  <span className="label">Previous</span>
+                  <span className="docs-pager__title">
+                    <span className="docs-pager__back">
+                      <Icon name="arrow-right" />
+                    </span>
+                    {prev.title}
+                  </span>
+                </a>
+              )}
+              {next && (
+                <a className="docs-pager__link docs-pager__link--next" href={docHref(next.slug)} rel="next">
+                  <span className="label">Next</span>
+                  <span className="docs-pager__title">
+                    {next.title}
                     <Icon name="arrow-right" />
                   </span>
-                  {prev.title}
-                </span>
-              </a>
-            )}
-            {next && (
-              <a className="docs-pager__link docs-pager__link--next" href={docHref(next.slug)} rel="next">
-                <span className="label">Next</span>
-                <span className="docs-pager__title">
-                  {next.title}
-                  <Icon name="arrow-right" />
-                </span>
-              </a>
-            )}
+                </a>
+              )}
+            </nav>
+          )}
+        </article>
+        {page && toc.length > 0 && (
+          <nav className="docs__toc" aria-label="On this page">
+            <p className="label">On this page</p>
+            <ul>
+              {toc.map((h) => (
+                <li key={h.id} className={h.level === 3 ? "docs__toc-sub" : undefined}>
+                  <a href={docHref(page.slug, h.id)} aria-current={h.id === heading ? "location" : undefined}>
+                    {h.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </nav>
         )}
-      </article>
-      {page && toc.length > 0 && (
-        <nav className="docs__toc" aria-label="On this page">
-          <p className="label">On this page</p>
-          <ul>
-            {toc.map((h) => (
-              <li key={h.id} className={h.level === 3 ? "docs__toc-sub" : undefined}>
-                <a href={docHref(page.slug, h.id)} aria-current={h.id === heading ? "location" : undefined}>
-                  {h.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
-    </div>
+      </div>
     </NumbersProvider>
   );
 }
