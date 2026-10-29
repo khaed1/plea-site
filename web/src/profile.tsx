@@ -836,7 +836,9 @@ export function Profile({ target }: { target?: string }) {
                                     {k.closed
                                       ? "closed, paid"
                                       : now >= Number(k.bounds[2])
-                                        ? "awaiting close"
+                                        ? // Its close records unrecorded approvals first (Seasons._tryRecord):
+                                          // the row is the recorded board's (NEW-1, round 2).
+                                          "awaiting close · recorded so far"
                                         : `${timeLeft(Number(k.bounds[2]) - now)} left`}
                                   </span>
                                 </td>

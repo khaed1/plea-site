@@ -553,6 +553,9 @@ function SeasonBody({
   // board as "What the close pays" (the approvals nobody recorded counted), not the recorded board's
   // (R1). A running season's Prize now stays the recorded board's, as the leaderboard shows it.
   const closes = !data.closed && (ended || !!bounds[3] || last),
+    // An ended season's close records the approvals nobody recorded first (Seasons._tryRecord), so its
+    // recorded board is not what the close pays: the board's figures say "recorded" then (NEW-1, round 2).
+    recordedOnly = closes && closing.length > 0,
     you = standingOn(closeRows, address, {
       shares: s!.v.shares,
       pot,
@@ -822,13 +825,17 @@ function SeasonBody({
             <>
               <div className="cluster standing">
                 <div className="stat">
-                  <span className="stat__label">Rank</span>
+                  <span className="stat__label">
+                    {recordedOnly ? "Recorded rank" : "Rank"}
+                  </span>
                   <span className="stat__value">
-                    {rank >= 0 ? rank + 1 : "none yet"}
+                    {rank >= 0 ? rank + 1 : closes ? "none" : "none yet"}
                   </span>
                 </div>
                 <div className="stat">
-                  <span className="stat__label">Points</span>
+                  <span className="stat__label">
+                    {recordedOnly ? "Recorded points" : "Points"}
+                  </span>
                   <span className="stat__value">{points}</span>
                   <span className="stat__note">
                     {minPoints} to share the season prize pot
@@ -1147,7 +1154,9 @@ function SeasonBody({
                 <span className="lb__who">Player</span>
                 <span className="lb__best">Best three</span>
                 <span className="lb__pts">Points</span>
-                <span className="lb__prize">Prize now</span>
+                <span className="lb__prize">
+                  {recordedOnly ? "Recorded prize" : "Prize now"}
+                </span>
               </li>
               {rows.map((e: any, i: number) => {
                 const qualified = !e.excluded && Number(e.points) >= minPoints,
@@ -1239,6 +1248,15 @@ function SeasonBody({
                 <li className="lb__bar">{line}</li>
               )}
             </ol>
+          )}
+          {rows.length > 0 && recordedOnly && (
+            <p className="small">
+              These are the recorded points. The close records{" "}
+              {closing.length === 1
+                ? "1 more approved plea"
+                : `${closing.length} more approved pleas`}{" "}
+              first, so the ranks and prizes it pays are in What the close pays.
+            </p>
           )}
           <p className="panel__foot">
             Equal points: the wallet whose newest counted plea is older ranks
