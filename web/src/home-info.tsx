@@ -503,7 +503,8 @@ export function ContractsPanel() {
           <p>The distributor’s owner sets the claim list’s root once.</p>
           <p>
             <b>Handing over.</b> The owner may hand PLEA or the distributor to a
-            new owner, in two steps, or give ownership up.
+            new owner, in two steps, or give ownership up. The distributor
+            cannot be given up before its claim list is set.
           </p>
           <p>
             <b>No other power.</b> The owner cannot change the fees, the judges,

@@ -4,6 +4,7 @@ import {
   carriedRollover,
   closeBoard,
   closePayout,
+  standingOn,
   LETTERBOX,
 } from "./models";
 import { resetHealth, type Runtime } from "./config";
@@ -38,6 +39,7 @@ import {
   seasonRecords,
 } from "./chain";
 import {
+  atClose,
   closeCounts,
   closingCopy,
   flushCopy,
@@ -524,6 +526,7 @@ function SeasonBody({
   // one, the top TOP at MIN_POINTS+ by rank. With incomplete history those approvals and the best
   // three they join are not known: the recorded board alone.
   const closing: Plea[] = s!.historyError ? [] : query.data?.closing || [],
+    excluded = (w: string) => rows.some((e: any) => equal(e.wallet, w) && e.excluded),
     closeRows = closeBoard(
       rows.map((e: any) => ({
         wallet: e.wallet,
@@ -544,7 +547,18 @@ function SeasonBody({
       pot,
       bonus,
       minPoints,
-      excluded: (w) => rows.some((e: any) => equal(e.wallet, w) && e.excluded),
+      excluded,
+    });
+  // An ended season that is not closed: Your standing's prize is what its close pays, on the same
+  // board as "What the close pays" (the approvals nobody recorded counted), not the recorded board's
+  // (R1). A running season's Prize now stays the recorded board's, as the leaderboard shows it.
+  const closes = !data.closed && (ended || !!bounds[3] || last),
+    you = standingOn(closeRows, address, {
+      shares: s!.v.shares,
+      pot,
+      bonus,
+      minPoints,
+      excluded,
     });
   const seatHeld = query.data?.seatHeld,
     // While the board cannot be read (loading or a read error), nothing below shows a number as
@@ -562,7 +576,7 @@ function SeasonBody({
     projectionText({
       best,
       points: Number(p.points || 0),
-      others: rows
+      others: (closes ? closeRows : rows)
         .filter((e: any) => !equal(e.wallet, address))
         .map((e: any) => Number(e.points)),
       shares: s!.v.shares,
@@ -571,6 +585,7 @@ function SeasonBody({
       minPoints,
       top: Number(con(s, "Seasons.TOP")),
       s,
+      ended: closes,
     });
   const nextToClose = BigInt(val(s, "Seasons.nextToClose")),
     ready = now >= closeAt && season === nextToClose,
@@ -819,10 +834,14 @@ function SeasonBody({
                     {minPoints} to share the season prize pot
                   </span>
                 </div>
-                {rank >= 0 && (
+                {(rank >= 0 || (closes && you.rank >= 0)) && (
                   <div className="stat">
                     <span className="stat__label">
-                      {data.closed ? "Prize" : "Prize now"}
+                      {data.closed
+                        ? "Prize"
+                        : closes
+                          ? "Prize at the close"
+                          : "Prize now"}
                     </span>
                     {/* Incomplete history: the approvals nobody recorded (which the close records
                         first) and the close's payouts are not known, so neither is the prize (L2). */}
@@ -837,22 +856,26 @@ function SeasonBody({
                       <>
                         <span className="stat__value">
                           {smallAmount(
-                            !qualifies
-                              ? 0n
-                              : data.closed
-                                ? paidTo(address)
-                                : (pot * share) / 10000n,
+                            closes
+                              ? you.prize
+                              : !qualifies
+                                ? 0n
+                                : data.closed
+                                  ? paidTo(address)
+                                  : (pot * share) / 10000n,
                             s,
                           )}
                         </span>
                         <span className="stat__note">
                           +{" "}
                           {tokenAmount(
-                            !qualifies
-                              ? 0n
-                              : data.closed
-                                ? paidTo(address, "BonusPaid")
-                                : (bonus * share) / 10000n,
+                            closes
+                              ? you.bonus
+                              : !qualifies
+                                ? 0n
+                                : data.closed
+                                  ? paidTo(address, "BonusPaid")
+                                  : (bonus * share) / 10000n,
                             s,
                           )}
                         </span>
@@ -862,14 +885,24 @@ function SeasonBody({
                 )}
               </div>
               {/* The band "no recorded plea" has no costs: only the sentence below (r2S-N7). */}
-              {(points > 0 || rank >= 0) && (
+              {(points > 0 || rank >= 0 || (closes && you.rank >= 0)) && (
                 <Costs
                   rows={[
-                    ["Best three", sums(best)],
+                    ...(points > 0 || rank >= 0
+                      ? ([["Best three", sums(best)]] as [string, string][])
+                      : []),
                     ...(points > 0 && judgesRow(counted(address, best), mult)
                       ? [judgesRow(counted(address, best), mult)!]
                       : []),
-                    ...(rank >= 0
+                    // An ended season: where the close puts you, as "What the close pays" counts it (R1).
+                    ...(closes && !s!.historyError
+                      ? ([
+                          [
+                            "At the close",
+                            atClose(you, minPoints, con(s, "Seasons.TOP")),
+                          ],
+                        ] as [string, string][])
+                      : rank >= 0
                       ? ([
                           [
                             "Share at rank " + (rank + 1),
@@ -909,22 +942,23 @@ function SeasonBody({
                         Season {season + 1n} is closed; these points were not
                         recorded.
                       </p>
+                    ) : pointsHeld(p, s!, now) ? (
+                      <>
+                        <Notice
+                          title={`Plea #${p.id}’s +${p.points} points are held until ${clock(until)}.`}
+                        >
+                          <p>{projection(p)}</p>
+                        </Notice>
+                        <div>
+                          <Countdown
+                            until={until}
+                            label="Objections close in"
+                          />
+                        </div>
+                      </>
                     ) : (
-                      pointsHeld(p, s!, now) && (
-                        <>
-                          <Notice
-                            title={`Plea #${p.id}’s +${p.points} points are held until ${clock(until)}.`}
-                          >
-                            <p>{projection(p)}</p>
-                          </Notice>
-                          <div>
-                            <Countdown
-                              until={until}
-                              label="Objections close in"
-                            />
-                          </div>
-                        </>
-                      )
+                      // Unrecorded and recordable: the same projection as while held (R1).
+                      <p>{projection(p)}</p>
                     )}
                     {!data.closed && (
                       <TxButton

@@ -1,6 +1,6 @@
 // Copy builders for #/seasons and the profile's seasons table, kept pure so the tests can check them.
 // Every rule number comes in from the chain constants (Seasons.TOP, MIN_POINTS, the shares, the pot).
-import { smallAmount, tokenAmount, type Snapshot } from "./chain";
+import { pct, smallAmount, tokenAmount, type Snapshot } from "./chain";
 
 /** "Closing the season", per state: not yet (the mockup's main copy), ready (now ≥ end + CLOSE_GRACE
  * and this season is nextToClose: the band "Close season 2 after the grace"), and the last season
@@ -99,9 +99,10 @@ export function noPleaText(o: {
   return `${head} Your best three count, and two pleas that score ${o.minPoints / 2} already reach the ${o.minPoints}-point bar; an IMD seat makes each one × ${o.mult}.`;
 }
 
-/** The held notice's sentence: what recording the plea's points makes (S5). The no-prize case ends
- * at the bar, with no "at today's season prize pot" (r2S-N8). `others`: the points of the other
- * wallets on the board (a tie ranks the older counted plea first, so they stay ahead). */
+/** What recording an unrecorded plea's points makes, held or not (S5, R1). The no-prize case ends
+ * at the bar, with no "at today's season prize pot" (r2S-N8), and no "yet" once the season has
+ * ended. `others`: the points of the other wallets on the board (a tie ranks the older counted
+ * plea first, so they stay ahead); for an ended season, the board its close pays from. */
 export function projection(o: {
   best: number[];
   points: number;
@@ -112,6 +113,7 @@ export function projection(o: {
   minPoints: number;
   top: number;
   s: Snapshot | undefined;
+  ended?: boolean;
 }) {
   const best = o.best.map(Number),
     filled = best.filter(Boolean),
@@ -127,8 +129,21 @@ export function projection(o: {
   return `Recorded, they make ${total} points (${next.join(" + ")}${drop}) and rank ${rank}: ${
     eligible
       ? `${tokenAmount((o.pot * bps) / 10000n, o.s, true)}${o.bonus ? ` + ${tokenAmount((o.bonus * bps) / 10000n, o.s)}` : ""} at today’s season prize pot.`
-      : `no prize yet (${total} of ${o.minPoints}).`
+      : `no prize${o.ended ? "" : " yet"} (${total} of ${o.minPoints}).`
   }`;
+}
+
+/** Your standing's "At the close" row for an ended season that is not closed: the wallet on the
+ * board its close pays from (closeBoard, standingOn), as "What the close pays" counts it (R1). */
+export function atClose(
+  o: { rank: number; points: number; share: bigint; qualifies: boolean },
+  minPoints: number,
+  top: number | bigint,
+) {
+  if (o.rank < 0) return `not in the top ${top}`;
+  return o.qualifies
+    ? `rank ${o.rank + 1}, ${o.points} points: ${pct(o.share)}`
+    : `rank ${o.rank + 1}: no prize${o.points < minPoints ? ` (${o.points} of ${minPoints})` : ""}`;
 }
 
 /** A profile seasons row's prize cell (profile.html:194): "8.41 imdTEST" with the note "+ 396,000

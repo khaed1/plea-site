@@ -18,6 +18,7 @@ import {
   insertEntry,
   closeBoard,
   closePayout,
+  standingOn,
   Q96,
 } from "../src/models.ts";
 import { siteFrom } from "../src/site.ts";
@@ -322,6 +323,62 @@ test("F2: the projection says which unrecorded pleas it counts", () => {
   const base = { season: 0n, ended: false, last: false, minPoints: 60, mult: "1.2" };
   assert.match(noPleaText({ ...base, excluded: true }), /does not play seasons/);
   assert.match(noPleaText(base), /two pleas that score 30 already reach the 60-point bar/);
+});
+
+test("R1: an ended season's standing is what its close pays, and the projection shows while a plea is recordable", () => {
+  // dead.hex, wallet p1: the recorded board has p1 at rank 2 with 40 (no prize); #16 (+43) is
+  // unrecorded and recordable, and the close records it first: rank 1, 83, 4.50% (0.04 IMD + 450,000
+  // PLEA), as "What the close pays" counts it and as the close paid p1 on the tester's fork.
+  const { atClose, projection } = seasonText;
+  const board = [
+      { wallet: p5, points: 52, pleaId: 11n },
+      { wallet: p1, points: 40, pleaId: 1n },
+    ],
+    records = [
+      { pleaId: 1n, wallet: p1, points: 40 },
+      { pleaId: 11n, wallet: p5, points: 52 },
+    ],
+    pending = [
+      { id: 13n, seller: p3, points: 44 },
+      { id: 14n, seller: p2, points: 43 },
+      { id: 16n, seller: p1, points: 43 },
+      { id: 17n, seller: p4, points: 42 },
+    ],
+    pot = 951111111111111111n,
+    bonus = 10_000_000n * E,
+    o = { shares: SHARES, pot, bonus, minPoints: 60, excluded: () => false },
+    s = { constants: { pairSymbol: "IMD", pairDecimals: 18, symbol: "PLEA", decimals: 18 } };
+  const before = standingOn(board, p1, o);
+  assert.deepEqual([before.rank, before.points, before.qualifies, before.prize, before.bonus], [1, 40, false, 0n, 0n]);
+  assert.equal(atClose(before, 60, 25), "rank 2: no prize (40 of 60)");
+  const closeRows = closeBoard(board, records, pending, 25),
+    you = standingOn(closeRows, p1.toUpperCase().replace("0X", "0x"), o),
+    paid = closePayout(closeRows, o);
+  assert.deepEqual([you.rank, you.points, you.share, you.qualifies], [0, 83, 450n, true]);
+  assert.equal(you.prize, paid.paid, "the standing's prize is the close's payout to p1");
+  assert.equal(you.bonus, 450_000n * E);
+  assert.equal(atClose(you, 60, 25), "rank 1, 83 points: 4.50%");
+  // Off the board, no wallet, excluded.
+  assert.equal(atClose(standingOn(closeRows, "0x99".padEnd(42, "0"), o), 60, 25), "not in the top 25");
+  assert.equal(standingOn(closeRows, undefined, o).rank, -1);
+  const owned = standingOn(closeRows, p1, { ...o, excluded: (w) => w === p1 });
+  assert.deepEqual([owned.qualifies, owned.prize, owned.bonus], [false, 0n, 0n]);
+  assert.equal(atClose(owned, 60, 25), "rank 1: no prize");
+  // The projection, recordable or held: against the close's board once the season has ended, with
+  // no "yet"; a running season keeps the recorded board and its "yet".
+  const p = { best: [40, 0, 0], points: 43, shares: SHARES, pot, bonus, minPoints: 60, top: 25, s };
+  assert.equal(
+    projection({ ...p, others: closeRows.filter((e) => e.wallet !== p1).map((e) => e.points), ended: true }),
+    "Recorded, they make 83 points (43 + 40 + 0) and rank 1: 0.04 IMD + 450,000 PLEA at today’s season prize pot.",
+  );
+  assert.equal(
+    projection({ ...p, points: 15, others: [61], ended: true }),
+    "Recorded, they make 55 points (40 + 15 + 0) and rank 2: no prize (55 of 60).",
+  );
+  assert.equal(
+    projection({ ...p, points: 15, others: [61] }),
+    "Recorded, they make 55 points (40 + 15 + 0) and rank 2: no prize yet (55 of 60).",
+  );
 });
 
 test("N1, N2, N4: countdowns read 6m 05s; no 'yet' for a plea number that never comes; an Intake's no answer is not an expiry", () => {

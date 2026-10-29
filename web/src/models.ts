@@ -173,6 +173,27 @@ export function closePayout(
     bonusPaid,
   };
 }
+/** One wallet on `board` (a close's, from closeBoard) and what the close pays it, by closePayout's
+ * rule: its row (-1: not in the top), points, its rank's share, and its prize and PLEA bonus (none
+ * under `minPoints` or when excluded). */
+export function standingOn(
+  board: SeasonEntry[],
+  wallet: string | undefined,
+  o: Parameters<typeof closePayout>[1],
+) {
+  const i = wallet ? board.findIndex((e) => sameWallet(e.wallet, wallet)) : -1,
+    e = board[i],
+    share = e ? BigInt(o.shares[i] ?? 0) : 0n,
+    qualifies = !!e && e.points >= o.minPoints && !o.excluded(e.wallet);
+  return {
+    rank: i,
+    points: e?.points ?? 0,
+    share,
+    qualifies,
+    prize: qualifies ? (o.pot * share) / 10000n : 0n,
+    bonus: qualifies ? (o.bonus * share) / 10000n : 0n,
+  };
+}
 export function clampAppeal(
   original: bigint,
   balance: bigint,

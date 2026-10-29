@@ -2,9 +2,9 @@
 
 ## In short
 
-While the Cabal lives, PLEA trades in one pool, against IMD, and the pool's liquidity is locked forever.
+While the Cabal lives, PLEA trades in one pool, against IMD. The pool's liquidity is locked forever.
 
-A cap follows the pool's PLEA down as people buy, and PLEA sold back above it is burned. The IMD the pool keeps from fees and burns becomes a buy wall just below the price.
+A cap follows the pool's PLEA down as people buy, and PLEA sold back above it is burned; the IMD the pool keeps from fees and burns becomes a buy wall just below the price.
 
 ## How it works
 
