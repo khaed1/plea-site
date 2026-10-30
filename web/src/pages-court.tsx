@@ -76,6 +76,9 @@ import {
   textCheck,
 } from "./components";
 import { parseAmount, WalletBalances, poolQuote } from "./pages-trade";
+import { minimumOf, sendMinimum } from "./swap-math";
+import { DisplayError } from "./errors";
+import { apartDigits } from "./trade-text";
 export function Wall() {
   const { r, s, now } = useApp(),
     { address } = useAccount(),
@@ -709,7 +712,9 @@ export function PleaPage({ id }: { id: string }) {
       knownClosed === undefined,
   );
   const seasonClosed = knownClosed ?? recordSeasonQuery.data;
-  const saleQuote = useSaleQuote(p);
+  // Sell now refused on a price that moved since the page's quote reads the quote again (N3).
+  const [saleRevision, setSaleRevision] = useState(0);
+  const saleQuote = useSaleQuote(p, saleRevision);
 
   const mine = p?.seller.toLowerCase() === address?.toLowerCase();
   const tx = useTx(id);
@@ -764,7 +769,8 @@ export function PleaPage({ id }: { id: string }) {
   const objectionUntil =
     Number(p.verdictAt) + Number(con(s, "Tribunal.OBJECTION_WINDOW"));
   const net = saleQuote.data || 0n;
-  const minOut = (net * 99n) / 100n;
+  // The minimum Sell now is sent with: the one the page shows, 1% under its quote (N3).
+  const minOut = minimumOf(net, 100);
   const canSell = p.status === 2 && now <= sellUntil;
   const auto = (p.flags & 2) > 0;
   const missedSeason =
@@ -990,7 +996,20 @@ export function PleaPage({ id }: { id: string }) {
                           args: [0n],
                           account: address!,
                         });
-                        return [((simulation.result as bigint) * 99n) / 100n];
+                        // The sale goes with the minimum the page shows, as a buy does (sendMinimum):
+                        // a price that fell past it since the page's quote sends nothing, and the page
+                        // reads the new quote for the next press (N3).
+                        const fresh = simulation.result as bigint,
+                          { minimum, moved } = sendMinimum(net, fresh, 100);
+                        if (moved) {
+                          setSaleRevision((n) => n + 1);
+                          const digits = apartDigits(fresh, minimum, Number(s.constants.pairDecimals ?? 18), 2);
+                          throw new DisplayError({
+                            title: `The price moved: the sale now gets about ${tokenAmount(fresh, s, true, digits)}.`,
+                            body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, true, digits)}, so nothing was sold and your PLEA stays in your wallet. The quote above is the new one: press Sell now again before ${clock(sellUntil, true)} to sell at it.`,
+                          });
+                        }
+                        return [minimum];
                       }}
                       errors={{
                         SlippageExceeded: `The price moved more than 1%. Nothing was sold; your PLEA stays in your wallet. The window is open until ${clock(sellUntil, true)}: try again.`,

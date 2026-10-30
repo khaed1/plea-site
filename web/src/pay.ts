@@ -269,6 +269,19 @@ export function marketTip(
     median = tips.length % 2 ? tips[mid] : (tips[mid - 1] + tips[mid]) / 2n;
   return median > nodeTip ? median : nodeTip;
 }
+/** How far behind the block read with it a fee history may end and still count (the RPCs differ by a
+ * block or two). rpc.flashbots.net answered eth_feeHistory("latest") from a node 14,938 blocks (about
+ * two days) behind in 4 of 5 reads at 22:12 UTC on 2026-10-29 (13 of 25 at 23:50), while its
+ * eth_getBlockByNumber was current: that history's tips (0.25 gwei against a live 6.3 gwei) are another
+ * day's market (N1). */
+export const TIP_LAG = 3n;
+type FeeHistory = { oldestBlock?: bigint; reward?: bigint[][]; gasUsedRatio: number[] };
+/** Whether a fee history ends more than TIP_LAG blocks before `head` (the latest block read with it).
+ * A history without blocks, or a head or oldest block not known, says nothing either way. */
+export function feeHistoryBehind(history: FeeHistory | undefined, head: bigint | null | undefined) {
+  if (!history?.gasUsedRatio.length || history.oldestBlock === undefined || head == null) return false;
+  return history.oldestBlock + BigInt(history.gasUsedRatio.length) - 1n + TIP_LAG < head;
+}
 /** The fees a routed ETH buy is sent with (the base fee they were worked out at, for fitFees). */
 export type RouteFees = { baseFee: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
 /** The tip: the market's (marketTip); the max fee: twice the base fee plus the tip (room for the base
@@ -278,22 +291,32 @@ export function routeFees(baseFee: bigint, tip: bigint): RouteFees {
   return { baseFee, maxFeePerGas: 2n * baseFee + tip, maxPriorityFeePerGas: tip };
 }
 /** routeFees at the latest block's base fee and the market's tip (the fee history of the last
- * TIP_BLOCKS blocks, at least the RPC's eth_maxPriorityFeePerGas). */
+ * TIP_BLOCKS blocks, at least the RPC's eth_maxPriorityFeePerGas). A history that ends more than
+ * TIP_LAG blocks before that block comes from a node that is behind: the history is asked again up to
+ * the block itself, which such a node refuses ("request beyond head block"), so the next RPC answers
+ * (N1). Still behind, or no answer: no history, so the tip is WALLET_TIP (or the node's, if higher). */
 export async function readRouteFees(client: {
-  getBlock: () => Promise<{ baseFeePerGas: bigint | null }>;
+  getBlock: () => Promise<{ baseFeePerGas: bigint | null; number: bigint | null }>;
   estimateMaxPriorityFeePerGas: () => Promise<bigint>;
   getFeeHistory: (a: {
     blockCount: number;
     rewardPercentiles: number[];
-  }) => Promise<{ reward?: bigint[][]; gasUsedRatio: number[] }>;
+    blockNumber?: bigint;
+  }) => Promise<FeeHistory>;
 }): Promise<RouteFees> {
-  const [block, nodeTip, history] = await Promise.all([
+  const range = { blockCount: TIP_BLOCKS, rewardPercentiles: [TIP_PERCENTILE] };
+  const [block, nodeTip, latest] = await Promise.all([
     client.getBlock(),
     client.estimateMaxPriorityFeePerGas().catch(() => 0n),
-    client
-      .getFeeHistory({ blockCount: TIP_BLOCKS, rewardPercentiles: [TIP_PERCENTILE] })
-      .catch(() => undefined),
+    client.getFeeHistory(range).catch(() => undefined),
   ]);
+  let history = latest;
+  if (feeHistoryBehind(history, block.number)) {
+    history = await client
+      .getFeeHistory({ ...range, blockNumber: block.number! })
+      .catch(() => undefined);
+    if (feeHistoryBehind(history, block.number)) history = undefined;
+  }
   return routeFees(block.baseFeePerGas ?? 0n, marketTip(history, nodeTip));
 }
 /** The ETH Max keeps for the gas: ROUTE_GAS at twice the base fee plus the larger of the tip sent and
@@ -318,6 +341,13 @@ export function fitFees(fees: RouteFees, left: bigint): RouteFees | undefined {
  * exactly what is paid; 0 when the balance does not cover the gas. */
 export const ethMax = (balance: bigint, reserve: bigint) =>
   balance > reserve ? ((balance - reserve) / 10n ** 14n) * 10n ** 14n : 0n;
+/** The least ETH a routed buy must leave beside its value to be sent at all: ROUTE_GAS at the base fee
+ * plus the tip (fitFees sends with less than gasHeld down to this, and nothing below it). */
+export const gasFloor = (fees: RouteFees) => ROUTE_GAS * (fees.baseFee + fees.maxPriorityFeePerGas);
+/** The most a typed ETH amount can be and still be sent at the site's fees (it leaves gasFloor),
+ * rounded down to 0.0001 ETH; 0 when even that does not fit. A wallet below Max's reserve can still
+ * hold more than gasFloor: Max then has nothing to spend, yet a smaller amount goes through (N2). */
+export const ethFit = (balance: bigint, fees: RouteFees) => ethMax(balance, gasFloor(fees));
 
 /** The Buy page's "Pay with" choice, per browser: PAY_PAIR (the pool currency, IMD: the main way to
  * buy) or a route's symbol (ETH, USDC: extra options). */

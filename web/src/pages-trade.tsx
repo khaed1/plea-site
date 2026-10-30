@@ -43,6 +43,7 @@ import { useApp, useRead, useTx, receiptEvents } from "./context";
 import { erc20Abi, swapAbi, resetHealth } from "./config";
 import { cashbackWords, sellGateWarning } from "./site";
 import {
+  apartDigits,
   DEFAULT_SLIP,
   gasFix,
   SLIPPAGES,
@@ -62,6 +63,7 @@ import {
 import {
   atPoolPrice,
   buyPath,
+  ethFit,
   ethMax,
   feeWords,
   fitFees,
@@ -487,11 +489,15 @@ export function Buy() {
         : "";
   const invalid =
     !tradeDone && ((available !== undefined && raw > available) || !!capError);
-  // Whether Max has anything to spend: if not, a smaller amount cannot help, more ETH or another
-  // currency can (RT3-5).
-  const maxSpends =
-      !native || available === undefined || reserve === undefined || ethMax(available, reserve) > 0n,
-    ethFix = gasFix(maxSpends, others);
+  // What helps with the ETH a buy leaves for the gas, from a balance and the fees: a smaller amount or
+  // Max while Max has something to spend; otherwise the most a typed amount can still be at the
+  // site's fees, when there is one (N2), more ETH or another currency (RT3-5).
+  const ethHelp = (eth: bigint | undefined, fees: RouteFees | undefined) => {
+    if (eth === undefined || !fees || ethMax(eth, gasReserve(fees)) > 0n) return gasFix(true, others);
+    const fits = ethFit(eth, fees);
+    return gasFix(false, others, fits > 0n ? amount(fits, 18, 4) : undefined);
+  };
+  const ethFix = ethHelp(available, gasFees.data);
   const amountReason = !val(s, "PleaHook.seeded")
     ? "Trading is not open yet."
     : raw <= 0n
@@ -544,7 +550,10 @@ export function Buy() {
       : maxNote === "short"
         ? ethMax(available, reserve) > 0n
           ? ""
-          : `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas, and this wallet has ${amount(available, 18, 4)} ETH: too little to buy with ETH. ${gasFix(false, others)}`
+          : // Max keeps room for a wallet's own fee; a smaller amount may still fit the site's (N2).
+            ethFit(available, gasFees.data!) > 0n
+            ? `Max keeps about ${amount(reserve, 18, 4, "up")} ETH for the gas in case your wallet sets its own fee, and this wallet has ${amount(available, 18, 4)} ETH, so Max has nothing to spend. ${ethFix}`
+            : `Max keeps about ${amount(reserve, 18, 4, "up")} ETH free for the gas, and this wallet has ${amount(available, 18, 4)} ETH: too little to buy with ETH, even at the fees the site sends. ${ethFix}`
         : gasLeft !== undefined && gasLeft >= reserve
           ? `Max keeps about ${amount(gasLeft, 18, 4)} ETH free for the gas.`
           : "";
@@ -638,16 +647,20 @@ export function Buy() {
   };
   /** The price moved past the slippage between the page's quote and the click (sendMinimum). "About":
    * in the launch window the page's reloaded quote is a little higher, its launch fee read later. */
-  const movedMessage = (fresh: bigint, minimum: bigint) => ({
-    title: `The price moved: the new quote is about ${tokenAmount(fresh, s, selling)}.`,
-    body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, selling)}, so nothing was sent and your ${unit} stays in your wallet. The quote above is the new one: press ${selling ? "Sell" : "Buy"} again to ${selling ? "sell" : "buy"} at it.`,
-  });
+  const movedMessage = (fresh: bigint, minimum: bigint) => {
+    // Enough digits that the two read apart (N3).
+    const digits = apartDigits(fresh, minimum, Number(s?.constants[selling ? "pairDecimals" : "decimals"] ?? 18), selling ? 2 : 0);
+    return {
+      title: `The price moved: the new quote is about ${tokenAmount(fresh, s, selling, digits)}.`,
+      body: `That is below the minimum this page showed, ${tokenAmount(minimum, s, selling, digits)}, so nothing was sent and your ${unit} stays in your wallet. The quote above is the new one: press ${selling ? "Sell" : "Buy"} again to ${selling ? "sell" : "buy"} at it.`,
+    };
+  };
   // Native ETH pays the gas too: the wallet's "insufficient funds", or the send's own check
   // (fitFees, with the ETH and the fees read at the click), in the gas reserve's words. What helps
   // follows Max: nothing to spend, then more ETH or another currency.
   const fundsMessage = (left = gasLeft, fees = gasFees.data, eth = available) => {
     const need = fees ? gasReserve(fees) : undefined,
-      fix = gasFix(eth === undefined || need === undefined || ethMax(eth, need) > 0n, others);
+      fix = ethHelp(eth, fees);
     return {
       title: "Not bought: too little ETH is left for the gas.",
       body: `${left !== undefined ? `Paying ${payAmount(raw)} leaves ${amount(left, 18, 4)} ETH` : "The ETH left is"}, too little for the gas at today’s fees${need !== undefined ? `: Max keeps about ${amount(need, 18, 4, "up")} ETH for it` : ""}. ${fix} Nothing was sent.`,
@@ -656,7 +669,7 @@ export function Buy() {
   /** The wallet's ETH fell below the amount between the page's read and the click (RT3-3). */
   const lessEthMessage = (eth: bigint, fees?: RouteFees) => ({
     title: "Not bought: the wallet has less ETH than the amount.",
-    body: `The wallet now has ${amount(eth, 18, 4)} ETH, less than the ${payAmount(raw)} to pay. ${gasFix(!fees || ethMax(eth, gasReserve(fees)) > 0n, others)} Nothing was sent.`,
+    body: `The wallet now has ${amount(eth, 18, 4)} ETH, less than the ${payAmount(raw)} to pay. ${ethHelp(eth, fees)} Nothing was sent.`,
   });
   const routerErrors: Record<string, { title: string; body: string }> = universal
     ? {

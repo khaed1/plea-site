@@ -2,7 +2,8 @@ import { useAccount } from "wagmi";
 import { useApp, useRead } from "./context";
 import { read, type Plea } from "./chain";
 import { poolQuote } from "./pages-trade";
-export function useSaleQuote(p?: Plea) {
+/** `revision`: a new number reads the quote again now (Sell now refused because the price moved: N3). */
+export function useSaleQuote(p?: Plea, revision = 0) {
   const { r, s } = useApp(),
     { address } = useAccount();
   return useRead(
@@ -27,7 +28,7 @@ export function useSaleQuote(p?: Plea) {
       }
       return (await poolQuote(r, s!, p.amount, true)).out;
     },
-    [p?.id, address, p?.status],
+    [p?.id, address, p?.status, revision],
     !!s && !!p && p.status === 2,
   );
 }

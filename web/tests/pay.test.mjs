@@ -30,6 +30,8 @@ import {
   gasReserve,
   hopKey,
   marketTip,
+  feeHistoryBehind,
+  TIP_LAG,
   PAY_KEY,
   PAY_PAIR,
   payChoices,
@@ -273,6 +275,71 @@ test("RT3-1: the tip is the market's: the median of the last 20 blocks' 75th per
   assert.equal(980_000n * WALLET_TIP, 1_960_000_000_000_000n);
 });
 
+// N1: read-only on 2026-10-29: rpc.flashbots.net's eth_feeHistory(20, "latest", [75]) ended at block
+// 26,286,806 in 1 of 3 reads (the others, publicnode and mevblocker: 26,301,744, its own block number
+// too), first tips 0.15 to 0.85 gwei against a live 1.6 to 4.7 gwei; asked up to 26,301,744 it said
+// "request beyond head block: requested 26301744, head 26286806" (-32602, which the transport takes as a
+// node's answer and asks the next RPC).
+test("N1: a fee history that ends more than a few blocks before the latest block is asked again up to that block, else not used", async () => {
+  const HEAD = 26_301_744n,
+    STALE = 26_286_806n,
+    at = (newest, p75) => ({ oldestBlock: newest - BigInt(p75.length) + 1n, ...history(p75) }),
+    gwei = (n) => BigInt(Math.round(n * 1e9));
+  assert.equal(TIP_LAG, 3n);
+  assert.equal(feeHistoryBehind(at(STALE, LIVE.p75), HEAD), true);
+  assert.equal(feeHistoryBehind(at(HEAD, LIVE.p75), HEAD), false);
+  // A block or two between RPCs is no lag; a history ahead of the block read is fresh.
+  assert.equal(feeHistoryBehind(at(HEAD - TIP_LAG, LIVE.p75), HEAD), false);
+  assert.equal(feeHistoryBehind(at(HEAD - TIP_LAG - 1n, LIVE.p75), HEAD), true);
+  assert.equal(feeHistoryBehind(at(HEAD + 2n, LIVE.p75), HEAD), false);
+  // Nothing to judge by: no blocks, no oldest block, no head.
+  assert.equal(feeHistoryBehind(undefined, HEAD), false);
+  assert.equal(feeHistoryBehind({ oldestBlock: STALE, gasUsedRatio: [] }, HEAD), false);
+  assert.equal(feeHistoryBehind(history(LIVE.p75), HEAD), false);
+  assert.equal(feeHistoryBehind(at(STALE, LIVE.p75), null), false);
+
+  const stale = at(STALE, [0.151, 0.529, 0.247, 0.847, 0.117].map(gwei)),
+    fresh = at(HEAD, [4.526, 4.715, 1.59, 3.734, 3.106].map(gwei));
+  const client = (latest, pinned) => {
+    const asked = [];
+    return {
+      asked,
+      getBlock: async () => ({ baseFeePerGas: LIVE.base, number: HEAD }),
+      estimateMaxPriorityFeePerGas: async () => LIVE.nodeTip,
+      getFeeHistory: async (a) => {
+        asked.push(a);
+        const answer = a.blockNumber === undefined ? latest : pinned;
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    };
+  };
+  // A fresh history: one read, its median (3.734 gwei).
+  let c = client(fresh);
+  assert.equal((await readRouteFees(c)).maxPriorityFeePerGas, gwei(3.734));
+  assert.deepEqual(c.asked, [{ blockCount: 20, rewardPercentiles: [75] }]);
+  // Stale: asked again up to the block read, and the next RPC's fresh answer sets the tip, not 0.247 gwei.
+  c = client(stale, fresh);
+  assert.equal((await readRouteFees(c)).maxPriorityFeePerGas, gwei(3.734));
+  assert.deepEqual(c.asked, [
+    { blockCount: 20, rewardPercentiles: [75] },
+    { blockCount: 20, rewardPercentiles: [75], blockNumber: HEAD },
+  ]);
+  // Stale again, or refused by every RPC: no history, so a wallet's own tip (2 gwei), never the stale one.
+  assert.equal((await readRouteFees(client(stale, stale))).maxPriorityFeePerGas, WALLET_TIP);
+  assert.equal(
+    (await readRouteFees(client(stale, Error("request beyond head block: requested 26301744, head 26286806")))).maxPriorityFeePerGas,
+    WALLET_TIP,
+  );
+  // The opposite case: a stale busy window is not paid either.
+  const busy = at(STALE, [40, 45, 50].map(gwei)),
+    calm = at(HEAD, [0.5, 0.7, 0.9].map(gwei));
+  assert.equal((await readRouteFees(client(busy, calm))).maxPriorityFeePerGas, gwei(0.7));
+  // A block without a number (never for "latest"): the history is taken as it is.
+  const unnumbered = { ...client(stale), getBlock: async () => ({ baseFeePerGas: LIVE.base, number: null }) };
+  assert.equal((await readRouteFees(unnumbered)).maxPriorityFeePerGas, gwei(0.247));
+});
+
 test("RT3-1: Max keeps 2.4M gas at twice the base fee plus the larger of the tip sent and a wallet's own 2 gwei; the send fits the fees it actually sends", () => {
   const gwei = 10n ** 9n,
     tip = 718_134_522n,
@@ -489,7 +556,7 @@ test("RT1-1: the send keeps the page's minimum; a fresh quote below it sends not
   assert.match(src, /const \{ minimum, moved \} = sendMinimum\(shown\.out, q\.out, slip\);\s*if \(moved\) \{\s*setRevision\(\(n\) => n \+ 1\);\s*throw new DisplayError\(movedMessage\(q\.out, minimum\)\);/);
   assert.doesNotMatch(src, /q\.out \* BigInt\(10000 - slip\)/);
   // RT2-3: "about": in the launch window the page's reloaded quote is a little higher (its launch fee read later).
-  assert.match(src, /title: `The price moved: the new quote is about \$\{tokenAmount\(fresh, s, selling\)\}\.`/);
+  assert.match(src, /title: `The price moved: the new quote is about \$\{tokenAmount\(fresh, s, selling, digits\)\}\.`/);
   assert.doesNotMatch(src, /the new quote is ≈/);
 });
 

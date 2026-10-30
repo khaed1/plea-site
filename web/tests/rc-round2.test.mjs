@@ -46,7 +46,8 @@ test("RS1-L1: the docs quote the plea page's own refusals for a plea sale and a 
   assert.ok(!plead.includes(generic) && !keepers.includes(generic));
   assert.match(plead, /The sale's minimum is fixed at 1% under the quote: there is no slippage to choose\./);
   assert.match(plead, /for at least the minimum the page shows: the quote less 1%\./);
-  assert.match(court, /return \[\(\(simulation\.result as bigint\) \* 99n\) \/ 100n\];/);
+  // Sell now sends the page's own minimum (N3: rc-round3.test.mjs).
+  assert.match(court, /\{ minimum, moved \} = sendMinimum\(net, fresh, 100\);/);
   // Sell now's own lapse message, in the docs' example (approved at 12:04, the window to 12:11, the
   // cooldown from the approval: 16:04).
   assert.match(court, /WindowLapsed: `The window closed at \$\{clock\(sellUntil, true\)\}\. Plea #\$\{p\.id\} lapsed: nothing was sold\. \$\{p\.standing\?\.\[1\] \|\| p\.excluded \? "" : `Your \+\$\{p\.points\} points still count\. `\}Next plea at \$\{clock\(/);

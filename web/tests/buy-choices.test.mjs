@@ -119,13 +119,15 @@ test("RT3-5 + RT2-2: when Max has nothing to spend, the ETH words offer more ETH
   assert.equal(gasFix(false, ["IMD", "USDC"]), "Add ETH, or pay with IMD or USDC.");
   assert.equal(gasFix(false, []), "Add ETH.");
   // Every place: the amount check, the gas note, Max's own note, the send's refusals.
-  assert.match(src, /maxSpends =\s*!native \|\| available === undefined \|\| reserve === undefined \|\| ethMax\(available, reserve\) > 0n,\s*ethFix = gasFix\(maxSpends, others\);/);
+  assert.match(src, /if \(eth === undefined \|\| !fees \|\| ethMax\(eth, gasReserve\(fees\)\) > 0n\) return gasFix\(true, others\);/);
+  assert.match(src, /const ethFix = ethHelp\(available, gasFees\.data\);/);
   assert.match(src, /`You have \$\{payAmount\(available\)\}\. \$\{native \? ethFix : "Lower the amount or press Max\."\}`/);
   assert.match(src, /too little for the gas at today’s fees: Max keeps about \$\{amount\(reserve, 18, 4, "up"\)\} ETH for it\. \$\{ethFix\}`/);
-  assert.match(src, /too little to buy with ETH\. \$\{gasFix\(false, others\)\}`/);
-  assert.match(src, /fix = gasFix\(eth === undefined \|\| need === undefined \|\| ethMax\(eth, need\) > 0n, others\);/);
+  assert.match(src, /too little to buy with ETH, even at the fees the site sends\. \$\{ethFix\}`/);
+  assert.match(src, /fix = ethHelp\(eth, fees\);/);
+  assert.match(src, /less than the \$\{payAmount\(raw\)\} to pay\. \$\{ethHelp\(eth, fees\)\} Nothing was sent\./);
   assert.doesNotMatch(src, /pay with another currency/);
-  assert.match(buying, /If even Max leaves nothing to spend, the site suggests adding ETH or paying with IMD or USDC\./);
+  assert.match(buying, /If Max leaves nothing to spend, the site says the most you can still pay at the fees it sends, if any, and suggests adding ETH or paying with IMD or USDC\./);
 });
 
 test("RT3-4: the gas note warns only when the send would refuse; a buy that fits the fees sent gets a margin note", () => {

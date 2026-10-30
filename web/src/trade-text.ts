@@ -74,8 +74,17 @@ export function slipWarning(o: {
   return `${at}. While the Cabal lives PLEA sells only through an approved plea, so a bot cannot simply buy ahead of you and sell straight after; other buyers can still move the price, and so can a holder whose approved plea is open, by buying ahead of you and selling after. ${when}`;
 }
 /** What helps when the ETH a buy leaves cannot pay the gas: a smaller amount, or Max, while Max has
- * something to spend; otherwise more ETH or another currency (the pool currency first). */
-export const gasFix = (maxSpends: boolean, others: string[]) =>
+ * something to spend; otherwise the most a typed amount can be at the site's fees (`fits`, pay.ts
+ * ethFit, when there is one: N2), more ETH or another currency (the pool currency first). */
+export const gasFix = (maxSpends: boolean, others: string[], fits?: string) =>
   maxSpends
     ? "Lower the amount or press Max."
-    : `Add ETH${others.length ? `, or pay with ${others.join(" or ")}` : ""}.`;
+    : `${fits ? `Pay at most ${fits} ETH at the fees the site sends, ${others.length ? "add" : "or add"} ETH` : "Add ETH"}${others.length ? `, or pay with ${others.join(" or ")}` : ""}.`;
+/** The digits two amounts (rounded down, as chain.ts amount shows them) need to read apart, from `digits`
+ * up to 6: a price-moved message says "about 0.7753 IMD, below the minimum this page showed, 0.7756 IMD",
+ * never 0.77 IMD twice (N3). */
+export function apartDigits(a: bigint, b: bigint, decimals: number, digits: number) {
+  const unit = (d: number) => 10n ** BigInt(decimals - d);
+  while (digits < Math.min(6, decimals) && a / unit(digits) === b / unit(digits)) digits++;
+  return digits;
+}
