@@ -232,9 +232,9 @@ export function AddressView({
           try {
             await navigator.clipboard.writeText(address);
             setCopied(true);
-            // The label may read "the owner" (the Copy button's words): the toast starts a sentence,
-            // and only that "the" changes (imd/acc, sIMD and imdTEST keep their own case).
-            toast?.({ kind: "info", text: `${label.replace(/^the /, "The ")} address copied.` });
+            // The toast says what the button's name says, so a label stays as written: "the owner",
+            // "seller", a display name, imd/acc, sIMD, imdTEST.
+            toast?.({ kind: "info", text: `Copied ${label} address.` });
             setTimeout(() => setCopied(false), 1500);
           } catch {
             toast?.({

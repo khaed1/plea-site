@@ -241,10 +241,10 @@ export async function quoteToImd(
  * gas left, so the estimate sits far above the 540,000 to 980,000 gas a buy used there). */
 export const ROUTE_GAS = 2_400_000n;
 /** A wallet's own tip, for a wallet that ignores the fees the site sends: MetaMask's default ("Market",
- * its gas API's medium) asked 2 gwei on 2026-10-29 (a 2.40 gwei max fee at a 0.28 gwei base fee) on
- * calm reads, and up to 7 gwei when the network was busy, when twice the base fee was higher anyway. The site's tip is the market's (marketTip), which is usually far
- * less; Max still keeps enough for this one (gasReserve). Also the tip sent when the fee history
- * cannot be read. */
+ * its gas API's medium) asked 2 gwei on calm reads on 2026-10-29 (a 2.40 gwei max fee at a 0.28
+ * gwei base fee), and up to 7 gwei when the network was busy. The site's tip is the market's
+ * (marketTip), which is usually far less; Max still keeps enough for this one (gasReserve). Also the
+ * tip sent when the fee history cannot be read. */
 export const WALLET_TIP = 2_000_000_000n;
 /** The fee history the site's tip is read from: the last TIP_BLOCKS blocks, each block's
  * TIP_PERCENTILE-th percentile tip (eth_feeHistory weighs it by gas). */

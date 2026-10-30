@@ -76,8 +76,9 @@ test("RS1-L3: a test build's Contracts and owner page lists its own addresses in
   assert.match(info, /All of PLEA’s contracts are on the\{" "\}\s*<a href="#\/docs\/contracts">Contracts and owner<\/a> page in the docs\./);
 });
 
-test("RS1-N1: the Copy toast starts a sentence by capitalising only a leading \"the\" (imd/acc, sIMD and imdTEST keep their case); the button's name holds its visible word", () => {
-  assert.match(components, /text: `\$\{label\.replace\(\/\^the \/, "The "\)\} address copied\.`/);
+test("RS1-N1: the Copy toast starts with \"Copied\" and keeps every label as written (the owner, profile, seller, vault, recipient, a display name, imd/acc, sIMD, imdTEST); the button's name holds its visible word", () => {
+  assert.match(components, /text: `Copied \$\{label\} address\.`/);
+  assert.doesNotMatch(components, /label(\[0\]|\.replace\(\/\^the)/);
   assert.match(components, /aria-label=\{`\$\{copied \? "Copied" : "Copy"\} \$\{label\} address`\}/);
   assert.match(components, /<span>\{copied \? "Copied" : "Copy"\}<\/span>/);
 });
