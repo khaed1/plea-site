@@ -389,7 +389,9 @@ export function Profile({ target }: { target?: string }) {
                     tokenAmount(data.plea, s),
                     val(s, "CabalGate.diedAt")
                       ? "Sells freely on the Buy page"
-                      : `A plea: ${tokenAmount(data.plea / 100n, s)} to ${tokenAmount(data.plea / 2n < BigInt(con(s, "CabalGate.MAX_SELL")) ? data.plea / 2n : BigInt(con(s, "CabalGate.MAX_SELL")), s)}`,
+                      : !data.plea
+                        ? "No PLEA to plead with"
+                        : `A plea: ${tokenAmount(data.plea / 100n, s)} to ${tokenAmount(data.plea / 2n < BigInt(con(s, "CabalGate.MAX_SELL")) ? data.plea / 2n : BigInt(con(s, "CabalGate.MAX_SELL")), s)}`,
                   ],
                   [
                     s?.constants.pairSymbol,

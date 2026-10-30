@@ -57,8 +57,13 @@ test("RS1-L1: the docs quote the plea page's own refusals for a plea sale and a 
 test("RS1-L2: before the open, Home's market cap says not open yet and the cap trading opens at, never 0 IMD", () => {
   assert.match(
     info,
-    /"Market cap",[^\]]*?seeded\s*\? tokenAmount\(\(supply \* price\) \/ 2n \*\* 96n, s, true, 0\)\s*: "Not open yet",\s*seeded\s*\? `Supply \$\{tokenAmount\(supply, s\)\}`\s*: `Opens at \$\{tokenAmount\(con\(s, "PleaHook\.MARKET_CAP_IMD"\), s, true, 0\)\}`,/,
+    /"Market cap",[^\]]*?seeded\s*\? marketCap\(\(supply \* price\) \/ 2n \*\* 96n, s\)\s*: "Not open yet",\s*seeded\s*\? `Supply \$\{tokenAmount\(supply, s\)\}`\s*: `Opens at \$\{tokenAmount\(con\(s, "PleaHook\.MARKET_CAP_IMD"\), s, true, 0\)\}`,/,
   );
+  // N6: under one pair token the cap shows two decimals (Sepolia's 0.86 imdTEST, not 0).
+  assert.match(info, /tokenAmount\(cap, s, true, cap < 10n \*\* BigInt\(s\?\.constants\.pairDecimals \?\? 18\) \? 2 : 0\)/);
+  // N3: a value in words ("Not open yet") may wrap on a phone; numbers stay on one line.
+  assert.match(info, /<span className=\{\/\\d\/\.test\(String\(value\)\) \? "nowrap" : "stat__words"\}>\{value\}<\/span>/);
+  assert.match(read("../src/design/components.css"), /\.stat__words \{ white-space: nowrap; \}\n@media \(max-width: 399px\) \{ \.stat__words \{ white-space: normal; \} \}/);
 });
 
 test("RS1-L3: a test build's Contracts and owner page lists its own addresses in its banner, where Home's notice and the footer point", () => {
@@ -71,9 +76,10 @@ test("RS1-L3: a test build's Contracts and owner page lists its own addresses in
   assert.match(info, /All of PLEA’s contracts are on the\{" "\}\s*<a href="#\/docs\/contracts">Contracts and owner<\/a> page in the docs\./);
 });
 
-test("RS1-N1: the Copy toast starts with a capital letter, whatever the row's label", () => {
-  assert.match(components, /text: `\$\{label\[0\]\.toUpperCase\(\)\}\$\{label\.slice\(1\)\} address copied\.`/);
-  assert.match(components, /aria-label=\{`Copy \$\{label\} address`\}/);
+test("RS1-N1: the Copy toast starts a sentence by capitalising only a leading \"the\" (imd/acc, sIMD and imdTEST keep their case); the button's name holds its visible word", () => {
+  assert.match(components, /text: `\$\{label\.replace\(\/\^the \/, "The "\)\} address copied\.`/);
+  assert.match(components, /aria-label=\{`\$\{copied \? "Copied" : "Copy"\} \$\{label\} address`\}/);
+  assert.match(components, /<span>\{copied \? "Copied" : "Copy"\}<\/span>/);
 });
 
 test("RS1-N2: the share card and the Share on X link name the site's own address, not the alias it was opened through", () => {
@@ -94,6 +100,8 @@ test("RS1-N4: an empty wallet's Plead hint names the rule, not 0 to 0 PLEA; befo
   );
   assert.match(profile, /next = !val\(s, "PleaHook\.seeded"\)\s*\? "After trading opens"\s*: derived\.open/);
   assert.match(profile, /val\(s, "PleaHook\.latestPrice"\)\s*\? `At the hourly price, \$\{[^\n]+\} per 1M`\s*: "At the hourly price, once trading opens",/);
+  // Profile's PLEA tile for an empty wallet (every wallet before the open): no "0 PLEA to 0 PLEA".
+  assert.match(profile, /: !data\.plea\s*\? "No PLEA to plead with"\s*: `A plea: /);
 });
 
 test("RS1-N5: the objections table is titled for what it lists, pending ones included", () => {

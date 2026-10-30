@@ -46,6 +46,7 @@ import {
   perMillion,
   utc,
   val,
+  type Snapshot,
 } from "./chain";
 import {
   AddressView,
@@ -68,6 +69,11 @@ import {
 import { WalletBalances, poolQuote } from "./pages-trade";
 import { LIQUIDITY_SHORT, NO_LIQUIDITY } from "./swap-math";
 import { claimToast } from "./toast-text";
+/** Home's market cap: whole pair tokens, or two decimals while it is under one token (a test pool's
+ * cap reads 0.86 imdTEST, not 0). */
+export function marketCap(cap: bigint, s: Snapshot | undefined) {
+  return tokenAmount(cap, s, true, cap < 10n ** BigInt(s?.constants.pairDecimals ?? 18) ? 2 : 0);
+}
 export function Home() {
   const { r, s, now } = useApp(),
     symbol = s?.constants.symbol || "PLEA",
@@ -146,7 +152,7 @@ export function Home() {
               "Market cap",
               // Before the seed the pool has no price: the cap it opens at, not a 0 (RS1-L2).
               seeded
-                ? tokenAmount((supply * price) / 2n ** 96n, s, true, 0)
+                ? marketCap((supply * price) / 2n ** 96n, s)
                 : "Not open yet",
               seeded
                 ? `Supply ${tokenAmount(supply, s)}`
@@ -208,7 +214,8 @@ export function Home() {
                     </span>
                   </>
                 ) : (
-                  <span className="nowrap">{value}</span>
+                  // A number stays on one line; words ("Not open yet") may wrap on a phone (stat__words).
+                  <span className={/\d/.test(String(value)) ? "nowrap" : "stat__words"}>{value}</span>
                 )}
               </span>
               <span className="stat__note">{note}</span>

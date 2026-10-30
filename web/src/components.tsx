@@ -226,13 +226,15 @@ export function AddressView({
       </a>
       <button
         className="copy-btn"
-        aria-label={`Copy ${label} address`}
+        // The name holds the visible word ("Copy", then "Copied" for 1.5 s), as axe asks.
+        aria-label={`${copied ? "Copied" : "Copy"} ${label} address`}
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(address);
             setCopied(true);
-            // The label may read "the owner" (the Copy button's words): the toast starts a sentence.
-            toast?.({ kind: "info", text: `${label[0].toUpperCase()}${label.slice(1)} address copied.` });
+            // The label may read "the owner" (the Copy button's words): the toast starts a sentence,
+            // and only that "the" changes (imd/acc, sIMD and imdTEST keep their own case).
+            toast?.({ kind: "info", text: `${label.replace(/^the /, "The ")} address copied.` });
             setTimeout(() => setCopied(false), 1500);
           } catch {
             toast?.({
